@@ -11,7 +11,7 @@ contract MockERC20 is ERC20 {
     }
 }
 
-contract TokenLockTest is Test {
+contract DepositTest is Test {
     DepositHelper public deposit;
     MockERC20 public token;
     address public minter = address(1);
@@ -55,12 +55,7 @@ contract TokenLockTest is Test {
 
         vm.deal(user, amount);
         vm.prank(user);
-        deposit.deposit{value: amount}(
-            address(0),
-            amount,
-            principalId,
-            subaccount
-        );
+        deposit.deposit{value: amount}(address(0), amount, principalId, subaccount);
 
         // Assert
         assertEq(address(minter).balance, amount);
