@@ -3,7 +3,7 @@ use crate::deposit_logs::{
 };
 use crate::eth_types::Address;
 use crate::numeric::BlockNumber;
-use crate::rpc_declrations::{FixedSizeData, Topic};
+use crate::rpc_declarations::{FixedSizeData, Topic};
 use crate::state::State;
 
 pub struct Scrape {

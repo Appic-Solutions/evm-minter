@@ -10,7 +10,7 @@ use crate::address::ecdsa_public_key_to_address;
 #[test]
 fn deserialize_block_spec() {
     use crate::numeric::BlockNumber;
-    use crate::rpc_declrations::*;
+    use crate::rpc_declarations::*;
 
     assert_eq!(
         BlockSpec::Number(BlockNumber::new(0xffff)),
@@ -39,14 +39,14 @@ mod get_deposit_logs {
     use crate::endpoints::RequestScrapingError;
     use crate::eth_types::Address;
     use crate::numeric::{BlockNumber, Erc20Value, LogIndex, Wei};
-    use crate::rpc_declrations::LogEntry;
+    use crate::rpc_declarations::LogEntry;
     use candid::Principal;
     use ic_sha3::Keccak256;
     use std::str::FromStr;
 
     #[test]
     fn deserialize_get_logs() {
-        use crate::rpc_declrations::*;
+        use crate::rpc_declarations::*;
 
         fn hash_from_hex(s: &str) -> Hash {
             Hash(hex::decode(s).unwrap().try_into().unwrap())
@@ -261,7 +261,7 @@ mod get_deposit_logs {
 
     #[test]
     fn should_not_parse_removed_event() {
-        use crate::deposit_logs::{EventSource, EventSourceError, ReceivedDepsitEventError};
+        use crate::deposit_logs::{EventSource, EventSourceError, ReceivedDepositEventError};
         let event = r#"{
             "address": "0xb44b5e756a894775fc32eddf3314bb1b1944dc34",
             "topics": [
@@ -281,7 +281,7 @@ mod get_deposit_logs {
 
         let parsed_event =
             ReceivedDepositLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap());
-        let expected_error = Err(ReceivedDepsitEventError::InvalidEventSource {
+        let expected_error = Err(ReceivedDepositEventError::InvalidEventSource {
             source: EventSource {
                 transaction_hash:
                     "0x705f826861c802b407843e99af986cfde8749b669e5e0a5a150f4350bcaa9bc3"
@@ -496,7 +496,7 @@ mod rlp_encoding {
 
 mod eth_get_block_by_number {
     use crate::numeric::{BlockNumber, Wei};
-    use crate::rpc_declrations::{into_nat, Block, Quantity};
+    use crate::rpc_declarations::{into_nat, Block, Quantity};
 
     #[test]
     fn should_deserialize_block() {
@@ -839,7 +839,7 @@ mod eth_get_block_by_number {
 
 mod eth_fee_history {
     use crate::numeric::{BlockNumber, WeiPerGas};
-    use crate::rpc_declrations::{BlockSpec, BlockTag, FeeHistory, FeeHistoryParams, Quantity};
+    use crate::rpc_declarations::{BlockSpec, BlockTag, FeeHistory, FeeHistoryParams, Quantity};
 
     #[test]
     fn should_serialize_fee_history_params_as_tuple() {

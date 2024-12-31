@@ -46,10 +46,10 @@ use crate::{
 };
 use ic_icrc1_index_ng::{IndexArg, InitArg as IndexInitArg};
 use ic_icrc1_ledger::{ArchiveOptions, InitArgs as LedgerInitArgs, LedgerArgument};
-use intialize_minter::create_and_install_minter_plus_dependency_canisters;
+use initialize_minter::create_and_install_minter_plus_dependency_canisters;
 
 #[test]
-fn should_create_and_install_and_upgrade_minter_casniter() {
+fn should_create_and_install_and_upgrade_minter_canister() {
     let pic = create_pic();
 
     let canister_id = create_minter_canister(&pic);
@@ -101,7 +101,7 @@ fn should_create_and_install_and_upgrade_minter_casniter() {
     });
     let upgrade_bytes = candid::encode_one(upgrade_args).unwrap();
 
-    upgrade_minter_casniter(&pic, canister_id, upgrade_bytes);
+    upgrade_minter_canister(&pic, canister_id, upgrade_bytes);
 
     five_ticks(&pic);
 
@@ -136,12 +136,12 @@ fn should_create_and_install_and_upgrade_minter_casniter() {
 fn should_create_and_install_all_minter_dependency_canisters() {
     let pic = create_pic();
 
-    // Create and install lsm casniter
-    let lsm_casniter_id = create_lsm_canister(&pic);
-    pic.add_cycles(lsm_casniter_id, TWO_TRILLIONS.into());
-    install_lsm_canister(&pic, lsm_casniter_id);
+    // Create and install lsm canister
+    let lsm_canister_id = create_lsm_canister(&pic);
+    pic.add_cycles(lsm_canister_id, TWO_TRILLIONS.into());
+    install_lsm_canister(&pic, lsm_canister_id);
     five_ticks(&pic);
-    let lsm_info = query_call::<(), LedgerManagerInfo>(&pic, lsm_casniter_id, "get_lsm_info", ());
+    let lsm_info = query_call::<(), LedgerManagerInfo>(&pic, lsm_canister_id, "get_lsm_info", ());
     assert_eq!(
         lsm_info,
         LedgerManagerInfo {
@@ -185,7 +185,7 @@ fn should_create_and_install_all_minter_dependency_canisters() {
 }
 
 #[test]
-fn should_install_lsm_casniter_and_create_ledger_suite() {
+fn should_install_lsm_canister_and_create_ledger_suite() {
     let pic = create_pic();
 
     create_and_install_minter_plus_dependency_canisters(&pic);
@@ -390,14 +390,14 @@ where
     O: CandidType + for<'a> serde::Deserialize<'a>,
     I: CandidType,
 {
-    let sender_princiapl = match sender {
+    let sender_principal = match sender {
         Some(p_id) => p_id,
         None => sender_principal(),
     };
     let wasm_result = pic
         .update_call(
             canister_id,
-            sender_princiapl,
+            sender_principal,
             method,
             encode_call_args(payload).unwrap(),
         )
@@ -433,7 +433,7 @@ pub fn create_pic() -> PocketIc {
 
 fn create_minter_canister(pic: &PocketIc) -> Principal {
     pic.create_canister_with_id(Some(sender_principal()), None, minter_principal())
-        .expect("Should create the casniter")
+        .expect("Should create the canister")
 }
 
 fn install_minter_canister(pic: &PocketIc, canister_id: Principal) {
@@ -470,7 +470,7 @@ fn create_lsm_canister(pic: &PocketIc) -> Principal {
         None,
         Principal::from_text("kmcdp-4yaaa-aaaag-ats3q-cai").unwrap(),
     )
-    .expect("Should create the casniter")
+    .expect("Should create the canister")
 }
 
 fn install_lsm_canister(pic: &PocketIc, canister_id: Principal) {
@@ -495,7 +495,7 @@ fn create_icp_ledger_canister(pic: &PocketIc) -> Principal {
         None,
         Principal::from_text("ryjl3-tyaaa-aaaaa-aaaba-cai").unwrap(),
     )
-    .expect("Should create the casniter")
+    .expect("Should create the canister")
 }
 
 fn install_icp_ledger_canister(pic: &PocketIc, canister_id: Principal) {
@@ -560,7 +560,7 @@ fn create_evm_rpc_canister(pic: &PocketIc) -> Principal {
         None,
         Principal::from_text("sosge-5iaaa-aaaag-alcla-cai").unwrap(),
     )
-    .expect("Should create the casniter")
+    .expect("Should create the canister")
 }
 
 fn install_evm_rpc_canister(pic: &PocketIc, canister_id: Principal) {
@@ -579,7 +579,7 @@ fn create_native_ledger_canister(pic: &PocketIc) -> Principal {
         None,
         Principal::from_text("n44gr-qyaaa-aaaam-qbuha-cai").unwrap(),
     )
-    .expect("Should create the casniter")
+    .expect("Should create the canister")
 }
 
 fn install_native_ledger_canister(pic: &PocketIc, canister_id: Principal) {
@@ -645,7 +645,7 @@ fn create_index_canister(pic: &PocketIc) -> Principal {
         None,
         Principal::from_text("eysav-tyaaa-aaaap-akqfq-cai").unwrap(),
     )
-    .expect("Should create the casniter")
+    .expect("Should create the canister")
 }
 
 fn install_index_canister(pic: &PocketIc, canister_id: Principal) {
@@ -662,7 +662,7 @@ fn install_index_canister(pic: &PocketIc, canister_id: Principal) {
     );
 }
 
-pub fn upgrade_minter_casniter(pic: &PocketIc, canister_id: Principal, upgrade_bytes: Vec<u8>) {
+pub fn upgrade_minter_canister(pic: &PocketIc, canister_id: Principal, upgrade_bytes: Vec<u8>) {
     pic.upgrade_canister(
         canister_id,
         MINTER_WASM_BYTES.to_vec(),
@@ -699,24 +699,24 @@ pub fn icp_principal() -> Principal {
 pub fn native_ledger_principal() -> Principal {
     Principal::from_text("n44gr-qyaaa-aaaam-qbuha-cai").unwrap()
 }
-// Initalizes a test environmet containing evm_rpc_canister, lsm canister, native ledger caister and native index canister.
+// Initializes a test environment containing evm_rpc_canister, lsm canister, native ledger canister and native index canister.
 // Through this test simulation, real senarios like concurrncy, http failures, no consensus agreement, etc can be tested.
 
-// First  the dependency canisters are installed then the minter casniter is intalled.
-pub mod intialize_minter {
+// First  the dependency canisters are installed then the minter canister is installed.
+pub mod initialize_minter {
     use super::*;
 
     pub fn create_and_install_minter_plus_dependency_canisters(pic: &PocketIc) {
         // Create and install icp ledger
-        let icp_cansiter_id = create_icp_ledger_canister(&pic);
-        pic.add_cycles(icp_cansiter_id, TWO_TRILLIONS.into());
-        install_icp_ledger_canister(&pic, icp_cansiter_id);
+        let icp_canister_id = create_icp_ledger_canister(&pic);
+        pic.add_cycles(icp_canister_id, TWO_TRILLIONS.into());
+        install_icp_ledger_canister(&pic, icp_canister_id);
         five_ticks(&pic);
 
-        // Create and install lsm casniter
-        let lsm_casniter_id = create_lsm_canister(&pic);
-        pic.add_cycles(lsm_casniter_id, TWENTY_TRILLIONS.into());
-        install_lsm_canister(&pic, lsm_casniter_id);
+        // Create and install lsm canister
+        let lsm_canister_id = create_lsm_canister(&pic);
+        pic.add_cycles(lsm_canister_id, TWENTY_TRILLIONS.into());
+        install_lsm_canister(&pic, lsm_canister_id);
         five_ticks(&pic);
         five_ticks(&pic);
 

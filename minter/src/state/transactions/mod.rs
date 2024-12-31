@@ -7,7 +7,7 @@ use crate::endpoints::{
 use crate::evm_config::EvmNetwork;
 use crate::map::MultiKeyMap;
 use crate::numeric::{GasAmount, LedgerMintIndex, TransactionCount, TransactionNonce};
-use crate::rpc_declrations::{Hash, TransactionReceipt, TransactionStatus};
+use crate::rpc_declarations::{Hash, TransactionReceipt, TransactionStatus};
 use crate::tx::{
     Eip1559TransactionRequest, FinalizedEip1559Transaction, GasFeeEstimate, ResubmissionStrategy,
     SignedEip1559TransactionRequest, SignedTransactionRequest, TransactionRequest,
@@ -35,7 +35,7 @@ impl fmt::Debug for Subaccount {
     }
 }
 
-/// Naticve token withdrawal request issued by the user.
+/// Native token withdrawal request issued by the user.
 #[derive(Clone, Eq, PartialEq, Encode, Decode)]
 pub struct NativeWithdrawalRequest {
     /// The NAtive token amount that the receiver will get, not accounting for the EVM transaction fees.

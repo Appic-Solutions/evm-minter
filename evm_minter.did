@@ -363,7 +363,7 @@ service : (MinterArg) -> {
   icrc28_trusted_origins : () -> (Icrc28TrustedOriginsResponse);
   minter_address : () -> (text);
   request_scraping_logs : (nat) -> (Result);
-  retrieve_witdrawal_status : (nat64) -> (RetrieveWithdrawalStatus);
+  retrieve_withdrawal_status : (nat64) -> (RetrieveWithdrawalStatus);
   smart_contract_address : () -> (text) query;
   withdraw_erc20 : (WithdrawErc20Arg) -> (Result_1);
   withdraw_native_token : (WithdrawalArg) -> (Result_2);

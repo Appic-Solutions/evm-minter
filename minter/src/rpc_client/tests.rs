@@ -24,7 +24,7 @@ mod providers {
     }
 
     #[test]
-    fn should_retireve_at_least_three_prviders() {
+    fn should_retrieve_at_least_three_providers() {
         for network in EvmNetwork::iter() {
             match get_providers(network) {
                 evm_rpc_types::RpcServices::Custom {
@@ -254,7 +254,7 @@ mod multi_rpc_results {
         use crate::{
             numeric::{BlockNumber, Wei},
             rpc_client::ReducedResult,
-            rpc_declrations::Block,
+            rpc_declarations::Block,
         };
 
         #[test]
@@ -297,7 +297,7 @@ mod multi_rpc_results {
         use crate::{
             numeric::{BlockNumber, WeiPerGas},
             rpc_client::{MultiCallError, ReducedResult},
-            rpc_declrations::FeeHistory,
+            rpc_declarations::FeeHistory,
         };
         use ic_cdk::api::call::RejectionCode;
 
@@ -679,7 +679,7 @@ mod multi_rpc_results {
 mod get_transaction_receipt {
     use crate::{
         numeric::{BlockNumber, GasAmount, WeiPerGas},
-        rpc_declrations::{Hash, TransactionReceipt, TransactionStatus},
+        rpc_declarations::{Hash, TransactionReceipt, TransactionStatus},
     };
     use assert_matches::assert_matches;
     use proptest::proptest;
@@ -770,7 +770,7 @@ mod evm_rpc_conversion {
         only_inconsistent_ok_results_without_providers, TransactionReceipt,
     };
     use crate::rpc_client::{Block, LogEntry, MultiCallError, Reduce, ReducedResult};
-    use crate::rpc_declrations::TransactionStatus;
+    use crate::rpc_declarations::TransactionStatus;
     use crate::test_fixtures::arb::{
         arb_block, arb_evm_rpc_error, arb_hex, arb_hex20, arb_hex256, arb_hex32, arb_hex_byte,
         arb_log_entry, arb_nat_256, arb_transaction_receipt,

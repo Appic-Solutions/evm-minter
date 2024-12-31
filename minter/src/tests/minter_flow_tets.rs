@@ -22,13 +22,13 @@ use icrc_ledger_types::icrc1::account::Account;
 use icrc_ledger_types::icrc2::approve::{ApproveArgs, ApproveError};
 
 use super::pocket_ic_helpers::{
-    create_pic, intialize_minter::create_and_install_minter_plus_dependency_canisters,
+    create_pic, initialize_minter::create_and_install_minter_plus_dependency_canisters,
     minter_principal, query_call,
 };
 
 use mock_rpc_https_responses::{
-    generate_and_submit_mock_http_response, MOCK_BLOCK_NUMBER, MOCK_FEE_HISTORY_RESPONSE,
-    MOCK_GET_LOGS, MOCK_GET_LOGS_ERC20, MOCK_HIGER_BLOCK_NUMBER,
+    generate_and_submit_mock_http_response, MOCK_HIGhER_BLOCK_NUMBER, MOCK_BLOCK_NUMBER,
+    MOCK_FEE_HISTORY_RESPONSE, MOCK_GET_LOGS, MOCK_GET_LOGS_ERC20,
     MOCK_SECOND_NATIVE_TRANSACTION_RECEIPT, MOCK_SEND_TRANSACTION_ERROR,
     MOCK_SEND_TRANSACTION_SUCCESS, MOCK_TRANSACTION_COUNT_FINALIZED,
     MOCK_TRANSACTION_COUNT_FINALIZED_ERC20, MOCK_TRANSACTION_COUNT_LATEST,
@@ -88,17 +88,17 @@ fn should_deposit_and_withdrawal_native() {
     let pic = create_pic();
     create_and_install_minter_plus_dependency_canisters(&pic);
 
-    // The deposit and whitdrawal http mock flow is as follow
+    // The deposit and withdrawal http mock flow is as follow
     // 1st Step: The mock response for get_blockbynumber is generated
-    // 2nd Step: The response for eth_feehistory resonse is genrated afterwards,
+    // 2nd Step: The response for eth_feehistory response is generated afterwards,
     // so in the time of withdrawal transaction the eip1559 transaction price is available
     // Not to forget that the price should be refreshed through a second call at the time
     // 3rd Step: There should two mock responses be generated, one for ankr and the other one for public node
     // 4th Step: The response for sendrawtransaction
-    // 5th Step: An httpoutcall for geting the finalized transaction count.
+    // 5th Step: An http-outcall for getting the finalized transaction count.
     // 5th Step: and in the end get transaction receipt should be generate
 
-    // At this time there should be 2 http reuests:
+    // At this time there should be 2 http requests:
     // [0] is for eth_getBlockByNumber
     // [1] is for eth_feeHistory
     let canister_http_requests = pic.get_canister_http();
@@ -106,7 +106,7 @@ fn should_deposit_and_withdrawal_native() {
     // 1st Generating mock response for eth_getBlockByNumber
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_BLOCK_NUMBER);
 
-    // 2nd Generating mock reponse for eth_feehistory
+    // 2nd Generating mock response for eth_feehistory
     generate_and_submit_mock_http_response(
         &pic,
         &canister_http_requests,
@@ -117,12 +117,12 @@ fn should_deposit_and_withdrawal_native() {
     five_ticks(&pic);
 
     // 3rd generating mock response for eth_getLogs
-    // At this time there should be 2 http reuests:
+    // At this time there should be 2 http requests:
     // [0] is for public_node eth_getLogs
     // [1] is for ankr eth_getLogs
     let canister_http_requests = pic.get_canister_http();
 
-    // publick_node mock submission
+    // public_node mock submission
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_GET_LOGS);
 
     // Ankr mock submission
@@ -228,8 +228,8 @@ fn should_deposit_and_withdrawal_native() {
     five_ticks(&pic);
 
     // At this point there should be an http request for refreshing the fee history
-    // Once there is a witdrawal request, The first attempt should be updating fee history
-    // Cause there should be a maximum gap of 30 seconds between the previos gas fee estimate
+    // Once there is a withdrawal request, The first attempt should be updating fee history
+    // Cause there should be a maximum gap of 30 seconds between the previous gas fee estimate
     // we just advance time for amount
     let canister_http_requests = pic.get_canister_http();
     generate_and_submit_mock_http_response(
@@ -243,7 +243,7 @@ fn should_deposit_and_withdrawal_native() {
 
     let canister_http_requests = pic.get_canister_http();
 
-    // Generating the latest transaction count for inserting the correct noce
+    // Generating the latest transaction count for inserting the correct nonce
     generate_and_submit_mock_http_response(
         &pic,
         &canister_http_requests,
@@ -320,7 +320,7 @@ fn should_deposit_and_withdrawal_native() {
     let get_withdrawal_transaction_by_block_index = update_call::<u64, RetrieveWithdrawalStatus>(
         &pic,
         minter_principal(),
-        "retrieve_witdrawal_status",
+        "retrieve_withdrawal_status",
         4_u64,
         None,
     );
@@ -344,10 +344,10 @@ fn should_not_deposit_twice() {
 
     // The deposit http mock flow is as follow
     // 1st Step: The mock response for get_blockbynumber is generated
-    // 2nd Step: The response for eth_feehistory resonse is genrated afterwards,
+    // 2nd Step: The response for eth_feehistory resonse is generated afterwards,
     // 3rd Step: The response for eth_getlogs response is generated,
 
-    // At this time there should be 2 http reuests:
+    // At this time there should be 2 http requests:
     // [0] is for eth_getBlockByNumber
     // [1] is for eth_feeHistory
     let canister_http_requests = pic.get_canister_http();
@@ -355,7 +355,7 @@ fn should_not_deposit_twice() {
     // 1st Generating mock response for eth_getBlockByNumber
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_BLOCK_NUMBER);
 
-    // 2nd Generating mock reponse for eth_feehistory
+    // 2nd Generating mock response for eth_feehistory
     generate_and_submit_mock_http_response(
         &pic,
         &canister_http_requests,
@@ -366,12 +366,12 @@ fn should_not_deposit_twice() {
     five_ticks(&pic);
 
     // 3rd generating mock response for eth_getLogs
-    // At this time there should be 2 http reuests:
+    // At this time there should be 2 http requests:
     // [0] is for public_node eth_getLogs
     // [1] is for ankr eth_getLogs
     let canister_http_requests = pic.get_canister_http();
 
-    // publick_node mock submission
+    // public_node mock submission
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_GET_LOGS);
 
     // Ankr mock submission
@@ -395,11 +395,11 @@ fn should_not_deposit_twice() {
 
     five_ticks(&pic);
 
-    // After reuesting one more time there should be another log scraping request which means we have to
+    // After requesting one more time there should be another log scraping request which means we have to
     // follow the same steps but this time we will mock http requests with incorrect responses
-    // to check if minter, mints the same reuest twice or not.
+    // to check if minter, mints the same request twice or not.
 
-    // At this time there should be 1 http reuests:
+    // At this time there should be 1 http requests:
     // [0] is for eth_getBlockByNumber
     let canister_http_requests = pic.get_canister_http();
 
@@ -408,19 +408,19 @@ fn should_not_deposit_twice() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_HIGER_BLOCK_NUMBER,
+        MOCK_HIGhER_BLOCK_NUMBER,
     );
 
     five_ticks(&pic);
 
     // 3rd generating mock response for eth_getLogs
-    // At this time there should be 2 http reuests:
+    // At this time there should be 2 http requests:
     // [0] is for public_node eth_getLogs
     // [1] is for ankr eth_getLogs
     let canister_http_requests = pic.get_canister_http();
 
-    // Generating the same mock eth_getlogs reposne and the minter should detect that these responses are not correct
-    // publick_node mock submission
+    // Generating the same mock eth_getlogs response and the minter should detect that these responses are not correct
+    // public_node mock submission
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_GET_LOGS);
 
     // Ankr mock submission
@@ -430,7 +430,7 @@ fn should_not_deposit_twice() {
 
     // Check balance
     // there should only be 100000000000000000 icBNB minted for Native to b4any-vxcgx-dm654-xhumb-4pl7k-5kysk-qnjlt-w7hcb-2hd2h-ttzpz-fqe
-    // Decpite receiving two mint events.
+    // despite receiving two mint events.
     let balance = query_call::<Account, Nat>(
         &pic,
         native_ledger_principal(),
@@ -452,20 +452,20 @@ fn should_deposit_and_withdrawal_erc20() {
     let pic = create_pic();
     create_and_install_minter_plus_dependency_canisters(&pic);
 
-    // The deposit and whitdrawal http mock flow is as follow
+    // The deposit and withdrawal http mock flow is as follow
     // 1st Step: The mock response for get_blockbynumber is generated
-    // 2nd Step: The response for eth_feehistory resonse is genrated afterwards,
+    // 2nd Step: The response for eth_feehistory resonse is generated afterwards,
     // so in the time of withdrawal transaction the eip1559 transaction price is available
     // Not to forget that the price should be refreshed through a second call at the time
     // 3rd Step: There should two mock responses be generated for eth_getlogs, one for ankr and the other one for public node
-    // 4th Step: After 10 min the response for eth_feehistory resonse is genrated afterwards,
+    // 4th Step: After 10 min the response for eth_feehistory resonse is generated afterwards,
     // 5th Step: There should two mock responses be generated for eth_getlogs, one for ankr and the other one for public node this time with deposit logs
     // One for native and erc20
     // 6th Step: The response for sendrawtransaction
-    // 7th Step: An httpoutcall for geting the finalized transaction count.
+    // 7th Step: An http-outcall for getting the finalized transaction count.
     // 8th Step: and in the end get transaction receipt should be generate
 
-    // At this time there should be 2 http reuests:
+    // At this time there should be 2 http requests:
     // [0] is for eth_getBlockByNumber
     // [1] is for eth_feeHistory
 
@@ -474,7 +474,7 @@ fn should_deposit_and_withdrawal_erc20() {
     // 1st Generating mock response for eth_getBlockByNumber
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_BLOCK_NUMBER);
 
-    // 2nd Generating mock reponse for eth_feehistory
+    // 2nd Generating mock response for eth_feehistory
     generate_and_submit_mock_http_response(
         &pic,
         &canister_http_requests,
@@ -487,12 +487,12 @@ fn should_deposit_and_withdrawal_erc20() {
     five_ticks(&pic);
 
     // 3rd generating mock response for eth_getLogs
-    // At this time there should be 2 http reuests:
+    // At this time there should be 2 http requests:
     // [0] is for public_node eth_getLogs
     // [1] is for ankr eth_getLogs
     let canister_http_requests = pic.get_canister_http();
 
-    // publick_node mock submission
+    // public_node mock submission
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_GET_LOGS);
 
     // Ankr mock submission
@@ -612,7 +612,7 @@ fn should_deposit_and_withdrawal_erc20() {
             .unwrap()
         {
             crate::tests::lsm_types::ManagedCanisterStatus::Created { canister_id: _ } => {
-                panic!("Link cansiter id should be available")
+                panic!("Link canister id should be available")
             }
             crate::tests::lsm_types::ManagedCanisterStatus::Installed {
                 canister_id,
@@ -638,7 +638,7 @@ fn should_deposit_and_withdrawal_erc20() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_HIGER_BLOCK_NUMBER,
+        MOCK_HIGhER_BLOCK_NUMBER,
     );
 
     five_ticks(&pic);
@@ -647,12 +647,12 @@ fn should_deposit_and_withdrawal_erc20() {
     five_ticks(&pic);
 
     // 5th generating mock response for eth_getLogs
-    // At this time there should be 2 http reuests:
+    // At this time there should be 2 http requests:
     // [0] is for public_node eth_getLogs
     // [1] is for ankr eth_getLogs
     let canister_http_requests = pic.get_canister_http();
 
-    // publick_node mock submission
+    // public_node mock submission
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_GET_LOGS_ERC20);
 
     // Ankr mock submission
@@ -797,8 +797,8 @@ fn should_deposit_and_withdrawal_erc20() {
     five_ticks(&pic);
 
     // At this point there should be an http request for refreshing the fee history
-    // Once there is a witdrawal request, The first attempt should be updating fee history
-    // Cause there should be a maximum gap of 30 seconds between the previos gas fee estimate
+    // Once there is a withdrawal request, The first attempt should be updating fee history
+    // Cause there should be a maximum gap of 30 seconds between the previous gas fee estimate
     // we just advance time for amount
     let canister_http_requests = pic.get_canister_http();
     generate_and_submit_mock_http_response(
@@ -812,7 +812,7 @@ fn should_deposit_and_withdrawal_erc20() {
 
     let canister_http_requests = pic.get_canister_http();
 
-    // Generating the latest transaction count for inserting the correct noce
+    // Generating the latest transaction count for inserting the correct nonce
     generate_and_submit_mock_http_response(
         &pic,
         &canister_http_requests,
@@ -887,7 +887,7 @@ fn should_deposit_and_withdrawal_erc20() {
     let get_withdrawal_transaction_by_block_index = update_call::<u64, RetrieveWithdrawalStatus>(
         &pic,
         minter_principal(),
-        "retrieve_witdrawal_status",
+        "retrieve_withdrawal_status",
         4_u64,
         None,
     );
@@ -938,8 +938,8 @@ fn should_deposit_and_withdrawal_erc20() {
     five_ticks(&pic);
 
     // At this point there should be an http request for refreshing the fee history
-    // Once there is a witdrawal request, The first attempt should be updating fee history
-    // Cause there should be a maximum gap of 30 seconds between the previos gas fee estimate
+    // Once there is a withdrawal request, The first attempt should be updating fee history
+    // Cause there should be a maximum gap of 30 seconds between the previous gas fee estimate
     // we just advance time for amount
     let canister_http_requests = pic.get_canister_http();
     generate_and_submit_mock_http_response(
@@ -953,7 +953,7 @@ fn should_deposit_and_withdrawal_erc20() {
 
     let canister_http_requests = pic.get_canister_http();
 
-    // Generating the latest transaction count for inserting the correct noce
+    // Generating the latest transaction count for inserting the correct nonce
     generate_and_submit_mock_http_response(
         &pic,
         &canister_http_requests,
@@ -1030,7 +1030,7 @@ fn should_deposit_and_withdrawal_erc20() {
     let get_withdrawal_transaction_by_block_index = update_call::<u64, RetrieveWithdrawalStatus>(
         &pic,
         minter_principal(),
-        "retrieve_witdrawal_status",
+        "retrieve_withdrawal_status",
         6_u64,
         None,
     );
@@ -1054,10 +1054,10 @@ fn should_fail_log_scrapping_request_old_block_number() {
 
     // The deposit http mock flow is as follow
     // 1st Step: The mock response for get_blockbynumber is generated
-    // 2nd Step: The response for eth_feehistory resonse is genrated afterwards,
+    // 2nd Step: The response for eth_feehistory resonse is generated afterwards,
     // 3rd Step: The response for eth_getlogs response is generated,
 
-    // At this time there should be 2 http reuests:
+    // At this time there should be 2 http requests:
     // [0] is for eth_getBlockByNumber
     // [1] is for eth_feeHistory
     let canister_http_requests = pic.get_canister_http();
@@ -1065,7 +1065,7 @@ fn should_fail_log_scrapping_request_old_block_number() {
     // 1st Generating mock response for eth_getBlockByNumber
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_BLOCK_NUMBER);
 
-    // 2nd Generating mock reponse for eth_feehistory
+    // 2nd Generating mock response for eth_feehistory
     generate_and_submit_mock_http_response(
         &pic,
         &canister_http_requests,
@@ -1076,12 +1076,12 @@ fn should_fail_log_scrapping_request_old_block_number() {
     five_ticks(&pic);
 
     // 3rd generating mock response for eth_getLogs
-    // At this time there should be 2 http reuests:
+    // At this time there should be 2 http requests:
     // [0] is for public_node eth_getLogs
     // [1] is for ankr eth_getLogs
     let canister_http_requests = pic.get_canister_http();
 
-    // publick_node mock submission
+    // public_node mock submission
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_GET_LOGS);
 
     // Ankr mock submission
@@ -1171,7 +1171,7 @@ mod mock_rpc_https_responses {
         }
     }"#;
 
-    pub const MOCK_HIGER_BLOCK_NUMBER: &str = r#"{
+    pub const MOCK_HIGhER_BLOCK_NUMBER: &str = r#"{
         "jsonrpc": "2.0",
         "id": 1,
         "result": {

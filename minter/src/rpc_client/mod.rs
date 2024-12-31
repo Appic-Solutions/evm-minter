@@ -2,7 +2,7 @@
 mod tests;
 
 pub mod providers;
-use providers::{    get_one_provider_ankr, get_one_provider_public_node, get_providers};
+use providers::{get_one_provider_ankr, get_one_provider_public_node, get_providers};
 use std::{collections::BTreeMap, convert::Infallible, fmt::Display};
 
 use crate::{
@@ -10,7 +10,7 @@ use crate::{
     evm_config::EvmNetwork,
     logs::{PrintProxySink, INFO, TRACE_HTTP},
     numeric::{BlockNumber, GasAmount, LogIndex, TransactionCount, Wei, WeiPerGas},
-    rpc_declrations::{
+    rpc_declarations::{
         Block, BlockSpec, BlockTag, Data, FeeHistory, FeeHistoryParams, FixedSizeData,
         GetLogsParam, Hash, LogEntry, Quantity, SendRawTransactionResult, Topic,
         TransactionReceipt, TransactionStatus,
@@ -453,7 +453,7 @@ impl<T: std::fmt::Debug + std::cmp::PartialEq + Clone> ReducedResult<T> {
                 },
             },
             EvmMultiRpcResult::Inconsistent(result) => {
-                let converted_to_single_call_erro = result
+                let converted_to_single_call_error = result
                     .into_iter()
                     .map(|(rpc_provider, rpc_result)| {
                         let mapped_rpc_result = match rpc_result {
@@ -465,15 +465,15 @@ impl<T: std::fmt::Debug + std::cmp::PartialEq + Clone> ReducedResult<T> {
                     .collect();
 
                 Err(MultiCallError::InconsistentResults(
-                    converted_to_single_call_erro,
+                    converted_to_single_call_error,
                 ))
             }
         };
         Self { result }
     }
 
-    // Reduce the inconsistent result with the starategy that if there is even a single inconsistent resposne,
-    // the new reduced result will be an inconsistent multierror call type.
+    // Reduce the inconsistent result with the strategy that if there is even a single inconsistent response,
+    // the new reduced result will be an inconsistent multi-error call type.
     pub fn reduce_with_equality(self) -> Self {
         match self.result {
             Ok(_) => self.clone(),
@@ -520,7 +520,7 @@ impl<T: std::fmt::Debug + std::cmp::PartialEq + Clone> ReducedResult<T> {
 
     // If Inconsistent, Aggregates results from multiple RPC node providers into a single result based on a strict majority rule.
     // The aggregation is performed by grouping results with the same key extracted using the provided extractor function.
-    // If a stricpt majority (more than half) of results share the same value for a key, that value is returned.
+    // If a strict majority (more than half) of results share the same value for a key, that value is returned.
     // If no strict majority exists, an error is returned with the inconsistent results.
     pub fn reduce_with_strict_majority_by_key<F: Fn(&T) -> K, K: Ord>(self, extractor: F) -> Self {
         match self.result {
@@ -606,7 +606,7 @@ impl<T: std::fmt::Debug + std::cmp::PartialEq + Clone> ReducedResult<T> {
         }
     }
 
-    // Used for send raw transaction, if inconsistent searches only for one Ok result since there will be only one ok result becuase multiple nonces should be unique
+    // Used for send raw transaction, if inconsistent searches only for one Ok result since there will be only one ok result because multiple nonces should be unique
     pub fn reduce_with_only_one_key(self) -> Self {
         match self.result {
             Ok(_) => self,
@@ -644,7 +644,7 @@ impl<T: std::fmt::Debug + std::cmp::PartialEq + Clone> ReducedResult<T> {
     }
 }
 
-// Reduce trait implimentation for converting EVM_RPC_CANISTER response into desiered type.
+// Reduce trait implementation for converting EVM_RPC_CANISTER response into desired type.
 // Convert inconsistent response into consistent if necessary with different strategies
 trait Reduce {
     type Item;

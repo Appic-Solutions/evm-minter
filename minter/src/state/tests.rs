@@ -12,8 +12,8 @@ use crate::numeric::{
     wei_from_milli_ether, BlockNumber, Erc20TokenAmount, Erc20Value, GasAmount, LedgerBurnIndex,
     LedgerMintIndex, LogIndex, TransactionNonce, Wei, WeiPerGas,
 };
-use crate::rpc_declrations::BlockTag;
-use crate::rpc_declrations::{TransactionReceipt, TransactionStatus};
+use crate::rpc_declarations::BlockTag;
+use crate::rpc_declarations::{TransactionReceipt, TransactionStatus};
 use crate::state::audit::apply_state_transition;
 use crate::state::event::{Event, EventType};
 use crate::state::transactions::{Erc20WithdrawalRequest, ReimbursementIndex};
@@ -290,7 +290,7 @@ mod upgrade {
     use crate::evm_config::EvmNetwork;
     use crate::lifecycle::UpgradeArg;
     use crate::numeric::{TransactionNonce, Wei};
-    use crate::rpc_declrations::BlockTag;
+    use crate::rpc_declarations::BlockTag;
     use crate::state::tests::initial_state;
     use crate::state::InvalidStateError;
     use assert_matches::assert_matches;
@@ -768,7 +768,7 @@ proptest! {
 #[test]
 fn state_equivalence() {
     use crate::map::MultiKeyMap;
-    use crate::rpc_declrations::{TransactionReceipt, TransactionStatus};
+    use crate::rpc_declarations::{TransactionReceipt, TransactionStatus};
     use crate::state::transactions::{
         NativeWithdrawalRequest, Reimbursed, ReimbursementRequest, WithdrawalTransactions,
     };
@@ -1250,7 +1250,7 @@ mod native_balance {
     use crate::numeric::{
         BlockNumber, GasAmount, LedgerBurnIndex, TransactionNonce, Wei, WeiPerGas,
     };
-    use crate::rpc_declrations::{TransactionReceipt, TransactionStatus};
+    use crate::rpc_declarations::{TransactionReceipt, TransactionStatus};
     use crate::state::audit::{apply_state_transition, EventType};
     use crate::state::tests::checked_sub;
     use crate::state::tests::{initial_state, received_deposit_event};

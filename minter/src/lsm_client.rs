@@ -2,10 +2,10 @@
 mod tests;
 
 // Ledger suite manager helper functions
-// This module produces the wasm hashes that are used by native twin ledger and index casniters
+// This module produces the wasm hashes that are used by native twin ledger and index canister
 // With the produced wasm hash the necessary type for calling the add_new_native_ls function of lsm(Ledger suite manager) is then produced.
-// As a next step an intercasniter call will happen at the init time to add the native Ledger suite the the LSM(ledger suite manager).
-// This mechanism is desgined to maintain cycles balance of twin native ledger suite checked through the manager casniter.
+// As a next step an inter-canister call will happen at the init time to add the native Ledger suite the the LSM(ledger suite manager).
+// This mechanism is designed to maintain cycles balance of twin native ledger suite checked through the manager canister.
 
 use std::fmt::{Debug, Display, Formatter};
 
@@ -16,9 +16,10 @@ use crate::{logs::DEBUG, management::CallError};
 use candid::{self, CandidType, Nat, Principal};
 use ic_canister_log::log;
 use ic_cdk;
+use icrc_ledger_client_cdk::{CdkRuntime, ICRC1Client};
+use icrc_ledger_types::icrc::generic_metadata_value::MetadataValue;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_bytes::ByteArray;
-
 pub(crate) const LEDGER_BYTECODE: &[u8] =
     include_bytes!("../../wasm/index_ng_canister_u256.wasm.gz");
 pub(crate) const INDEX_BYTECODE: &[u8] = include_bytes!("../../wasm/ledger_canister_u256.wasm.gz");
@@ -88,13 +89,17 @@ impl<const N: usize> From<Hash<N>> for [u8; N] {
 
 #[derive(Clone, PartialEq, Debug, CandidType, Serialize, candid::Deserialize)]
 pub struct InstalledNativeLedgerSuite {
-    pub symbol: String,
-    pub ledger: Principal,
+    pub fee: candid::Nat,
+    pub decimals: u8,
+    pub logo: String,
+    pub name: String,
+    pub chain_id: candid::Nat,
     pub ledger_wasm_hash: String,
-    pub index: Principal,
+    pub ledger: Principal,
     pub index_wasm_hash: String,
+    pub index: Principal,
     pub archives: Vec<Principal>,
-    pub chain_id: Nat,
+    pub symbol: String,
 }
 
 #[derive(Clone, PartialEq, Debug, CandidType, Serialize, candid::Deserialize)]
@@ -117,6 +122,10 @@ impl LSMClient {
         ledger_id: Principal,
         index_id: Principal,
         chain_id: u64,
+        fee: Nat,
+        decimals: u8,
+        logo: String,
+        name: String,
     ) -> InstalledNativeLedgerSuite {
         return InstalledNativeLedgerSuite {
             symbol,
@@ -126,26 +135,59 @@ impl LSMClient {
             index_wasm_hash: WasmHash::new(INDEX_BYTECODE.to_vec()).to_string(),
             archives: vec![],
             chain_id: Nat::from(chain_id),
+            fee,
+            decimals,
+            logo,
+            name,
         };
     }
-    // Priduces the InstalledNativeLedgerSuite through init args
+    // Produces the InstalledNativeLedgerSuite through init args
     pub async fn call_lsm_to_add_twin_native(
         self,
         state: State,
     ) -> Result<(), InvalidNativeInstalledCanistersError> {
         let chain_id = state.evm_network.chain_id();
 
+        let icrc_client = ICRC1Client {
+            runtime: CdkRuntime,
+            ledger_canister_id: state.native_ledger_id,
+        };
+
+        let logo = match icrc_client.metadata().await {
+            Ok(metadata_list) => metadata_list
+                .into_iter()
+                .find_map(|(title, value)| {
+                    if title == "icrc1:logo" {
+                        let logo_string = match value {
+                            MetadataValue::Nat(nat) => "".to_string(),
+                            MetadataValue::Int(int) => "".to_string(),
+                            MetadataValue::Text(text) => text,
+                            MetadataValue::Blob(byte_buf) => "".to_string(),
+                        };
+                        return Some(logo_string);
+                    } else {
+                        return None;
+                    }
+                })
+                .unwrap_or("".to_string()),
+            Err(_) => "".to_string(),
+        };
+
         let native_ls_args = self.new_native_ls(
             state.native_symbol.to_string(),
             state.native_ledger_id,
             state.native_index_id,
             chain_id,
+            state.native_ledger_transfer_fee.into(),
+            18_u8, // Native tokens always have 18 decimals
+            logo,
+            state.native_symbol.to_string(),
         );
 
         let result: Result<(), InvalidNativeInstalledCanistersError> = self
             .call_canister(self.0, ADD_NATIVE_LS_METHOD, native_ls_args)
             .await
-            .expect("This call should be successful for a successful initilization");
+            .expect("This call should be successful for a successful initialization");
 
         result
     }
@@ -197,11 +239,11 @@ pub async fn lazy_add_native_ls_to_lsm_canister() {
     let add_native_ls_result = lsm_client.call_lsm_to_add_twin_native(state.clone()).await;
     match add_native_ls_result {
         Ok(()) => {
-            log!(INFO, "Added native ls to lsm cansiter");
+            log!(INFO, "Added native ls to lsm canister");
         }
 
         Err(e) => {
-            log!(DEBUG, "Failed to to add native ls to lsm casniter.{:?}", e);
+            log!(DEBUG, "Failed to to add native ls to lsm canister.{:?}", e);
         }
     }
 }

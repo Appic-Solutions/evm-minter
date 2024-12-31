@@ -28,7 +28,7 @@ pub mod arb {
     use crate::checked_amount::CheckedAmountOf;
     use crate::eth_types::Address;
     use crate::numeric::BlockRangeInclusive;
-    use crate::rpc_declrations::{
+    use crate::rpc_declarations::{
         Block, Data, FeeHistory, FixedSizeData, Hash, LogEntry, TransactionReceipt,
         TransactionStatus,
     };

@@ -19,7 +19,7 @@ pub mod map;
 pub mod memo;
 pub mod numeric;
 pub mod rpc_client;
-pub mod rpc_declrations;
+pub mod rpc_declarations;
 pub mod state;
 pub mod storage;
 pub mod tx;

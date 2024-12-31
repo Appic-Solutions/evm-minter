@@ -3,7 +3,7 @@ use crate::deposit_logs::{ReceivedDepositEvent, ReceivedNativeEvent};
 use crate::memo::BurnMemo;
 use crate::memo::{Address, MintMemo};
 use crate::numeric::{BlockNumber, Erc20TokenAmount, LedgerBurnIndex, LogIndex, Wei};
-use crate::rpc_declrations::Hash;
+use crate::rpc_declarations::Hash;
 use crate::state::transactions::ReimbursementRequest;
 use arbitrary::{arb_burn_memo, arb_mint_memo, arb_reimbursement_request};
 use candid::Principal;
@@ -86,14 +86,14 @@ fn encode_mint_reimburse_memo_is_stable() {
         "0x705f826861c802b407843e99af986cfde8749b669e5e0a5a150f4350bcaa9bc3"
             .parse()
             .unwrap();
-    let reimbursment_request = ReimbursementRequest {
+    let reimbursement_request = ReimbursementRequest {
         ledger_burn_index: LedgerBurnIndex::from(1234_u64),
         reimbursed_amount: Erc20TokenAmount::from(100_u64),
         to: Principal::anonymous(),
         to_subaccount: None,
         transaction_hash: Some(transaction_hash),
     };
-    let memo: Memo = reimbursment_request.into();
+    let memo: Memo = reimbursement_request.into();
 
     assert_eq!(
         memo.0,
@@ -130,7 +130,7 @@ mod arbitrary {
     use crate::eth_types::Address;
     use crate::memo::{BurnMemo, MintMemo};
     use crate::numeric::{LedgerBurnIndex, LogIndex};
-    use crate::rpc_declrations::Hash;
+    use crate::rpc_declarations::Hash;
     use crate::state::transactions::{ReimbursementRequest, Subaccount};
     use candid::Principal;
     use proptest::arbitrary::any;

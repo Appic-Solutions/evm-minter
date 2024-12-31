@@ -69,7 +69,7 @@ fn setup_timers() {
     });
 
     ic_cdk_timers::set_timer(Duration::from_secs(0), || {
-        // Initialize the Gas fee etimate for eip1559 transaction price
+        // Initialize the Gas fee estimate for eip1559 transaction price
         ic_cdk::spawn(async {
             let _ = lazy_refresh_gas_fee_estimate().await;
         })
@@ -112,7 +112,7 @@ async fn init(arg: MinterArg) {
 
     setup_timers();
 
-    // Add native ledger suite to the lsm casniter.
+    // Add native ledger suite to the lsm canister.
     ic_cdk_timers::set_timer(Duration::from_secs(0), || {
         ic_cdk::spawn(async {
             let _ = lazy_add_native_ls_to_lsm_canister().await;
@@ -242,10 +242,10 @@ async fn get_minter_info() -> MinterInfo {
     })
 }
 
-// The logs are scraped automatically evey 10 minutes, however if a user deposits some funds in the smart contract they can all this function
-// with the block number that deposit trasnaction is located at, and the minter would scrape the logs after necessary validation.
+// The logs are scraped automatically every 10 minutes, however if a user deposits some funds in the smart contract they can all this function
+// with the block number that deposit transaction is located at, and the minter would scrape the logs after necessary validation.
 // Validation factors:
-// 1: The provided block number shlould be greater than last observed block numnber.
+// 1: The provided block number should be greater than last observed block number.
 // 2: There should be at least a minute of gap between the last time this function was called and now.
 // Meaning that this function can only be called onces in a minute due to cycle drain attacks.
 #[update]
@@ -324,7 +324,7 @@ async fn withdraw_native_token(
                 transfer_amount
             );
             match client
-                .trasnfer_withdrawal_fee(caller.into(), transfer_amount)
+                .transfer_withdrawal_fee(caller.into(), transfer_amount)
                 .await
             {
                 Ok(block_index) => {
@@ -334,10 +334,10 @@ async fn withdraw_native_token(
                         block_index
                     );
 
-                    // Deducting withdrawal_fee from witdrawal amount
+                    // Deducting withdrawal_fee from withdrawal amount
                     amount = amount
                         .checked_sub(withdrawal_fee)
-                        .expect("Failed calculating witdrawal amount");
+                        .expect("Failed calculating withdrawal amount");
                     Ok(())
                 }
                 Err(err) => Err(WithdrawalError::from(err)),
@@ -409,7 +409,7 @@ async fn withdraw_native_token(
 }
 
 #[update]
-async fn retrieve_witdrawal_status(block_index: u64) -> RetrieveWithdrawalStatus {
+async fn retrieve_withdrawal_status(block_index: u64) -> RetrieveWithdrawalStatus {
     let ledger_burn_index = LedgerBurnIndex::new(block_index);
     read_state(|s| {
         s.withdrawal_transactions
@@ -499,7 +499,7 @@ async fn withdraw_erc20(
         WithdrawErc20Error::TemporarilyUnavailable("Failed to retrieve current gas fee".to_string())
     })?;
 
-    // Witdrawal fee deducted in native token
+    // withdrawal fee deducted in native token
     let withdrawal_native_fee = read_state(|s| s.withdrawal_native_fee);
 
     // Fee transfer and calculation
@@ -516,7 +516,7 @@ async fn withdraw_erc20(
                 withdrawal_fee
             );
             match native_ledger
-                .trasnfer_withdrawal_fee(caller.into(), transfer_amount)
+                .transfer_withdrawal_fee(caller.into(), transfer_amount)
                 .await
             {
                 Ok(block_index) => {
@@ -710,7 +710,7 @@ async fn get_canister_status() -> ic_cdk::api::management_canister::main::Canist
     .0
 }
 
-// Only the swap casniter can call this function to make the process of swapping faster
+// Only the swap canister can call this function to make the process of swapping faster
 #[update]
 async fn check_new_deposits() {
     let swap_canister_id = read_state(|s| s.swap_canister_id)
@@ -731,7 +731,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
         TransactionReceipt as CandidTransactionReceipt,
         TransactionStatus as CandidTransactionStatus, UnsignedTransaction,
     };
-    use evm_minter::rpc_declrations::TransactionReceipt;
+    use evm_minter::rpc_declarations::TransactionReceipt;
     use evm_minter::tx::Eip1559TransactionRequest;
     use serde_bytes::ByteBuf;
 
@@ -793,7 +793,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
     }
 
     fn map_transaction_receipt(receipt: TransactionReceipt) -> CandidTransactionReceipt {
-        use evm_minter::rpc_declrations::TransactionStatus;
+        use evm_minter::rpc_declarations::TransactionStatus;
         CandidTransactionReceipt {
             block_hash: receipt.block_hash.to_string(),
             block_number: receipt.block_number.into(),

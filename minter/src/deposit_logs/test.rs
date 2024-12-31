@@ -1,6 +1,6 @@
 mod parse_principal_from_slice {
     use crate::deposit_logs::parse_principal_from_slice;
-    use crate::rpc_declrations::FixedSizeData;
+    use crate::rpc_declarations::FixedSizeData;
     use assert_matches::assert_matches;
     use candid::Principal;
     use std::str::FromStr;

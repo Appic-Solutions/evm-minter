@@ -7,7 +7,7 @@ use icrc_ledger_types::icrc1::account::Account;
 use scopeguard::ScopeGuard;
 
 use crate::deposit_logs::{
-    report_transaction_error, ReceivedDepositEvent, ReceivedDepsitEventError,
+    report_transaction_error, ReceivedDepositEvent, ReceivedDepositEventError,
 };
 use crate::deposit_logs::{LogParser, ReceivedDepositLogParser};
 use crate::deposit_logs::{LogScraping, ReceivedDepositLogScraping};
@@ -18,9 +18,9 @@ use crate::guard::TimerGuard;
 use crate::logs::{DEBUG, INFO};
 use crate::numeric::{BlockNumber, BlockRangeInclusive, LedgerMintIndex};
 use crate::rpc_client::{is_response_too_large, MultiCallError, RpcClient};
-use crate::rpc_declrations::LogEntry;
-use crate::rpc_declrations::Topic;
-use crate::rpc_declrations::{BlockSpec, GetLogsParam};
+use crate::rpc_declarations::LogEntry;
+use crate::rpc_declarations::Topic;
+use crate::rpc_declarations::{BlockSpec, GetLogsParam};
 use crate::state::audit::{process_event, EventType};
 use crate::state::{mutate_state, read_state, State, TaskType};
 use crate::FEES_SUBACCOUNT;
@@ -130,7 +130,7 @@ async fn mint() {
         if is_native_deposit {
             match deposit_native_fee {
                 Some(ref deposit_fee) => {
-                    // Minting depost fees in minters fee collector subaccount
+                    // Minting deposit fees in minters fee collector subaccount
                     match client
                         .transfer(TransferArg {
                             from_subaccount: None,
@@ -161,7 +161,7 @@ async fn mint() {
                             );
                         }
                         Err(err) => {
-                            log!(INFO,"Failed to send a message to the ledger for miting fees({ledger_canister_id}): {err:?}");
+                            log!(INFO,"Failed to send a message to the ledger for minting fees({ledger_canister_id}): {err:?}");
                         }
                     };
                 }
@@ -216,7 +216,7 @@ pub async fn scrape_logs() {
     mutate_state(|s| s.last_observed_block_time = Some(ic_cdk::api::time()));
 
     let mut attempts = 0;
-    const MAX_ATTEMPETS: u32 = 3;
+    const MAX_ATTEMPTS: u32 = 3;
 
     let last_block_number = loop {
         match update_last_observed_block_number().await {
@@ -227,10 +227,10 @@ pub async fn scrape_logs() {
                     DEBUG,
                     "[scrape_logs]: attempt {}/{} failed: no last observed block number",
                     attempts,
-                    MAX_ATTEMPETS
+                    MAX_ATTEMPTS
                 );
 
-                if attempts >= MAX_ATTEMPETS {
+                if attempts >= MAX_ATTEMPTS {
                     log!(
                         DEBUG,
                         "[scrape_logs]: max retries reached. Skipping scrapping logs."
@@ -261,7 +261,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
                     // So we go 15 blocks before the latest block
                     block_number = latest_block.number.checked_sub(
                         BlockNumber::try_from(20_u32)
-                            .expect("Removing 20 blocks from latest block shouldnever fails"),
+                            .expect("Removing 20 blocks from latest block should never fail"),
                     )
                 }
                 EvmNetwork::ArbitrumOne => {
@@ -270,7 +270,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
                     //  or other unexpected events.
                     block_number = latest_block.number.checked_sub(
                         BlockNumber::try_from(12_u32)
-                            .expect("Removing 12 blocks from latest block shouldnever fails"),
+                            .expect("Removing 12 blocks from latest block should never fail"),
                     )
                 }
                 EvmNetwork::Base => {
@@ -280,7 +280,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
 
                     block_number = latest_block.number.checked_sub(
                         BlockNumber::try_from(12_u32)
-                            .expect("Removing 12 blocks from latest block shouldnever fails"),
+                            .expect("Removing 12 blocks from latest block should never fail"),
                     )
                 }
                 EvmNetwork::Optimism => {
@@ -289,7 +289,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
 
                     block_number = latest_block.number.checked_sub(
                         BlockNumber::try_from(12_u32)
-                            .expect("Removing 12 blocks from latest block shouldnever fails"),
+                            .expect("Removing 12 blocks from latest block should never fail"),
                     )
                 }
                 EvmNetwork::Avalanche => {
@@ -299,7 +299,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
 
                     block_number = latest_block.number.checked_sub(
                         BlockNumber::try_from(12_u32)
-                            .expect("Removing 12 blocks from latest block shouldnever fails"),
+                            .expect("Removing 12 blocks from latest block should never fail"),
                     )
                 }
 
@@ -310,7 +310,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
 
                     block_number = latest_block.number.checked_sub(
                         BlockNumber::try_from(12_u32)
-                            .expect("Removing 12 blocks from latest block shouldnever fails"),
+                            .expect("Removing 12 blocks from latest block should never fail"),
                     )
                 }
 
@@ -446,7 +446,7 @@ async fn scrape_block_range(
 
 pub fn register_deposit_events(
     transaction_events: Vec<ReceivedDepositEvent>,
-    errors: Vec<ReceivedDepsitEventError>,
+    errors: Vec<ReceivedDepositEventError>,
 ) {
     for event in transaction_events {
         log!(
@@ -462,7 +462,7 @@ pub fn register_deposit_events(
         ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(mint()));
     }
     for error in errors {
-        if let ReceivedDepsitEventError::InvalidEventSource { source, error } = &error {
+        if let ReceivedDepositEventError::InvalidEventSource { source, error } = &error {
             mutate_state(|s| {
                 process_event(
                     s,
@@ -479,7 +479,7 @@ pub fn register_deposit_events(
 
 // Validate request_log scraping
 // Validation factors:
-// 1: The provided block number shlould be greater than last observed block numnber.
+// 1: The provided block number should be greater than last observed block number.
 // 2: There should be at least a minute of gap between the last time this function was called and now.
 // Meaning that this function can only be called onces in a minute due to cycle drain attacks.
 pub fn validate_log_scraping_request(

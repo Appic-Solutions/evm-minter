@@ -4,7 +4,7 @@ use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
 use crate::logs::INFO;
 use crate::numeric::{BlockNumber, TransactionNonce, Wei, WeiPerGas};
-use crate::rpc_declrations::BlockTag;
+use crate::rpc_declarations::BlockTag;
 use crate::state::audit::{process_event, replay_events, EventType};
 use crate::state::transactions::WithdrawalTransactions;
 use crate::state::{mutate_state, InvalidStateError, State, STATE};

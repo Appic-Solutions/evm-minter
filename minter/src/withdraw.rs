@@ -2,7 +2,7 @@ use crate::guard::TimerGuard;
 use crate::logs::{DEBUG, INFO};
 use crate::numeric::{GasAmount, LedgerBurnIndex, LedgerMintIndex};
 use crate::rpc_client::{MultiCallError, RpcClient};
-use crate::rpc_declrations::{SendRawTransactionResult, TransactionReceipt};
+use crate::rpc_declarations::{SendRawTransactionResult, TransactionReceipt};
 use crate::state::audit::{process_event, EventType};
 use crate::state::transactions::{
     create_transaction, CreateTransactionError, Reimbursed, ReimbursementIndex,

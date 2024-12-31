@@ -4,7 +4,7 @@ use crate::deposit_logs::ReceivedDepositEvent;
 use crate::erc20::ERC20TokenSymbol;
 use crate::eth_types::Address;
 use crate::numeric::{Erc20Value, LogIndex};
-use crate::rpc_declrations::Hash;
+use crate::rpc_declarations::Hash;
 use crate::state::transactions::ReimbursementRequest;
 use icrc_ledger_types::icrc1::transfer::Memo;
 use minicbor;

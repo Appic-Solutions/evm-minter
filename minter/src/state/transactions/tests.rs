@@ -4,8 +4,8 @@ use crate::evm_config::EvmNetwork;
 use crate::numeric::{
     BlockNumber, Erc20Value, GasAmount, LedgerBurnIndex, TransactionNonce, Wei, WeiPerGas,
 };
-use crate::rpc_declrations::Hash;
-use crate::rpc_declrations::{TransactionReceipt, TransactionStatus};
+use crate::rpc_declarations::Hash;
+use crate::rpc_declarations::{TransactionReceipt, TransactionStatus};
 use crate::state::transactions::{
     create_transaction, Erc20WithdrawalRequest, NativeWithdrawalRequest, Subaccount,
     WithdrawalRequest, WithdrawalTransactions,
@@ -1489,7 +1489,7 @@ mod withdrawal_transactions {
     mod record_finalized_transaction {
         use crate::map::MultiKeyMap;
         use crate::numeric::{GasAmount, LedgerBurnIndex, TransactionNonce, Wei, WeiPerGas};
-        use crate::rpc_declrations::TransactionReceipt;
+        use crate::rpc_declarations::TransactionReceipt;
         use crate::state::transactions::tests::{
             create_and_record_signed_transaction, create_and_record_transaction,
             create_and_record_twin_withdrawal_requests, dummy_signature,
@@ -1610,7 +1610,7 @@ mod withdrawal_transactions {
         }
 
         #[test]
-        fn should_not_reimburse_when_erc20_witdrawal_used_up_transaction_fee() {
+        fn should_not_reimburse_when_erc20_withdrawal_used_up_transaction_fee() {
             let mut transactions = WithdrawalTransactions::new(TransactionNonce::ZERO);
             let native_ledger_burn_index = LedgerBurnIndex::new(7);
             let erc20_ledger_burn_index = LedgerBurnIndex::new(7);
@@ -1812,7 +1812,7 @@ mod withdrawal_transactions {
 
     mod record_quarantined_reimbursement {
         use crate::numeric::TransactionNonce;
-        use crate::rpc_declrations::TransactionStatus;
+        use crate::rpc_declarations::TransactionStatus;
         use crate::state::transactions::tests::create_twin_withdrawal_requests;
         use crate::state::transactions::tests::withdrawal_transactions::withdrawal_flow;
         use crate::state::transactions::{
@@ -1943,15 +1943,15 @@ mod withdrawal_transactions {
                 TransactionStatus::Failure,
             );
 
-            let pending_reimbursedment = TxFinalizedStatus::PendingReimbursement((&receipt).into());
+            let pending_reimbursement = TxFinalizedStatus::PendingReimbursement((&receipt).into());
             assert_eq!(
                 transactions.transaction_status(&native_ledger_burn_index),
-                RetrieveWithdrawalStatus::TxFinalized(pending_reimbursedment.clone())
+                RetrieveWithdrawalStatus::TxFinalized(pending_reimbursement.clone())
             );
             assert_withdrawal_status(
                 &transactions,
                 &withdrawal_request.clone().into(),
-                vec![WithdrawalStatus::TxFinalized(pending_reimbursedment)],
+                vec![WithdrawalStatus::TxFinalized(pending_reimbursement)],
             );
 
             let native_reimbursement_index = ReimbursementIndex::Native {

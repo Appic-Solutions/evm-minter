@@ -7,7 +7,7 @@ use crate::{
     eth_types::Address,
     lifecycle::{InitArg, UpgradeArg},
     numeric::{BlockNumber, LedgerBurnIndex, LedgerMintIndex},
-    rpc_declrations::TransactionReceipt,
+    rpc_declarations::TransactionReceipt,
     tx::{Eip1559TransactionRequest, SignedEip1559TransactionRequest},
 };
 

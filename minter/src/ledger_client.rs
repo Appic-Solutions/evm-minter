@@ -120,7 +120,7 @@ impl LedgerClient {
                 log!(
                     DEBUG,
                     "[burn]: failed to transfer_from from the {:?} ledger with error: {transfer_from_error:?}",
-                    self.native_ldger()
+                    self.native_ledger()
                 );
                 let burn_error = match transfer_from_error {
                     TransferFromError::BadFee { expected_fee } => {
@@ -130,21 +130,21 @@ impl LedgerClient {
                         LedgerBurnError::AmountTooLow {
                             minimum_burn_amount: min_burn_amount,
                             failed_burn_amount: amount.clone(),
-                            ledger: self.native_ldger(),
+                            ledger: self.native_ledger(),
                         }
                     }
                     TransferFromError::InsufficientFunds { balance } => {
                         LedgerBurnError::InsufficientFunds {
                             balance,
                             failed_burn_amount: amount.clone(),
-                            ledger: self.native_ldger(),
+                            ledger: self.native_ledger(),
                         }
                     }
                     TransferFromError::InsufficientAllowance { allowance } => {
                         LedgerBurnError::InsufficientAllowance {
                             allowance,
                             failed_burn_amount: amount,
-                            ledger: self.native_ldger(),
+                            ledger: self.native_ledger(),
                         }
                     }
                     TransferFromError::TooOld => panic!("BUG: transfer too old"),
@@ -160,7 +160,7 @@ impl LedgerClient {
                                 "{} ledger temporarily unavailable, try again",
                                 self.token_symbol
                             ),
-                            ledger: self.native_ldger(),
+                            ledger: self.native_ledger(),
                         }
                     }
                     TransferFromError::GenericError {
@@ -171,7 +171,7 @@ impl LedgerClient {
                         "{} ledger unreachable, error code: {error_code}, with message: {message}",
                         self.token_symbol
                     ),
-                        ledger: self.native_ldger(),
+                        ledger: self.native_ledger(),
                     },
                 };
                 Err(burn_error)
@@ -184,13 +184,13 @@ impl LedgerClient {
                 log!(DEBUG, "[burn]: {err_msg}",);
                 Err(LedgerBurnError::TemporarilyUnavailable {
                     message: err_msg,
-                    ledger: self.native_ldger(),
+                    ledger: self.native_ledger(),
                 })
             }
         }
     }
 
-    pub async fn trasnfer_withdrawal_fee<A: Into<Nat>>(
+    pub async fn transfer_withdrawal_fee<A: Into<Nat>>(
         &self,
         from: Account,
         // Amount= Withdrawal_fee - ledger_transfer_fee
@@ -221,7 +221,7 @@ impl LedgerClient {
                 log!(
                     DEBUG,
                     "[burn]: failed to transfer_from from the {:?} ledger with error: {transfer_from_error:?}",
-                    self.native_ldger()
+                    self.native_ledger()
                 );
                 let transfer_err = match transfer_from_error {
                     TransferFromError::BadFee { expected_fee } => {
@@ -234,14 +234,14 @@ impl LedgerClient {
                         FeeTransferError::InsufficientFunds {
                             balance,
                             failed_transfer_amount: amount.clone(),
-                            ledger: self.native_ldger(),
+                            ledger: self.native_ledger(),
                         }
                     }
                     TransferFromError::InsufficientAllowance { allowance } => {
                         FeeTransferError::InsufficientAllowance {
                             allowance,
                             failed_transfer_amount: amount,
-                            ledger: self.native_ldger(),
+                            ledger: self.native_ledger(),
                         }
                     }
                     TransferFromError::TooOld => panic!("BUG: transfer too old"),
@@ -257,7 +257,7 @@ impl LedgerClient {
                                 "{} ledger temporarily unavailable, try again",
                                 self.token_symbol
                             ),
-                            ledger: self.native_ldger(),
+                            ledger: self.native_ledger(),
                         }
                     }
                     TransferFromError::GenericError {
@@ -268,7 +268,7 @@ impl LedgerClient {
                         "{} ledger unreachable, error code: {error_code}, with message: {message}",
                         self.token_symbol
                     ),
-                        ledger: self.native_ldger(),
+                        ledger: self.native_ledger(),
                     },
                 };
                 Err(transfer_err)
@@ -281,7 +281,7 @@ impl LedgerClient {
                 log!(DEBUG, "[burn]: {err_msg}",);
                 Err(FeeTransferError::TemporarilyUnavailable {
                     message: err_msg,
-                    ledger: self.native_ldger(),
+                    ledger: self.native_ledger(),
                 })
             }
         }
@@ -318,7 +318,7 @@ impl LedgerClient {
                 log!(
                     DEBUG,
                     "[burn]: failed to transfer_from from the {:?} ledger with error: {transfer_from_error:?}",
-                    self.native_ldger()
+                    self.native_ledger()
                 );
                 let transfer_err = match transfer_from_error {
                     TransferFromError::BadFee { expected_fee } => {
@@ -331,14 +331,14 @@ impl LedgerClient {
                         FeeTransferError::InsufficientFunds {
                             balance,
                             failed_transfer_amount: amount.clone(),
-                            ledger: self.native_ldger(),
+                            ledger: self.native_ledger(),
                         }
                     }
                     TransferFromError::InsufficientAllowance { allowance } => {
                         FeeTransferError::InsufficientAllowance {
                             allowance,
                             failed_transfer_amount: amount,
-                            ledger: self.native_ldger(),
+                            ledger: self.native_ledger(),
                         }
                     }
                     TransferFromError::TooOld => panic!("BUG: transfer too old"),
@@ -354,7 +354,7 @@ impl LedgerClient {
                                 "{} ledger temporarily unavailable, try again",
                                 self.token_symbol
                             ),
-                            ledger: self.native_ldger(),
+                            ledger: self.native_ledger(),
                         }
                     }
                     TransferFromError::GenericError {
@@ -365,7 +365,7 @@ impl LedgerClient {
                         "{} ledger unreachable, error code: {error_code}, with message: {message}",
                         self.token_symbol
                     ),
-                        ledger: self.native_ldger(),
+                        ledger: self.native_ledger(),
                     },
                 };
                 Err(transfer_err)
@@ -378,13 +378,13 @@ impl LedgerClient {
                 log!(DEBUG, "[burn]: {err_msg}",);
                 Err(FeeTransferError::TemporarilyUnavailable {
                     message: err_msg,
-                    ledger: self.native_ldger(),
+                    ledger: self.native_ledger(),
                 })
             }
         }
     }
 
-    fn native_ldger(&self) -> ERC20Ledger {
+    fn native_ledger(&self) -> ERC20Ledger {
         ERC20Ledger {
             token_symbol: self.token_symbol.clone(),
             id: self.client.ledger_canister_id,

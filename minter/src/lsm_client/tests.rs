@@ -6,13 +6,17 @@ use super::{InstalledNativeLedgerSuite, LSMClient, _INDEX_BYTECODE_RAW, _LEDGER_
 
 #[test]
 fn should_generate_installed_native_ledger_suite_args() {
-    let lsm_clinet = LSMClient::new(Principal::from_text("kmcdp-4yaaa-aaaag-ats3q-cai").unwrap());
+    let lsm_client = LSMClient::new(Principal::from_text("kmcdp-4yaaa-aaaag-ats3q-cai").unwrap());
 
-    let generated_args = lsm_clinet.new_native_ls(
+    let generated_args = lsm_client.new_native_ls(
         "icBNB".to_string(),
         Principal::from_text("n44gr-qyaaa-aaaam-qbuha-cai").unwrap(),
         Principal::from_text("eysav-tyaaa-aaaap-akqfq-cai").unwrap(),
         97_u64,
+        Nat::from(1000000_u64),
+        18,
+        "".to_string(),
+        "icBNB".to_string(),
     );
 
     let expected_installed_args = InstalledNativeLedgerSuite {
@@ -23,6 +27,10 @@ fn should_generate_installed_native_ledger_suite_args() {
         index_wasm_hash: WasmHash::new(INDEX_BYTECODE.to_vec()).to_string(),
         archives: vec![],
         chain_id: Nat::from(97_u64),
+        fee: Nat::from(1000000_u64),
+        decimals: 18,
+        logo: "".to_string(),
+        name: "icBNB".to_string(),
     };
 
     assert_eq!(generated_args, expected_installed_args);

@@ -3,7 +3,7 @@ use crate::ledger_client::{FeeTransferError, LedgerBurnError};
 // // use crate::rpc_client::responses::TransactionReceipt;
 // // use crate::ledger_client::LedgerBurnError;
 use crate::numeric::LedgerBurnIndex;
-use crate::rpc_declrations::TransactionReceipt;
+use crate::rpc_declarations::TransactionReceipt;
 use crate::state::transactions::NativeWithdrawalRequest;
 use crate::state::transactions::{self, Erc20WithdrawalRequest};
 use crate::tx::{SignedEip1559TransactionRequest, TransactionPrice};

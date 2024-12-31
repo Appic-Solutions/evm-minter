@@ -30,7 +30,7 @@ use crate::{
     numeric::{
         BlockNumber, Erc20Value, LedgerBurnIndex, LedgerMintIndex, TransactionNonce, Wei, WeiPerGas,
     },
-    rpc_declrations::{BlockTag, TransactionReceipt, TransactionStatus},
+    rpc_declarations::{BlockTag, TransactionReceipt, TransactionStatus},
     tx::GasFeeEstimate,
 };
 use strum_macros::EnumIter;
@@ -137,15 +137,15 @@ pub struct State {
 
     /// Locks preventing concurrent execution timer tasks
     pub active_tasks: HashSet<TaskType>,
-    // Number of HTTP outcalls since the last upgrade.
+    // Number of HTTP out-calls since the last upgrade.
     // Used to correlate request and response in logs.
     // pub http_request_counter: u64,
     pub last_transaction_price_estimate: Option<(u64, GasFeeEstimate)>,
 
-    // Fees taken per deposit and withdrawal in natvie token format
-    // Option types, since the opration can be free as well
+    // Fees taken per deposit and withdrawal in native token format
+    // Option types, since the operation can be free as well
     // If the deposit type is Erc20, Fees will be free cause fees will be charged in native token wei format
-    // How ever for withdrawal users need native token anyways so we can charge them with fees in twin natvie token
+    // How ever for withdrawal users need native token anyways so we can charge them with fees in twin native token
     // Withdrawal fees should cover cycles cost for signing messages
     pub deposit_native_fee: Option<Wei>,
     pub withdrawal_native_fee: Option<Wei>,
@@ -210,7 +210,7 @@ impl State {
         Ok(())
     }
 
-    // Returns the blockcheight
+    // Returns the block height
     pub const fn block_height(&self) -> BlockTag {
         self.block_height
     }
@@ -615,10 +615,10 @@ pub struct NativeBalance {
     /// Also, some transactions may have gone directly to the minter's address
     /// without going via the helper smart contract.
     native_balance: Wei,
-    /// Total amount of fees across all finalized transactions icNative -> Native. cconversion of twin native token to token on the home chain.
+    /// Total amount of fees across all finalized transactions icNative -> Native. conversion of twin native token to token on the home chain.
     total_effective_tx_fees: Wei,
     /// Total amount of fees that were charged to the user during the withdrawal
-    /// but not consumed by the finalized transaction icNative -> Native. cconversion of twin native token to token on the home chain.
+    /// but not consumed by the finalized transaction icNative -> Native. conversion of twin native token to token on the home chain.
     total_unspent_tx_fees: Wei,
 }
 

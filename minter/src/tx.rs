@@ -7,7 +7,7 @@ use rlp::RlpStream;
 use crate::guard::TimerGuard;
 use crate::logs::{DEBUG, INFO};
 use crate::rpc_client::{MultiCallError, RpcClient};
-use crate::rpc_declrations::{
+use crate::rpc_declarations::{
     BlockSpec, BlockTag, FeeHistory, FeeHistoryParams, Hash, Quantity, TransactionStatus,
 };
 use crate::state::{lazy_call_ecdsa_public_key, TaskType};
@@ -15,7 +15,7 @@ use crate::state::{mutate_state, read_state};
 use crate::{
     eth_types::Address,
     numeric::{BlockNumber, GasAmount, TransactionNonce, Wei, WeiPerGas},
-    rpc_declrations::TransactionReceipt,
+    rpc_declarations::TransactionReceipt,
 };
 use ic_crypto_secp256k1::RecoveryId;
 use ic_management_canister_types::DerivationPath;

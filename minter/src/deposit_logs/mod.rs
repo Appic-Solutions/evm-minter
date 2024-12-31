@@ -11,7 +11,7 @@ use crate::checked_amount::CheckedAmountOf;
 use crate::eth_types::Address;
 use crate::logs::{DEBUG, INFO};
 use crate::numeric::{BlockNumber, Erc20Value, LogIndex, Wei};
-use crate::rpc_declrations::{FixedSizeData, Hash};
+use crate::rpc_declarations::{FixedSizeData, Hash};
 use candid::Principal;
 use ic_canister_log::log;
 use minicbor::{Decode, Encode};
@@ -203,7 +203,7 @@ impl ReceivedDepositEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ReceivedDepsitEventError {
+pub enum ReceivedDepositEventError {
     PendingLogEntry,
     InvalidEventSource {
         source: EventSource,
@@ -219,15 +219,15 @@ pub enum EventSourceError {
     InvalidEvent(String),
 }
 
-pub fn report_transaction_error(error: ReceivedDepsitEventError) {
+pub fn report_transaction_error(error: ReceivedDepositEventError) {
     match error {
-        ReceivedDepsitEventError::PendingLogEntry => {
+        ReceivedDepositEventError::PendingLogEntry => {
             log!(
                 DEBUG,
                 "[report_transaction_error]: ignoring pending log entry",
             );
         }
-        ReceivedDepsitEventError::InvalidEventSource { source, error } => {
+        ReceivedDepositEventError::InvalidEventSource { source, error } => {
             log!(
                 INFO,
                 "[report_transaction_error]: cannot process {source} due to {error}",
