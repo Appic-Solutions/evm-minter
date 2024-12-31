@@ -19,6 +19,7 @@ const INDEX_WAM_BYTES: &[u8] = include_bytes!("../../../wasm/index_ng_canister_u
 const ARCHIVE_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/archive_canister_u256.wasm.gz");
 const LSM_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/lsm.wasm");
 const EVM_RPC_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/evm_rpc.wasm");
+const APPIC_HELPER_BYTES: &[u8] = include_bytes!("../../../wasm/appic_helper.wasm");
 
 const TWENTY_TRILLIONS: u64 = 20_000_000_000_000;
 
@@ -32,7 +33,10 @@ use candid::{CandidType, Nat, Principal};
 use evm_rpc_types::InstallArgs;
 use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
 
-use super::lsm_types::{InitArg as LsmInitArgs, LSMarg, LedgerManagerInfo};
+use super::{
+    appic_helper_types::{InitArgs, LoggerArgs, MinterArgs},
+    lsm_types::{InitArg as LsmInitArgs, LSMarg, LedgerManagerInfo},
+};
 
 use crate::{
     endpoints::{CandidBlockTag, Erc20Token, MinterInfo},
@@ -474,7 +478,7 @@ fn create_lsm_canister(pic: &PocketIc) -> Principal {
 }
 
 fn install_lsm_canister(pic: &PocketIc, canister_id: Principal) {
-    let lsm_init_bytes = LSMarg::InitArg(LsmInitArgs {
+    let lsm_init_bytes = LSMarg::Init(LsmInitArgs {
         more_controller_ids: vec![sender_principal()],
         minter_ids: vec![(Nat::from(97_u64), minter_principal())],
         cycles_management: None,
@@ -485,6 +489,35 @@ fn install_lsm_canister(pic: &PocketIc, canister_id: Principal) {
         canister_id,
         LSM_WASM_BYTES.to_vec(),
         encode_call_args(lsm_init_bytes).unwrap(),
+        Some(sender_principal()),
+    );
+}
+
+fn create_appic_helper_canister(pic: &PocketIc) -> Principal {
+    pic.create_canister_with_id(
+        Some(sender_principal()),
+        None,
+        Principal::from_text("zjydy-zyaaa-aaaaj-qnfka-cai").unwrap(),
+    )
+    .expect("Should create the canister")
+}
+
+fn install_appic_helper_canister(pic: &PocketIc, canister_id: Principal) {
+    let appic_helper_init = LoggerArgs::Init(InitArgs {
+        minters: vec![MinterArgs {
+            chain_id: Nat::from(97_u64),
+            minter_id: minter_principal(),
+            operator: super::appic_helper_types::Operator::AppicMinter,
+            last_observed_event: Nat::from(0_u8),
+            last_scraped_event: Nat::from(0_u8),
+            evm_to_icp_fee: Nat::from(50_000_000_000_000_u64),
+            icp_to_evm_fee: Nat::from(100_000_000_000_000_u64),
+        }],
+    });
+    pic.install_canister(
+        canister_id,
+        APPIC_HELPER_BYTES.to_vec(),
+        encode_call_args(appic_helper_init).unwrap(),
         Some(sender_principal()),
     );
 }
@@ -700,7 +733,7 @@ pub fn native_ledger_principal() -> Principal {
     Principal::from_text("n44gr-qyaaa-aaaam-qbuha-cai").unwrap()
 }
 // Initializes a test environment containing evm_rpc_canister, lsm canister, native ledger canister and native index canister.
-// Through this test simulation, real senarios like concurrncy, http failures, no consensus agreement, etc can be tested.
+// Through this test simulation, real scenarios like concurrency, http failures, no consensus agreement, etc can be tested.
 
 // First  the dependency canisters are installed then the minter canister is installed.
 pub mod initialize_minter {
@@ -711,6 +744,13 @@ pub mod initialize_minter {
         let icp_canister_id = create_icp_ledger_canister(&pic);
         pic.add_cycles(icp_canister_id, TWO_TRILLIONS.into());
         install_icp_ledger_canister(&pic, icp_canister_id);
+        five_ticks(&pic);
+
+        // Create and install appic helper
+        let appic_helper_id = create_appic_helper_canister(&pic);
+        pic.add_cycles(appic_helper_id, TWENTY_TRILLIONS.into());
+        install_appic_helper_canister(&pic, appic_helper_id);
+        five_ticks(&pic);
         five_ticks(&pic);
 
         // Create and install lsm canister

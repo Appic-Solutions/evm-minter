@@ -1,4 +1,6 @@
 #[cfg(test)]
+pub mod appic_helper_types;
+#[cfg(test)]
 pub mod lsm_types;
 #[cfg(test)]
 mod minter_flow_tets;

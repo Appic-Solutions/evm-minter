@@ -27,8 +27,8 @@ use super::pocket_ic_helpers::{
 };
 
 use mock_rpc_https_responses::{
-    generate_and_submit_mock_http_response, MOCK_HIGhER_BLOCK_NUMBER, MOCK_BLOCK_NUMBER,
-    MOCK_FEE_HISTORY_RESPONSE, MOCK_GET_LOGS, MOCK_GET_LOGS_ERC20,
+    generate_and_submit_mock_http_response, MOCK_BLOCK_NUMBER, MOCK_FEE_HISTORY_RESPONSE,
+    MOCK_GET_LOGS, MOCK_GET_LOGS_ERC20, MOCK_HIGHER_BLOCK_NUMBER,
     MOCK_SECOND_NATIVE_TRANSACTION_RECEIPT, MOCK_SEND_TRANSACTION_ERROR,
     MOCK_SEND_TRANSACTION_SUCCESS, MOCK_TRANSACTION_COUNT_FINALIZED,
     MOCK_TRANSACTION_COUNT_FINALIZED_ERC20, MOCK_TRANSACTION_COUNT_LATEST,
@@ -408,7 +408,7 @@ fn should_not_deposit_twice() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_HIGhER_BLOCK_NUMBER,
+        MOCK_HIGHER_BLOCK_NUMBER,
     );
 
     five_ticks(&pic);
@@ -638,7 +638,7 @@ fn should_deposit_and_withdrawal_erc20() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_HIGhER_BLOCK_NUMBER,
+        MOCK_HIGHER_BLOCK_NUMBER,
     );
 
     five_ticks(&pic);
@@ -1171,7 +1171,7 @@ mod mock_rpc_https_responses {
         }
     }"#;
 
-    pub const MOCK_HIGhER_BLOCK_NUMBER: &str = r#"{
+    pub const MOCK_HIGHER_BLOCK_NUMBER: &str = r#"{
         "jsonrpc": "2.0",
         "id": 1,
         "result": {

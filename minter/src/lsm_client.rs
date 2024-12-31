@@ -104,8 +104,10 @@ pub struct InstalledNativeLedgerSuite {
 
 #[derive(Clone, PartialEq, Debug, CandidType, Serialize, candid::Deserialize)]
 pub enum InvalidNativeInstalledCanistersError {
-    WasmHashError,
     TokenAlreadyManaged,
+    NotAllowed,
+    WasmHashError,
+    FailedToNotifyAppicHelper,
     AlreadyManagedPrincipals,
 }
 

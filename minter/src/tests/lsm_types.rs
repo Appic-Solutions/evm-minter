@@ -5,8 +5,8 @@ type ChainId = Nat;
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
 pub enum LSMarg {
-    InitArg(InitArg),
-    UpgradeArg(UpgradeArg),
+    Init(InitArg),
+    Upgrade(UpgradeArg),
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Default, CandidType, Deserialize)]
@@ -102,17 +102,6 @@ pub struct UpdateCyclesManagement {
     pub cycles_top_up_increment: Option<Nat>,
 }
 
-#[derive(Clone, PartialEq, Debug, CandidType, Deserialize)]
-pub struct InstalledNativeLedgerSuite {
-    pub symbol: String,
-    pub ledger: Principal,
-    pub ledger_wasm_hash: String,
-    pub index: Principal,
-    pub index_wasm_hash: String,
-    pub archives: Vec<Principal>,
-    pub chain_id: Nat,
-}
-
 #[derive(Clone, Eq, PartialEq, Debug, CandidType, Deserialize)]
 pub struct ManagedCanisterIds {
     pub ledger: Option<Principal>,
@@ -156,4 +145,28 @@ pub struct LedgerManagerInfo {
     pub ledger_suite_version: Option<LedgerSuiteVersion>,
     pub ls_creation_icp_fee: Nat,
     pub ls_creation_appic_fee: Option<Nat>,
+}
+
+#[derive(CandidType, Deserialize, Debug)]
+pub struct InstalledNativeLedgerSuite {
+    pub fee: candid::Nat,
+    pub decimals: u8,
+    pub logo: String,
+    pub name: String,
+    pub chain_id: candid::Nat,
+    pub ledger_wasm_hash: String,
+    pub ledger: Principal,
+    pub index_wasm_hash: String,
+    pub index: Principal,
+    pub archives: Vec<Principal>,
+    pub symbol: String,
+}
+
+#[derive(CandidType, Deserialize, Debug)]
+pub enum InvalidNativeInstalledCanistersError {
+    TokenAlreadyManaged,
+    NotAllowed,
+    WasmHashError,
+    FailedToNotifyAppicHelper,
+    AlreadyManagedPrincipals,
 }
