@@ -16,16 +16,16 @@ deploy_sepolia:
 deploy_bsc_testnet:
 	@echo "Deploying to BNB testnet"
 	@echo "BSCTEST_RPC_URL=$(BSCTEST_RPC_URL)"
-	@echo "BNBSCAN_API"=$(BNBSCAN_API)
-	forge script --chain 97 script/Depositbnbtest.s.sol:DeployDeposit --rpc-url $(BSCTEST_RPC_URL) --broadcast --verifier-url https://api-testnet.bscscan.com/api --etherscan-api-key  $(BNBSCAN_API)  --verify -vvvv 
+	@echo "BNBSCAN_API_KEY"=$(BNBSCAN_API_KEY)
+	forge script --chain 97 script/Depositbnbtest.s.sol:DeployDeposit --rpc-url $(BSCTEST_RPC_URL) --broadcast --verifier-url https://api-testnet.bscscan.com/api --etherscan-api-key  $(BNBSCAN_API_KEY)  --verify -vvvv 
 
 
 # deploy to bnb testnet
 deploy_bsc:
-	@echo "Deploying to Bincance smart chain"
+	@echo "Deploying to Binance smart chain"
 	@echo "BSC_RPC_URL=$(BSC_RPC_URL)"
-	@echo "BNBSCAN_API"=$(BNBSCAN_API)
-	forge script --chain 56 script/Depositbnbtest.s.sol:DeployDeposit --rpc-url $(BSCTEST_RPC_URL) --broadcast --verifier-url https://api.bscscan.com/api --etherscan-api-key  $(BNBSCAN_API)  --verify -vvvv 
+	@echo "BNBSCAN_API_KEY"=$(BNBSCAN_API_KEY)
+	forge script --chain 56 script/Depositbnbtest.s.sol:DeployDeposit --rpc-url $(BSC_RPC_URL) --broadcast --verifier-url https://api.bscscan.com/api --etherscan-api-key  $(BNBSCAN_API_KEY)  --verify -vvvv 
 
 
 

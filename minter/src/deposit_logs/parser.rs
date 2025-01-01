@@ -53,7 +53,7 @@ impl LogParser for ReceivedDepositLogParser {
         let subaccount = LedgerSubaccount::from_bytes(subaccount_bytes);
 
         // We have 4 indexed topics for all deposit events:
-        // The overal event is as follow :
+        // The overall event is as follow :
         // DepositLog(
         //     address from_address,
         //     address indexed token,

@@ -143,6 +143,12 @@ fn post_upgrade(minter_arg: Option<MinterArg>) {
         Some(MinterArg::UpgradeArg(upgrade_args)) => lifecycle::post_upgrade(Some(upgrade_args)),
         None => lifecycle::post_upgrade(None),
     }
+
+    let ankr_api_key = ANKR_API_KEY.unwrap();
+    let llama_api_key = LLAMA_API_KEY.unwrap();
+    set_rpc_api_key(Provider::Ankr, ankr_api_key.to_string());
+    set_rpc_api_key(Provider::LlamaNodes, llama_api_key.to_string());
+
     setup_timers();
 }
 
