@@ -1,12 +1,12 @@
 (
   variant {
     InitArg = record {
-      last_scraped_block_number = 45_381_821 : nat;
+      last_scraped_block_number = 45_384_225 : nat;
       ecdsa_key_name = "key_1";
       next_transaction_nonce = 0 : nat;
       native_minimum_withdrawal_amount = 700_000_000_000_000 : nat;
       native_symbol = "icBNB";
-      helper_contract_address = "0x8f45574222F7372E23b5e9b1900abaeAA7571119";
+      helper_contract_address = opt "0x8f45574222F7372E23b5e9b1900abaeAA7571119";
       deposit_native_fee = 100_000_000_000_000 : nat;
       native_ledger_transfer_fee = 15_000_000_000_000 : nat;
       native_index_id = principal "eysav-tyaaa-aaaap-akqfq-cai";
