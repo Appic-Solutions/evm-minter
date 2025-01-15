@@ -362,7 +362,7 @@ service : (MinterArg) -> {
   get_minter_info : () -> (MinterInfo) query;
   icrc28_trusted_origins : () -> (Icrc28TrustedOriginsResponse);
   minter_address : () -> (text);
-  request_scraping_logs : (nat) -> (Result);
+  request_scraping_logs : () -> (Result);
   retrieve_withdrawal_status : (nat64) -> (RetrieveWithdrawalStatus);
   smart_contract_address : () -> (text) query;
   withdraw_erc20 : (WithdrawErc20Arg) -> (Result_1);

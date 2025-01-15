@@ -301,21 +301,12 @@ mod get_deposit_logs {
     #[test]
     fn should_not_allow_log_scraping() {
         let validation_result_observed_block = validate_log_scraping_request(
-            BlockNumber::from(100_u32),
             1_732_638_362_000_000_000_u64,
-            BlockNumber::from(99_u32),
             2_845_738_362_000_000_000_u64,
         );
 
-        assert_eq!(
-            validation_result_observed_block,
-            Err(RequestScrapingError::BlockAlreadyObserved)
-        );
-
         let validation_result_not_enough_gap_between_two_requests = validate_log_scraping_request(
-            BlockNumber::from(100_u32),
             1_732_638_362_000_000_000_u64,
-            BlockNumber::from(200_u32),
             1_732_638_362_000_000_000_u64.saturating_add(30_000_000_000_u64),
         );
 
@@ -328,9 +319,7 @@ mod get_deposit_logs {
     #[test]
     fn should_allow_log_scrapping() {
         let validation_result = validate_log_scraping_request(
-            BlockNumber::from(100_u32),
             1_732_638_362_000_000_000_u64,
-            BlockNumber::from(200_u32),
             1_732_638_362_000_000_000_u64.saturating_add(60_000_000_001_u64),
         );
 

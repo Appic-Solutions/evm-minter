@@ -161,10 +161,10 @@ impl LSMClient {
                 .find_map(|(title, value)| {
                     if title == "icrc1:logo" {
                         let logo_string = match value {
-                            MetadataValue::Nat(nat) => "".to_string(),
-                            MetadataValue::Int(int) => "".to_string(),
+                            MetadataValue::Nat(_nat) => "".to_string(),
+                            MetadataValue::Int(_int) => "".to_string(),
                             MetadataValue::Text(text) => text,
-                            MetadataValue::Blob(byte_buf) => "".to_string(),
+                            MetadataValue::Blob(_byte_buf) => "".to_string(),
                         };
                         return Some(logo_string);
                     } else {

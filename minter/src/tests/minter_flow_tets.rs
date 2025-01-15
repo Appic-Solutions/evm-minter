@@ -1048,7 +1048,7 @@ fn should_deposit_and_withdrawal_erc20() {
 }
 
 #[test]
-fn should_fail_log_scrapping_request_old_block_number() {
+fn should_fail_log_scrapping_request_without_proper_gap() {
     let pic = create_pic();
     create_and_install_minter_plus_dependency_canisters(&pic);
 
@@ -1090,20 +1090,21 @@ fn should_fail_log_scrapping_request_old_block_number() {
     five_ticks(&pic);
 
     // There should be a gap of at least one minute between each log scraping so we advance time for 1 min
-    pic.advance_time(Duration::from_secs(1 * 60));
+    // So we only add 30 seconds to make the process fail
+    pic.advance_time(Duration::from_secs(1 * 30));
 
     // Requesting for another log_scrapping
     let request_result = update_call::<Nat, Result<(), RequestScrapingError>>(
         &pic,
         minter_principal(),
         "request_scraping_logs",
-        Nat::from(45944645_u64),
+        Nat::from(4594464100_u64),
         None,
     );
 
     assert_eq!(
         request_result,
-        Err(RequestScrapingError::BlockAlreadyObserved)
+        Err(RequestScrapingError::CalledTooManyTimes)
     );
 }
 

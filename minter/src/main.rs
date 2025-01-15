@@ -255,24 +255,13 @@ async fn get_minter_info() -> MinterInfo {
 // 2: There should be at least a minute of gap between the last time this function was called and now.
 // Meaning that this function can only be called onces in a minute due to cycle drain attacks.
 #[update]
-async fn request_scraping_logs(block_number: Nat) -> Result<(), RequestScrapingError> {
-    let last_observed_block_number = read_state(|s| s.last_observed_block_number)
-        .expect("The block number should not be null at the time of this function call");
-
+async fn request_scraping_logs() -> Result<(), RequestScrapingError> {
     let last_observed_block_time = read_state(|s| s.last_observed_block_time)
         .expect("The block time should not be null at the time of this function call");
 
-    let block_number = BlockNumber::try_from(block_number)
-        .map_err(|_e| RequestScrapingError::InvalidBlockNumber)?;
-
     let now_ns = ic_cdk::api::time();
 
-    validate_log_scraping_request(
-        last_observed_block_number,
-        last_observed_block_time,
-        block_number,
-        now_ns,
-    )?;
+    validate_log_scraping_request(last_observed_block_time, now_ns)?;
 
     ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(scrape_logs()));
 

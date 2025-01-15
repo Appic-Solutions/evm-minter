@@ -483,17 +483,10 @@ pub fn register_deposit_events(
 // 2: There should be at least a minute of gap between the last time this function was called and now.
 // Meaning that this function can only be called onces in a minute due to cycle drain attacks.
 pub fn validate_log_scraping_request(
-    last_observed_block_number: BlockNumber,
     last_observed_block_time: u64,
-    block_number: BlockNumber,
     now_ns: u64,
 ) -> Result<(), RequestScrapingError> {
     pub(crate) const ONE_MIN_NS: u64 = 60_000_000_000_u64; // 60 seconds
-
-    // Check if the block number has already been scrapped or not
-    if last_observed_block_number >= block_number {
-        return Err(RequestScrapingError::BlockAlreadyObserved);
-    }
 
     if now_ns < last_observed_block_time.saturating_add(ONE_MIN_NS) {
         return Err(RequestScrapingError::CalledTooManyTimes);
