@@ -7,7 +7,11 @@ use ic_canister_log::log;
 // use ic_canister_log::log;
 use icrc_ledger_client_cdk::{CdkRuntime, ICRC1Client};
 use icrc_ledger_types::{
-    icrc1::{account::Account, transfer::Memo},
+    icrc1::{
+        account::Account,
+        transfer::Memo,
+        transfer::{TransferArg, TransferError},
+    },
     icrc2::transfer_from::{TransferFromArgs, TransferFromError},
 };
 use num_traits::ToPrimitive;
@@ -296,18 +300,13 @@ impl LedgerClient {
         let amount = amount.into();
         match self
             .client
-            .transfer_from(TransferFromArgs {
-                spender_subaccount: None,
-                from: Account {
-                    owner: ic_cdk::id(),
-                    subaccount: Some(FEES_SUBACCOUNT),
-                },
+            .transfer(TransferArg {
+                from_subaccount: Some(FEES_SUBACCOUNT),
                 to,
                 amount: amount.clone(),
                 fee: None,
                 memo: None,
-                created_at_time: None, // We don't set this field to disable transaction deduplication
-                                       // which is unnecessary in canister-to-canister calls.
+                created_at_time: None,
             })
             .await
         {
@@ -321,34 +320,28 @@ impl LedgerClient {
                     self.native_ledger()
                 );
                 let transfer_err = match transfer_from_error {
-                    TransferFromError::BadFee { expected_fee } => {
+                    TransferError::BadFee { expected_fee } => {
                         panic!("BUG: bad fee, expected fee: {expected_fee}")
                     }
-                    TransferFromError::BadBurn { min_burn_amount: _ } => {
+                    TransferError::BadBurn { min_burn_amount: _ } => {
                         panic!("BUG: expected transfer")
                     }
-                    TransferFromError::InsufficientFunds { balance } => {
+                    TransferError::InsufficientFunds { balance } => {
                         FeeTransferError::InsufficientFunds {
                             balance,
                             failed_transfer_amount: amount.clone(),
                             ledger: self.native_ledger(),
                         }
                     }
-                    TransferFromError::InsufficientAllowance { allowance } => {
-                        FeeTransferError::InsufficientAllowance {
-                            allowance,
-                            failed_transfer_amount: amount,
-                            ledger: self.native_ledger(),
-                        }
-                    }
-                    TransferFromError::TooOld => panic!("BUG: transfer too old"),
-                    TransferFromError::CreatedInFuture { ledger_time } => {
+
+                    TransferError::TooOld => panic!("BUG: transfer too old"),
+                    TransferError::CreatedInFuture { ledger_time } => {
                         panic!("BUG: created in future, ledger time: {ledger_time}")
                     }
-                    TransferFromError::Duplicate { duplicate_of } => {
+                    TransferError::Duplicate { duplicate_of } => {
                         panic!("BUG: duplicate transfer of: {duplicate_of}")
                     }
-                    TransferFromError::TemporarilyUnavailable => {
+                    TransferError::TemporarilyUnavailable => {
                         FeeTransferError::TemporarilyUnavailable {
                             message: format!(
                                 "{} ledger temporarily unavailable, try again",
@@ -357,7 +350,7 @@ impl LedgerClient {
                             ledger: self.native_ledger(),
                         }
                     }
-                    TransferFromError::GenericError {
+                    TransferError::GenericError {
                         error_code,
                         message,
                     } => FeeTransferError::TemporarilyUnavailable {
