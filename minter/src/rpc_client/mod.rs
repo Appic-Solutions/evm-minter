@@ -68,7 +68,10 @@ impl RpcClient {
                         response_size_estimate: Some(
                             ETH_GET_LOGS_INITIAL_RESPONSE_SIZE_ESTIMATE + HEADER_SIZE_LIMIT,
                         ),
-                        response_consensus: None,
+                        response_consensus: Some(evm_rpc_types::ConsensusStrategy::Threshold {
+                            total: None,
+                            min: 2,
+                        }),
                     }),
                     ..Default::default()
                 })
