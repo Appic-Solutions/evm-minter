@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::deposit_logs::{
     LogParser, ReceivedDepositLogParser, RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC,
 };
@@ -30,7 +32,15 @@ impl LogScraping for ReceivedDepositLogScraping {
         let contract_address = state.helper_contract_address.unwrap();
         let last_scraped_block_number = state.last_scraped_block_number;
 
-        let token_contract_addresses = state.erc20_tokens.alt_keys().cloned().collect::<Vec<_>>();
+        // We add native token address as 0;
+        let mut token_contract_addresses =
+            state.erc20_tokens.alt_keys().cloned().collect::<Vec<_>>();
+
+        // Add native token
+        token_contract_addresses.push(
+            Address::from_str("0x0000000000000000000000000000000000000000")
+                .expect("Should not fail converting zero address"),
+        );
         let mut topics: Vec<_> = vec![Topic::from(FixedSizeData(
             RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC,
         ))];
