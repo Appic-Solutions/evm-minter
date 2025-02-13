@@ -16,7 +16,7 @@ use super::transactions::{
     ReimbursementRequest,
 };
 
-/// The event describing the ckETH minter state transition.
+/// The event describing the  minter state transition.
 #[derive(Clone, Debug, Encode, Decode, PartialEq, Eq)]
 pub enum EventType {
     //  The minter initialization event.
@@ -115,7 +115,7 @@ pub enum EventType {
         /// The unique identifier of the deposit on the Ethereum network.
         #[n(0)]
         event_source: EventSource,
-        /// The transaction index on the ckETH ledger.
+        /// The transaction index on the native ledger.
         #[cbor(n(1), with = "crate::cbor::id")]
         mint_block_index: LedgerMintIndex,
         #[n(2)]

@@ -325,7 +325,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
                 INFO,
                 "Failed to get the latest {block_height} block number: {e:?}"
             );
-            read_state(|s| s.last_observed_block_number)
+            None
         }
     }
 }

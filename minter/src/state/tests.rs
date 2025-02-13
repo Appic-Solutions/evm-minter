@@ -999,7 +999,7 @@ fn state_equivalence() {
                 }.into(),
                 mint_block_index: LedgerMintIndex::new(1),
                 erc20_contract_address: None,
-                token_symbol: "ckETH".to_string(),
+                token_symbol: "icUSDT".to_string(),
             }
         },
         invalid_events: btreemap! {

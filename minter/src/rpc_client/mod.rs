@@ -663,7 +663,7 @@ impl Reduce for EvmMultiRpcResult<EvmBlock> {
             .map_reduce(&|block: EvmBlock| {
                 Ok::<Block, String>(Block {
                     number: BlockNumber::from(block.number),
-                    base_fee_per_gas: Wei::from(block.base_fee_per_gas.expect("BUG: must be present in blocks after the London Upgrade / EIP-1559, which pre-dates the ckETH minter")),
+                    base_fee_per_gas: Wei::from(block.base_fee_per_gas.expect("BUG: must be present in blocks after the London Upgrade / EIP-1559, which pre-dates the minter")),
 
                 })
             })

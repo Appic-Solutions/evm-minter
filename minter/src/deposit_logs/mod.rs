@@ -268,7 +268,7 @@ impl LedgerSubaccount {
 ///
 /// Any other encoding will return an error.
 /// Some specific valid [`Principal`]s are also not allowed
-/// since the decoded principal will be used to receive ckETH:
+/// since the decoded principal will be used to receive twin tokens:
 /// * the management canister principal
 /// * the anonymous principal
 ///

@@ -137,9 +137,8 @@ pub struct State {
 
     /// Locks preventing concurrent execution timer tasks
     pub active_tasks: HashSet<TaskType>,
-    // Number of HTTP out-calls since the last upgrade.
-    // Used to correlate request and response in logs.
-    // pub http_request_counter: u64,
+
+    // Transaction price estimate
     pub last_transaction_price_estimate: Option<(u64, GasFeeEstimate)>,
 
     // Fees taken per deposit and withdrawal in native token format

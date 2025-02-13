@@ -22,7 +22,7 @@ use evm_minter::lifecycle::MinterArg;
 use evm_minter::logs::INFO;
 use evm_minter::lsm_client::lazy_add_native_ls_to_lsm_canister;
 use evm_minter::memo::BurnMemo;
-use evm_minter::numeric::{ Erc20Value, LedgerBurnIndex, Wei};
+use evm_minter::numeric::{Erc20Value, LedgerBurnIndex, Wei};
 use evm_minter::rpc_client::providers::Provider;
 use evm_minter::state::audit::{process_event, Event, EventType};
 use evm_minter::state::transactions::{
@@ -532,7 +532,7 @@ async fn withdraw_erc20(
     }?;
 
     let now = ic_cdk::api::time();
-    log!(INFO, "[withdraw_erc20]: burning {:?} ckETH", erc20_tx_fee);
+    log!(INFO, "[withdraw_erc20]: burning {:?} native", erc20_tx_fee);
     match native_ledger
         .burn_from(
             caller.into(),
