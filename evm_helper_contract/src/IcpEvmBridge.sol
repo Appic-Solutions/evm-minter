@@ -24,16 +24,7 @@ contract IcpEvmbridge is TokenManager, Ownable, Pausable {
         bytes32 subaccount
     );
 
-     // Events
-    event TokenBurn(
-        address indexed fromAddress,
-        uint256 amount,
-        address indexed fromERC20,
-        bytes32 toTokenId,
-        bytes32 indexed recipientID,
-        uint256 destinationMintFee
-    );
-
+    // Events
     event TokenBurn(
     address indexed burner, 
     address burnErc20,      
@@ -212,7 +203,7 @@ contract IcpEvmbridge is TokenManager, Ownable, Pausable {
         if (controller == address(0)) revert InvalidRecipient();
         controllerAccessList[controller] = true;
     }
-    
+
     function removeController(address controller) external onlyOwner {
         controllerAccessList[controller] = false;
     }
