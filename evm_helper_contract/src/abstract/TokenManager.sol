@@ -16,7 +16,7 @@ abstract contract TokenManager {
 
     /// List of wrapped tokens
     address[] private _wrappedTokenList;
-    mapping(address => address) internal _baseToWrapped;
+    mapping(bytes32 => address) internal _baseToWrapped;
 
     // Minter address
     address public minterAddress;
@@ -28,7 +28,7 @@ abstract contract TokenManager {
     error InvalidMinter();
 
     /// Events
-    event WrappedTokenDeployed(address indexed baseToken, address indexed wrappedERC20);
+    event WrappedTokenDeployed(bytes32 indexed baseToken, address indexed wrappedERC20);
 
     /// Token metadata
     struct TokenMetadata {
@@ -56,17 +56,17 @@ abstract contract TokenManager {
     }
 
     /**
-     * @dev Creates a new ERC20 compatible token contract as a wrapper
-     * @param name Token name
-     * @param symbol Token symbol
-     * @param decimals Token decimals
-     * @param baseToken Base token address
+    * @dev Creates a new ERC20 compatible token contract as a wrapper
+    * @param name Token name
+    * @param symbol Token symbol
+    * @param decimals Token decimals
+    * @param baseToken ICP token identifier as bytes32
      */
     function deployERC20(
-        string memory name,
-        string memory symbol,
-        uint8 decimals,
-        address baseToken
+    string memory name,
+    string memory symbol,
+    uint8 decimals,
+    bytes32 baseToken  // Changed from address to bytes32
     ) public onlyController returns (address) {
         require(_baseToWrapped[baseToken] == address(0), "Wrapper already exist");
 
@@ -76,12 +76,13 @@ abstract contract TokenManager {
 
         _baseToWrapped[baseToken] = tokenAddress;
 
+        // Update event to use bytes32
         emit WrappedTokenDeployed(baseToken, tokenAddress);
 
         return tokenAddress;
-
     }
-    
+
+
     /**
      * @dev Query token metadata
      * @param token Address of the token to query
@@ -100,10 +101,10 @@ abstract contract TokenManager {
 
     /**
      * @dev Returns wrapped token for the given base token
-     * @param baseToken Address of the base token
+     * @param baseToken ICP token identifier as bytes32
      */
-    function getWrappedToken(address baseToken) external view returns (address) {
-        return _baseToWrapped[baseToken];
+    function getWrappedToken(bytes32 baseToken) external view returns (address) {
+    return _baseToWrapped[baseToken];
     }
 
     /**

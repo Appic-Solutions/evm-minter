@@ -10,58 +10,48 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 contract IcpEvmBridge is TokenManager, Ownable, Pausable {
     using SafeERC20 for IERC20;
 
-    // Access control
+    // State variables
     mapping(address => bool) public controllerAccessList;
+    uint256 public burnFeeInWei;
+    uint256 public collectedBurnFees;
+    address public feeCollector;
 
     // Custom errors
     error InvalidICPAddress();
     error InvalidRecipient();
     error TransferFailed();
     error ZeroAmount();
+    error InsufficientNativeToken();
+    error InvalidFeeCollector();
     error InvalidTokenIdentifier();
 
-    // Events
-    event DepositLog(
-        address from_address,
-        address indexed token,
-        uint256 indexed amount,
-        bytes32 indexed principal,
-        bytes32 subaccount
-    );
-
-    event TokenMint(
-        address indexed recipient,    
-        uint256 amount,              
-        bytes32 indexed icpIdentifier,
-        bytes32 indexed icpSender     
-    );
-
     event TokenBurn(
-        address indexed burner,        
+        address indexed fromAddress,        
         uint256 amount,              
-        bytes32 indexed icpRecipient, 
-        address wrappedToken        
+        bytes32 indexed icpRecipient,
+        address wrappedToken,
+        uint256 burnFee       
     );
 
-    struct MintParams {
-        address evmRecipient;
-        uint256 amount;
-        bytes32 icpIdentifier;
-        bytes32 icpSender;
-    }
+    event FeeWithdrawal(address indexed collector, uint256 amount, uint256 timestamp);
 
     struct BurnParams {
-        uint256 amount;
-        bytes32 icpRecipient;
-        address wrappedToken;
+    uint256 amount;
+    bytes32 icpRecipient;
+    bytes32 principal;    
     }
 
     constructor(
         address _minterAddress,
+        address _feeCollector,
+        uint256 _burnFeeInWei,
         address[] memory _controllers,
         address initialOwner
     ) TokenManager(_minterAddress) Ownable(initialOwner) {
-        // Set up controllers
+        if (_feeCollector == address(0)) revert InvalidFeeCollector();
+        feeCollector = _feeCollector;
+        burnFeeInWei = _burnFeeInWei;
+
         controllerAccessList[msg.sender] = true;
         for (uint256 i = 0; i < _controllers.length; ++i) {
             if (_controllers[i] != address(0)) {
@@ -71,59 +61,68 @@ contract IcpEvmBridge is TokenManager, Ownable, Pausable {
     }
 
     /**
-     * @dev Locks the specified amount of tokens or native currency from the user.
-     */
-    function deposit(
-        address token, 
-        uint256 amount, 
-        bytes32 principal, 
-        bytes32 subaccount
-    ) external payable {
-        if (msg.value > 0) {
-            (bool success,) = minterAddress.call{value: msg.value}("");
-            if (!success) revert TransferFailed();
-
-            emit DepositLog(msg.sender, address(0), msg.value, principal, subaccount);
-        } else {
-            IERC20(token).safeTransferFrom(msg.sender, minterAddress, amount);
-            emit DepositLog(msg.sender, token, amount, principal, subaccount);
-        }
-    }
-        
-    function mint(
-        MintParams calldata params
-    ) external onlyController whenNotPaused {
-        if (params.amount == 0) revert ZeroAmount();
-        if (params.evmRecipient == address(0)) revert InvalidRecipient();
-
-        address wrappedToken = _baseToWrapped[address(uint160(uint256(params.icpIdentifier)))];
-        if (wrappedToken == address(0)) revert InvalidTokenIdentifier();
-
-        WrappedToken(wrappedToken).transfer(params.evmRecipient, params.amount);
-
-        emit TokenMint(
-            params.evmRecipient,
-            params.amount,
-            params.icpIdentifier,
-            params.icpSender
-        );
-    }
-
+        * @dev Burns/Locks tokens to bridge them to ICP
+        * For native tokens (address(0)):
+        * - Locks the native token by sending to minter
+        * - Requires msg.value to cover amount + burn fee
+        * 
+        * For ERC20 tokens:
+        * - Burns the wrapped token by sending to minter (using WrappedToken burn mechanism)
+        * - Requires msg.value to cover burn fee
+        * - Requires token approval
+        *
+        * @param params BurnParams containing:
+        * - amount: Amount of tokens to burn/lock
+        * - icpRecipient: ICP recipient address as bytes32
+        * - Principal: : ICP token identifier
+        */
     function burn(
         BurnParams calldata params
     ) external payable whenNotPaused {
         if (params.amount == 0) revert ZeroAmount();
         if (params.icpRecipient == bytes32(0)) revert InvalidICPAddress();
+        address wrappedToken = _baseToWrapped[params.principal];
+        if (wrappedToken == address(0)) revert InvalidTokenIdentifier();
 
-        IERC20(params.wrappedToken).safeTransferFrom(msg.sender, minterAddress, params.amount);
+        // Handle native token burn/lock
+        if (wrappedToken == NATIVE_TOKEN_ADDRESS) {
+            if (msg.value < params.amount + burnFeeInWei) revert InsufficientNativeToken();
+            
+            // Transfer to minter
+            (bool success,) = minterAddress.call{value: params.amount}("");
+            if (!success) revert TransferFailed();
+            
+            collectedBurnFees += burnFeeInWei;
+        } 
+        // Handle ERC20 token burn
+        else {
+            if (msg.value < burnFeeInWei) revert InsufficientNativeToken();
+            
+            // Transfer tokens to minter (will automatically burn due to WrappedToken logic)
+            IERC20(wrappedToken).safeTransferFrom(msg.sender, minterAddress, params.amount);
+            collectedBurnFees += burnFeeInWei;
+        }
 
-        emit TokenBurn(
+         emit TokenBurn(
             msg.sender,
             params.amount,
             params.icpRecipient,
-            params.wrappedToken
+            wrappedToken,
+            burnFeeInWei
         );
     }
+    
+    function withdrawFees() external onlyOwner {
+        uint256 feesToWithdraw = collectedBurnFees;
+        if (feesToWithdraw == 0) revert ZeroAmount();
+        
+        collectedBurnFees = 0;
+        (bool success,) = feeCollector.call{value: feesToWithdraw}("");
+        if (!success) revert TransferFailed();
+        
+        emit FeeWithdrawal(feeCollector, feesToWithdraw, block.timestamp);
+    }
+    
     
     function isController(address account) internal view override returns (bool) {
         return controllerAccessList[account];
