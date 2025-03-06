@@ -1,0 +1,21 @@
+(
+  variant {
+    InitArg = record {
+      last_scraped_block_number = 45_384_225 : nat;
+      ecdsa_key_name = "key_1";
+      next_transaction_nonce = 0 : nat;
+      native_minimum_withdrawal_amount = 100_000_000_000_000 : nat;
+      native_symbol = "icETH.base";
+      helper_contract_address = opt "";
+      deposit_native_fee = 0 : nat;
+      native_ledger_transfer_fee = 5_000_000_000_000  : nat;
+      native_index_id = principal "nk7sc-biaaa-aaaam-qdgwa-cai";
+      withdrawal_native_fee = 15_000_000_000_000 : nat;
+      native_ledger_id = principal "3iven-myaaa-aaaai-q3u5q-cai";
+      block_height = variant { Latest };
+      evm_network = variant { Base };
+      min_max_priority_fee_per_gas = 1_000_000 : nat;
+      ledger_suite_manager_id = principal "kmcdp-4yaaa-aaaag-ats3q-cai";
+    }
+  },
+)

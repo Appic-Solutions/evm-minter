@@ -257,10 +257,10 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
             let mut block_number = Some(latest_block.number);
             match network {
                 EvmNetwork::BSC => {
-                    // Waiting for 20 blocks means the transaction is practically safe on BSC
-                    // So we go 15 blocks before the latest block
+                    // Waiting for 12 blocks means the transaction is practically safe on BSC
+                    // So we go 12 blocks before the latest block
                     block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(20_u32)
+                        BlockNumber::try_from(12_u32)
                             .expect("Removing 20 blocks from latest block should never fail"),
                     )
                 }

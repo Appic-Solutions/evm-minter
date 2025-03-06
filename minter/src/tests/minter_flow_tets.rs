@@ -221,23 +221,19 @@ fn should_deposit_and_withdrawal_native() {
     assert_eq!(withdrawal_request_result.block_index, Nat::from(4_u64));
 
     five_ticks(&pic);
-
-    // Advance time for PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL amount.
-    pic.advance_time(PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL);
-
     five_ticks(&pic);
 
     // At this point there should be an http request for refreshing the fee history
     // Once there is a withdrawal request, The first attempt should be updating fee history
     // Cause there should be a maximum gap of 30 seconds between the previous gas fee estimate
     // we just advance time for amount
-    let canister_http_requests = pic.get_canister_http();
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        0,
-        MOCK_FEE_HISTORY_RESPONSE,
-    );
+    //let canister_http_requests = pic.get_canister_http();
+    //generate_and_submit_mock_http_response(
+    //    &pic,
+    //    &canister_http_requests,
+    //    0,
+    //    MOCK_FEE_HISTORY_RESPONSE,
+    //);
 
     five_ticks(&pic);
 
@@ -792,7 +788,7 @@ fn should_deposit_and_withdrawal_erc20() {
     five_ticks(&pic);
 
     // Advance time for PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL amount.
-    pic.advance_time(PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL);
+    //pic.advance_time(PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL);
 
     five_ticks(&pic);
 
@@ -800,14 +796,14 @@ fn should_deposit_and_withdrawal_erc20() {
     // Once there is a withdrawal request, The first attempt should be updating fee history
     // Cause there should be a maximum gap of 30 seconds between the previous gas fee estimate
     // we just advance time for amount
-    let canister_http_requests = pic.get_canister_http();
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        0,
-        MOCK_FEE_HISTORY_RESPONSE,
-    );
-
+    //let canister_http_requests = pic.get_canister_http();
+    //generate_and_submit_mock_http_response(
+    //    &pic,
+    //    &canister_http_requests,
+    //    0,
+    //    MOCK_FEE_HISTORY_RESPONSE,
+    //);
+    //
     five_ticks(&pic);
 
     let canister_http_requests = pic.get_canister_http();

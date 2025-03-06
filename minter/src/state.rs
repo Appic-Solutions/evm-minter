@@ -12,7 +12,7 @@ use std::{
 
 use candid::Principal;
 use ic_canister_log::log;
-use ic_crypto_secp256k1::PublicKey;
+use secp256k1::PublicKey;
 use serde_bytes::ByteBuf;
 use transactions::{
     Erc20WithdrawalRequest, TransactionCallData, WithdrawalRequest, WithdrawalTransactions,
@@ -166,7 +166,7 @@ pub struct State {
 
 impl State {
     pub fn minter_address(&self) -> Option<Address> {
-        let pubkey = PublicKey::deserialize_sec1(&self.ecdsa_public_key.as_ref()?.public_key)
+        let pubkey = PublicKey::from_slice(&self.ecdsa_public_key.as_ref()?.public_key)
             .unwrap_or_else(|e| {
                 ic_cdk::trap(&format!("failed to decode minter's public key: {:?}", e))
             });
@@ -753,7 +753,7 @@ pub async fn lazy_call_ecdsa_public_key() -> PublicKey {
     };
 
     fn to_public_key(response: &EcdsaPublicKeyResponse) -> PublicKey {
-        PublicKey::deserialize_sec1(&response.public_key).unwrap_or_else(|e| {
+        PublicKey::from_slice(&response.public_key).unwrap_or_else(|e| {
             ic_cdk::trap(&format!("failed to decode minter's public key: {:?}", e))
         })
     }

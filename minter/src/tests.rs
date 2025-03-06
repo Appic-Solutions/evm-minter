@@ -329,7 +329,7 @@ mod get_deposit_logs {
 
 #[test]
 fn address_from_pubkey() {
-    use ic_crypto_secp256k1::PublicKey;
+    use secp256k1::PublicKey;
 
     // Examples come from https://mycrypto.tools/sample_ethaddresses.html
     const EXAMPLES: &[(&str, &str)] = &[
@@ -344,7 +344,7 @@ fn address_from_pubkey() {
     ];
     for (pk_bytes, address) in EXAMPLES {
         let sec1_bytes = hex::decode(pk_bytes).unwrap();
-        let pk = PublicKey::deserialize_sec1(&sec1_bytes).unwrap();
+        let pk = PublicKey::from_slice(&sec1_bytes).unwrap();
         assert_eq!(&ecdsa_public_key_to_address(&pk).to_string(), address);
     }
 }

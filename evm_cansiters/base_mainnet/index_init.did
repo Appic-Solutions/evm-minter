@@ -1,0 +1,8 @@
+(     
+    opt variant {
+            Init = record {
+                ledger_id = principal "3iven-myaaa-aaaai-q3u5q-cai";
+                retrieve_blocks_from_ledger_interval_seconds = null;
+            }
+        }
+)

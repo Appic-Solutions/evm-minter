@@ -17,8 +17,9 @@ use crate::{
     numeric::{BlockNumber, GasAmount, TransactionNonce, Wei, WeiPerGas},
     rpc_declarations::TransactionReceipt,
 };
-use ic_crypto_secp256k1::RecoveryId;
 use ic_management_canister_types::DerivationPath;
+
+use secp256k1::{ecdsa::Signature, Message, PublicKey, Secp256k1};
 
 // Constant representing the transaction type identifier for EIP-1559 transactions.
 const EIP1559_TX_ID: u8 = 2;
@@ -543,17 +544,14 @@ impl Eip1559TransactionRequest {
                 .await
                 .map_err(|e| format!("failed to sign tx: {}", e))?; // Sign the hash with the ECDSA key.
 
-        let recid = compute_recovery_id(&hash, &signature).await; // Compute the recovery ID.
-        if recid.is_x_reduced() {
-            return Err("BUG: affine x-coordinate of r is reduced which is so unlikely to happen that it's probably a bug".to_string());
-        }
+        let public_key = verifiy_signature(&hash, &signature).await; // Compute the recovery ID.
 
         let (r_bytes, s_bytes) = split_in_two(signature); // Split the signature into r and s components.
         let r = u256::from_be_bytes(r_bytes);
         let s = u256::from_be_bytes(s_bytes);
 
         let sig = Eip1559Signature {
-            signature_y_parity: recid.is_y_odd(),
+            signature_y_parity: is_y_odd(&public_key),
             r,
             s,
         };
@@ -576,30 +574,24 @@ impl Eip1559TransactionRequest {
 ///
 /// # Panics
 /// Panics if the signature verification or public key recovery fails.
-async fn compute_recovery_id(digest: &Hash, signature: &[u8]) -> RecoveryId {
+async fn verifiy_signature(digest: &Hash, signature: &[u8]) -> PublicKey {
     let ecdsa_public_key = lazy_call_ecdsa_public_key().await;
+
+    let secp = Secp256k1::verification_only();
+    let msg = Message::from_digest(digest.0);
+    let sig = Signature::from_compact(signature)
+        .expect("compact signatures are 64 bytes; DER signatures are 68-72 bytes");
 
     // Ensure that the signature verification passes.
     debug_assert!(
-        ecdsa_public_key.verify_signature_prehashed(&digest.0, signature),
+        secp.verify_ecdsa(&msg, &sig, &ecdsa_public_key).is_ok(),
         "failed to verify signature prehashed, digest: {:?}, signature: {:?}, public_key: {:?}",
         hex::encode(digest.0),
         hex::encode(signature),
-        hex::encode(ecdsa_public_key.serialize_sec1(true)),
+        hex::encode(ecdsa_public_key.serialize_uncompressed()),
     );
 
-    // Attempt to recover the public key from the digest and signature.
     ecdsa_public_key
-        .try_recovery_from_digest(&digest.0, signature)
-        .unwrap_or_else(|e| {
-            panic!(
-                "BUG: failed to recover public key {:?} from digest {:?} and signature {:?}: {:?}",
-                hex::encode(ecdsa_public_key.serialize_sec1(true)),
-                hex::encode(digest.0),
-                hex::encode(signature),
-                e
-            )
-        })
 }
 
 /// Represents an estimate of gas fees.
@@ -732,7 +724,7 @@ impl TransactionPrice {
 /// # Returns
 /// An `Option` containing the new `GasFeeEstimate` if successful, or `None` if the refresh fails.
 pub async fn lazy_refresh_gas_fee_estimate() -> Option<GasFeeEstimate> {
-    const MAX_AGE_NS: u64 = 30_000_000_000_u64; // 30 seconds
+    const MAX_AGE_NS: u64 = 60_000_000_000_u64; // 60 seconds
 
     async fn do_refresh() -> Option<GasFeeEstimate> {
         let _guard = match TimerGuard::new(TaskType::RefreshGasFeeEstimate) {
@@ -786,7 +778,7 @@ pub async fn lazy_refresh_gas_fee_estimate() -> Option<GasFeeEstimate> {
             .fee_history(FeeHistoryParams {
                 block_count: Quantity::from(5_u8),
                 highest_block: BlockSpec::Tag(BlockTag::Latest),
-                reward_percentiles: vec![20],
+                reward_percentiles: vec![50],
             })
             .await
     }
@@ -858,6 +850,15 @@ pub fn estimate_transaction_fee(
     }
 
     Ok(gas_fee_estimate)
+}
+
+/// Returns true if the y coordinate of the given public key is odd.
+/// This assumes the public key is in its compressed form (33 bytes).
+fn is_y_odd(public_key: &PublicKey) -> bool {
+    // Serialize the public key in compressed form (33 bytes).
+    let compressed = public_key.serialize();
+    // The first byte is the prefix: 0x02 for even y, 0x03 for odd y.
+    compressed[0] == 0x03
 }
 
 /// Computes the median of a slice of values.

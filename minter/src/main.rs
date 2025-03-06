@@ -376,6 +376,11 @@ async fn withdraw_native_token(
                     EventType::AcceptedNativeWithdrawalRequest(withdrawal_request.clone()),
                 );
             });
+
+            ic_cdk_timers::set_timer(Duration::from_secs(0), || {
+                ic_cdk::spawn(process_retrieve_tokens_requests())
+            });
+
             Ok(RetrieveNativeRequest::from(withdrawal_request))
         }
         Err(e) => {
@@ -587,6 +592,11 @@ async fn withdraw_erc20(
                             EventType::AcceptedErc20WithdrawalRequest(withdrawal_request.clone()),
                         );
                     });
+
+                    ic_cdk_timers::set_timer(Duration::from_secs(0), || {
+                        ic_cdk::spawn(process_retrieve_tokens_requests())
+                    });
+
                     Ok(RetrieveErc20Request::from(withdrawal_request))
                 }
                 Err(erc20_burn_error) => {

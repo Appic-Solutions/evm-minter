@@ -182,7 +182,7 @@ pub async fn process_retrieve_tokens_requests() {
 }
 
 async fn latest_transaction_count() -> Option<TransactionCount> {
-    match read_state(RpcClient::from_state_one_provider_ankr)
+    match read_state(RpcClient::from_state_one_provider_public_node)
         .get_latest_transaction_count(crate::state::minter_address().await)
         .await
     {
@@ -335,6 +335,7 @@ async fn send_transactions_batch(latest_transaction_count: Option<TransactionCou
             .transactions_to_send_batch(latest_transaction_count, TRANSACTIONS_TO_SEND_BATCH_SIZE)
     });
 
+    log!(INFO, "Transactions to send {:?}", transactions_to_send);
     let rpc_client = read_state(RpcClient::from_state_all_providers);
     let results = join_all(
         transactions_to_send
