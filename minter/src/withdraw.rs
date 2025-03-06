@@ -182,7 +182,7 @@ pub async fn process_retrieve_tokens_requests() {
 }
 
 async fn latest_transaction_count() -> Option<TransactionCount> {
-    match read_state(RpcClient::from_state_one_provider_public_node)
+    match read_state(RpcClient::from_state_all_providers)
         .get_latest_transaction_count(crate::state::minter_address().await)
         .await
     {
@@ -443,7 +443,7 @@ async fn finalize_transactions_batch() {
 }
 async fn finalized_transaction_count() -> Result<TransactionCount, MultiCallError<TransactionCount>>
 {
-    read_state(RpcClient::from_state_one_provider_public_node)
+    read_state(RpcClient::from_state_all_providers)
         .get_finalized_transaction_count(crate::state::minter_address().await)
         .await
 }

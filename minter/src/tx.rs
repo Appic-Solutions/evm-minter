@@ -3,6 +3,7 @@ use ic_canister_log::log;
 use minicbor;
 use minicbor::{Decode, Encode};
 use rlp::RlpStream;
+use secp256k1::ecdsa::{RecoverableSignature, RecoveryId};
 
 use crate::guard::TimerGuard;
 use crate::logs::{DEBUG, INFO};
@@ -545,13 +546,14 @@ impl Eip1559TransactionRequest {
                 .map_err(|e| format!("failed to sign tx: {}", e))?; // Sign the hash with the ECDSA key.
 
         let public_key = verifiy_signature(&hash, &signature).await; // Compute the recovery ID.
-
+        let signature_y_parity = determine_signature_y_parity(&public_key, &hash, &signature)
+            .expect("Bug: Failed to determine y parity");
         let (r_bytes, s_bytes) = split_in_two(signature); // Split the signature into r and s components.
         let r = u256::from_be_bytes(r_bytes);
         let s = u256::from_be_bytes(s_bytes);
 
         let sig = Eip1559Signature {
-            signature_y_parity: is_y_odd(&public_key),
+            signature_y_parity,
             r,
             s,
         };
@@ -592,6 +594,35 @@ async fn verifiy_signature(digest: &Hash, signature: &[u8]) -> PublicKey {
     );
 
     ecdsa_public_key
+}
+
+/// Determines the signature_y_parity (i.e. the recovery bit) from a signature given the known public key,
+/// a 32-byte message hash, and a 64-byte signature (r and s concatenated).
+///
+/// Returns:
+/// - Some(true) if the recovery id is 1 (odd y coordinate),
+/// - Some(false) if the recovery id is 0 (even y coordinate),
+/// - None if neither candidate recovers the known public key.
+pub fn determine_signature_y_parity(
+    public_key: &PublicKey,
+    digest: &Hash,
+    sig: &[u8; 64],
+) -> Option<bool> {
+    let secp = Secp256k1::new();
+
+    // Try both possible recovery IDs: 0 (even y) and 1 (odd y)
+    for rec in 0..=1 {
+        let recovery_id = RecoveryId::try_from(rec).ok()?;
+        if let Ok(recoverable_sig) = RecoverableSignature::from_compact(sig, recovery_id) {
+            let message = Message::from_digest(digest.0);
+            if let Ok(recovered_pubkey) = secp.recover_ecdsa(&message, &recoverable_sig) {
+                if &recovered_pubkey == public_key {
+                    return Some(rec == 1);
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Represents an estimate of gas fees.
@@ -724,7 +755,7 @@ impl TransactionPrice {
 /// # Returns
 /// An `Option` containing the new `GasFeeEstimate` if successful, or `None` if the refresh fails.
 pub async fn lazy_refresh_gas_fee_estimate() -> Option<GasFeeEstimate> {
-    const MAX_AGE_NS: u64 = 60_000_000_000_u64; // 60 seconds
+    const MAX_AGE_NS: u64 = 30_000_000_000_u64; // 30 seconds
 
     async fn do_refresh() -> Option<GasFeeEstimate> {
         let _guard = match TimerGuard::new(TaskType::RefreshGasFeeEstimate) {
@@ -738,14 +769,29 @@ pub async fn lazy_refresh_gas_fee_estimate() -> Option<GasFeeEstimate> {
             }
         };
 
-        let fee_history = match get_fee_history().await {
-            Ok(fee_history) => fee_history,
-            Err(e) => {
-                log!(
-                    INFO,
-                    "[refresh_gas_fee_estimate]: Failed retrieving fee history: {e:?}",
-                );
-                return None;
+        let mut attempts = 0;
+        const MAX_ATTEMPTS: u32 = 3;
+
+        let fee_history = loop {
+            match get_fee_history().await {
+                Ok(fee_history) => break fee_history, // Exit loop on success
+                Err(e) => {
+                    attempts += 1;
+                    log!(
+                        DEBUG,
+                        "[refresh_gas_fee_estimate]: Failed retrieving fee history: {e:?} attempt {}/{} failed",
+                        attempts,
+                        MAX_ATTEMPTS
+                    );
+
+                    if attempts >= MAX_ATTEMPTS {
+                        log!(
+                        DEBUG,
+                        "[refresh_gas_fee_estimate]: max retries reached. Skipping scrapping fee history fetching."
+                    );
+                        return None;
+                    }
+                }
             }
         };
 
@@ -850,15 +896,6 @@ pub fn estimate_transaction_fee(
     }
 
     Ok(gas_fee_estimate)
-}
-
-/// Returns true if the y coordinate of the given public key is odd.
-/// This assumes the public key is in its compressed form (33 bytes).
-fn is_y_odd(public_key: &PublicKey) -> bool {
-    // Serialize the public key in compressed form (33 bytes).
-    let compressed = public_key.serialize();
-    // The first byte is the prefix: 0x02 for even y, 0x03 for odd y.
-    compressed[0] == 0x03
 }
 
 /// Computes the median of a slice of values.
