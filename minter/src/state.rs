@@ -21,6 +21,7 @@ use transactions::{
 use crate::{
     address::ecdsa_public_key_to_address,
     deposit_logs::{EventSource, ReceivedDepositEvent},
+    endpoints::DepositStatus,
     erc20::{ERC20Token, ERC20TokenSymbol},
     eth_types::Address,
     evm_config::EvmNetwork,
@@ -30,7 +31,7 @@ use crate::{
     numeric::{
         BlockNumber, Erc20Value, LedgerBurnIndex, LedgerMintIndex, TransactionNonce, Wei, WeiPerGas,
     },
-    rpc_declarations::{BlockTag, TransactionReceipt, TransactionStatus},
+    rpc_declarations::{BlockTag, Hash, TransactionReceipt, TransactionStatus},
     tx::GasFeeEstimate,
 };
 use strum_macros::EnumIter;
@@ -322,6 +323,34 @@ impl State {
             None,
             "attempted to mint native twice for the same event {source:?}"
         );
+    }
+
+    pub fn get_deposit_status(&self, tx_hash: Hash) -> Option<DepositStatus> {
+        if self
+            .minted_events
+            .keys()
+            .any(|event_source| event_source.transaction_hash == tx_hash)
+        {
+            return Some(DepositStatus::Minted);
+        }
+
+        if self
+            .events_to_mint()
+            .iter()
+            .any(|deposit_event| deposit_event.transaction_hash() == tx_hash)
+        {
+            return Some(DepositStatus::Accepted);
+        }
+
+        if self
+            .invalid_events
+            .keys()
+            .any(|event_source| event_source.transaction_hash == tx_hash)
+        {
+            return Some(DepositStatus::InvalidDeposit);
+        }
+
+        None
     }
 
     pub fn record_erc20_withdrawal_request(&mut self, request: Erc20WithdrawalRequest) {

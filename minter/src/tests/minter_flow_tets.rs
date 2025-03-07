@@ -4,9 +4,9 @@ use candid::{Nat, Principal};
 
 use crate::{
     endpoints::{
-        Eip1559TransactionPrice, RequestScrapingError, RetrieveErc20Request, RetrieveNativeRequest,
-        RetrieveWithdrawalStatus, TxFinalizedStatus, WithdrawErc20Arg, WithdrawErc20Error,
-        WithdrawalArg, WithdrawalError,
+        DepositStatus, Eip1559TransactionPrice, RequestScrapingError, RetrieveErc20Request,
+        RetrieveNativeRequest, RetrieveWithdrawalStatus, TxFinalizedStatus, WithdrawErc20Arg,
+        WithdrawErc20Error, WithdrawalArg, WithdrawalError,
     },
     evm_config::EvmNetwork,
     tests::{
@@ -675,6 +675,16 @@ fn should_deposit_and_withdrawal_erc20() {
     five_ticks(&pic);
     five_ticks(&pic);
     five_ticks(&pic);
+
+    // Check the deposit status
+    let status = query_call::<String, Option<DepositStatus>>(
+        &pic,
+        minter_principal(),
+        "retrieve_deposit_status",
+        String::from("0x0ce8486575f4a3fe725c463ad0c9a3da2484f68305edcec7bea5db26c95aa18c"),
+    );
+
+    assert_eq!(status, Some(DepositStatus::Minted));
 
     // Check Erc20 icLINK deposit
     // Based on the logs there should be 3_000_000_000_000_000_000 icLINK minted to b4any-vxcgx-dm654-xhumb-4pl7k-5kysk-qnjlt-w7hcb-2hd2h-ttzpz-fqe

@@ -7,7 +7,8 @@ use evm_minter::endpoints::events::{
 };
 
 use evm_minter::endpoints::{
-    self, AddErc20Token, FeeError, Icrc28TrustedOriginsResponse, RequestScrapingError,
+    self, AddErc20Token, DepositStatus, FeeError, Icrc28TrustedOriginsResponse,
+    RequestScrapingError,
 };
 use evm_minter::endpoints::{
     Eip1559TransactionPrice, Eip1559TransactionPriceArg, Erc20Balance, GasFeeEstimate, MinterInfo,
@@ -24,6 +25,7 @@ use evm_minter::lsm_client::lazy_add_native_ls_to_lsm_canister;
 use evm_minter::memo::BurnMemo;
 use evm_minter::numeric::{Erc20Value, LedgerBurnIndex, Wei};
 use evm_minter::rpc_client::providers::Provider;
+use evm_minter::rpc_declarations::Hash;
 use evm_minter::state::audit::{process_event, Event, EventType};
 use evm_minter::state::transactions::{
     Erc20WithdrawalRequest, NativeWithdrawalRequest, Reimbursed, ReimbursementIndex,
@@ -46,6 +48,7 @@ use ic_canister_log::log;
 use ic_cdk::{init, post_upgrade, pre_upgrade, query, update};
 use std::collections::BTreeSet;
 use std::convert::TryFrom;
+use std::str::FromStr;
 use std::time::Duration;
 
 // Set api_keys for rpc providers
@@ -266,6 +269,13 @@ async fn request_scraping_logs() -> Result<(), RequestScrapingError> {
     ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(scrape_logs()));
 
     Ok(())
+}
+
+#[query]
+async fn retrieve_deposit_status(tx_hash: String) -> Option<DepositStatus> {
+    read_state(|s| {
+        s.get_deposit_status(Hash::from_str(&tx_hash).expect("Invalid transaction hash"))
+    })
 }
 
 #[update]

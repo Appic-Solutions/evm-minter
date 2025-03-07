@@ -301,6 +301,14 @@ pub enum WithdrawalStatus {
     TxFinalized(TxFinalizedStatus),
 }
 
+#[derive(CandidType, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
+pub enum DepositStatus {
+    InvalidDeposit,
+    Minted,
+    Accepted,
+    Quarantined,
+}
+
 #[derive(CandidType, Deserialize, Clone, Debug, PartialEq)]
 pub struct AddErc20Token {
     pub chain_id: Nat,
