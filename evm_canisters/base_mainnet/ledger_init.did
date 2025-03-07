@@ -12,7 +12,7 @@
         };
       };
       minting_account = record {
-        owner = principal "4ati2-naaaa-aaaad-qg6la-cai"";
+        owner = principal "4ati2-naaaa-aaaad-qg6la-cai";
         subaccount = null;
       };
       initial_balances = vec {};

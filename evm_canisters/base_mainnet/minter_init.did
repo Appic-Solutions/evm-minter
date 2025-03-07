@@ -6,7 +6,7 @@
       next_transaction_nonce = 0 : nat;
       native_minimum_withdrawal_amount = 100_000_000_000_000 : nat;
       native_symbol = "icETH.base";
-      helper_contract_address = opt "";
+      helper_contract_address = null;
       deposit_native_fee = 0 : nat;
       native_ledger_transfer_fee = 5_000_000_000_000  : nat;
       native_index_id = principal "nk7sc-biaaa-aaaam-qdgwa-cai";
