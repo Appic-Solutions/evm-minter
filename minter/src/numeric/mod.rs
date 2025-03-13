@@ -22,6 +22,9 @@ pub type Erc20TokenAmount = CheckedAmountOf<Erc20TokenAmountTag>;
 pub enum WeiPerGasUnit {}
 pub type WeiPerGas = CheckedAmountOf<WeiPerGasUnit>;
 
+pub enum WeiPerBlobGasUnit {}
+pub type WeiPerBlobGas = CheckedAmountOf<WeiPerBlobGasUnit>;
+
 pub fn wei_from_milli_ether(value: u128) -> Wei {
     const MILLI_ETHER: u64 = 1_000_000_000_000_000_000;
     Wei::new(value)

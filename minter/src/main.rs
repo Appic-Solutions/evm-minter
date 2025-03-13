@@ -17,6 +17,7 @@ use evm_minter::endpoints::{
 };
 use evm_minter::endpoints::{RetrieveErc20Request, WithdrawErc20Arg, WithdrawErc20Error};
 use evm_minter::erc20::ERC20Token;
+use evm_minter::evm_config::EvmNetwork;
 use evm_minter::guard::retrieve_withdraw_guard;
 use evm_minter::ledger_client::{LedgerBurnError, LedgerClient};
 use evm_minter::lifecycle::MinterArg;
@@ -35,7 +36,7 @@ use evm_minter::state::{
     lazy_call_ecdsa_public_key, mutate_state, read_state, transactions, State, STATE,
 };
 use evm_minter::storage::set_rpc_api_key;
-use evm_minter::tx::lazy_refresh_gas_fee_estimate;
+use evm_minter::tx::gas_fees::{lazy_fetch_l1_fee_estimate, lazy_refresh_gas_fee_estimate};
 use evm_minter::withdraw::{
     process_reimbursement, process_retrieve_tokens_requests,
     ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT, NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
@@ -312,6 +313,19 @@ async fn withdraw_native_token(
         });
     }
 
+    // Check if l1_fee is required for this network
+    let l1_fee = match read_state(|s| s.evm_network) {
+        EvmNetwork::Base | EvmNetwork::Optimism => match lazy_fetch_l1_fee_estimate().await {
+            Some(fee) => Some(fee),
+            None => {
+                return Err(WithdrawalError::TemporarilyUnavailable(
+                    "Failed to retrieve current l1 fee".to_string(),
+                ));
+            }
+        },
+        _ => None,
+    };
+
     // Fee transfer and calculation
     // The amount of transferred fee is as follow
     // withdrawal_native_fee - native_transfer_fee
@@ -372,6 +386,7 @@ async fn withdraw_native_token(
                 from: caller,
                 from_subaccount: None,
                 created_at: Some(now),
+                l1_fee,
             };
 
             log!(
@@ -509,6 +524,19 @@ async fn withdraw_erc20(
         WithdrawErc20Error::TemporarilyUnavailable("Failed to retrieve current gas fee".to_string())
     })?;
 
+    // Check if l1_fee is required for this network
+    let l1_fee = match read_state(|s| s.evm_network) {
+        EvmNetwork::Base | EvmNetwork::Optimism => match lazy_fetch_l1_fee_estimate().await {
+            Some(fee) => Some(fee),
+            None => {
+                return Err(WithdrawErc20Error::TemporarilyUnavailable(
+                    "Failed to retrieve current l1 fee".to_string(),
+                ));
+            }
+        },
+        _ => None,
+    };
+
     // withdrawal fee deducted in native token
     let withdrawal_native_fee = read_state(|s| s.withdrawal_native_fee);
 
@@ -547,11 +575,15 @@ async fn withdraw_erc20(
     }?;
 
     let now = ic_cdk::api::time();
+    let max_transaction_fee = erc20_tx_fee
+        .checked_add(l1_fee.unwrap_or(Wei::ZERO))
+        .unwrap_or(Wei::MAX);
+
     log!(INFO, "[withdraw_erc20]: burning {:?} native", erc20_tx_fee);
     match native_ledger
         .burn_from(
             caller.into(),
-            erc20_tx_fee,
+            max_transaction_fee,
             BurnMemo::Erc20GasFee {
                 erc20_token_symbol: erc20_token.erc20_token_symbol.clone(),
                 erc20_withdrawal_amount,
@@ -580,7 +612,7 @@ async fn withdraw_erc20(
             {
                 Ok(erc20_ledger_burn_index) => {
                     let withdrawal_request = Erc20WithdrawalRequest {
-                        max_transaction_fee: erc20_tx_fee,
+                        max_transaction_fee,
                         withdrawal_amount: erc20_withdrawal_amount,
                         destination,
                         native_ledger_burn_index,
@@ -590,6 +622,7 @@ async fn withdraw_erc20(
                         from: caller,
                         from_subaccount: None,
                         created_at: now,
+                        l1_fee,
                     };
                     log!(
                         INFO,
@@ -611,10 +644,10 @@ async fn withdraw_erc20(
                 }
                 Err(erc20_burn_error) => {
                     let reimbursed_amount = match &erc20_burn_error {
-                        LedgerBurnError::TemporarilyUnavailable { .. } => erc20_tx_fee, //don't penalize user in case of an error outside of their control
+                        LedgerBurnError::TemporarilyUnavailable { .. } => max_transaction_fee, //don't penalize user in case of an error outside of their control
                         LedgerBurnError::InsufficientFunds { .. }
                         | LedgerBurnError::AmountTooLow { .. }
-                        | LedgerBurnError::InsufficientAllowance { .. } => erc20_tx_fee
+                        | LedgerBurnError::InsufficientAllowance { .. } => max_transaction_fee
                             .checked_sub(native_transfer_fee)
                             .unwrap_or(Wei::ZERO),
                     };
@@ -890,6 +923,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     from,
                     from_subaccount,
                     created_at,
+                    l1_fee,
                 }) => EP::AcceptedNativeWithdrawalRequest {
                     withdrawal_amount: withdrawal_amount.into(),
                     destination: destination.to_string(),
@@ -897,6 +931,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     from,
                     from_subaccount: from_subaccount.map(|s| s.0),
                     created_at,
+                    l1_fee: l1_fee.map(|fee| fee.into()),
                 },
                 EventType::CreatedTransaction {
                     withdrawal_id,
@@ -969,6 +1004,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     from,
                     from_subaccount,
                     created_at,
+                    l1_fee,
                 }) => EP::AcceptedErc20WithdrawalRequest {
                     max_transaction_fee: max_transaction_fee.into(),
                     withdrawal_amount: withdrawal_amount.into(),
@@ -980,6 +1016,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     from,
                     from_subaccount: from_subaccount.map(|s| s.0),
                     created_at,
+                    l1_fee: l1_fee.map(|fee| fee.into()),
                 },
                 EventType::MintedErc20 {
                     event_source,

@@ -11,8 +11,8 @@ use crate::{
     logs::{PrintProxySink, INFO, TRACE_HTTP},
     numeric::{BlockNumber, GasAmount, LogIndex, TransactionCount, Wei, WeiPerGas},
     rpc_declarations::{
-        Block, BlockSpec, BlockTag, Data, FeeHistory, FeeHistoryParams, FixedSizeData,
-        GetLogsParam, Hash, LogEntry, Quantity, SendRawTransactionResult, Topic,
+        AccessList, Block, BlockSpec, BlockTag, CallParams, Data, FeeHistory, FeeHistoryParams,
+        FixedSizeData, GetLogsParam, Hash, LogEntry, Quantity, SendRawTransactionResult, Topic,
         TransactionReceipt, TransactionStatus,
     },
     state::State,
@@ -20,13 +20,14 @@ use crate::{
 use candid::Nat;
 use evm_rpc_client::{CallerService, EvmRpcClient, OverrideRpcConfig};
 use evm_rpc_types::{
-    Block as EvmBlock, BlockTag as EvmBlockTag, FeeHistory as EvmFeeHistory,
+    AccessList as EvmAccessList, AccessListEntry as EvmAccessListEntry, Block as EvmBlock,
+    BlockTag as EvmBlockTag, CallArgs, FeeHistory as EvmFeeHistory,
     FeeHistoryArgs as EvmFeeHistoryArgs, GetLogsArgs as EvmGetLogsArgs,
-    GetTransactionCountArgs as EvmGetTransactionCountArgs, Hex20, Hex32, HttpOutcallError,
-    LogEntry as EvmLogEntry, MultiRpcResult as EvmMultiRpcResult, Nat256,
+    GetTransactionCountArgs as EvmGetTransactionCountArgs, Hex, Hex20, Hex32, HexByte,
+    HttpOutcallError, LogEntry as EvmLogEntry, MultiRpcResult as EvmMultiRpcResult, Nat256,
     RpcConfig as EvmRpcConfig, RpcError as EvmRpcError, RpcService as EvmRpcService,
     SendRawTransactionStatus as EvmSendRawTransactionStatus,
-    TransactionReceipt as EvmTransactionReceipt,
+    TransactionReceipt as EvmTransactionReceipt, TransactionRequest,
 };
 use ic_canister_log::log;
 use num_traits::ToPrimitive;
@@ -137,6 +138,20 @@ impl RpcClient {
         );
 
         client
+    }
+
+    pub async fn eth_call(&self, params: CallParams) -> Result<String, MultiCallError<String>> {
+        if let Some(evm_rpc_client) = &self.evm_rpc_client {
+            let result = evm_rpc_client
+                .eth_call(into_evm_call_args(params))
+                .await
+                .reduce();
+            return result.result;
+        } else {
+            Err(MultiCallError::ConsistentEvmRpcCanisterError(String::from(
+                "EVM RPC canister can not be None",
+            )))
+        }
     }
 
     pub async fn get_logs(
@@ -721,6 +736,13 @@ impl Reduce for EvmMultiRpcResult<Vec<LogEntry>> {
     }
 }
 
+impl Reduce for EvmMultiRpcResult<String> {
+    type Item = String;
+    fn reduce(self) -> ReducedResult<Self::Item> {
+        ReducedResult::from_multi_result(self).reduce_with_equality()
+    }
+}
+
 impl Reduce for EvmMultiRpcResult<Option<EvmTransactionReceipt>> {
     type Item = Option<TransactionReceipt>;
 
@@ -826,6 +848,30 @@ impl Reduce for EvmMultiRpcResult<Nat> {
     }
 }
 
+fn into_evm_blob_version_hashes(hashes: Vec<Hash>) -> Vec<Hex32> {
+    hashes.into_iter().map(|hash| Hex32::from(hash.0)).collect()
+}
+
+fn into_evm_blobs(blobs: Vec<Vec<u8>>) -> Vec<Hex> {
+    blobs.into_iter().map(|blob| Hex::from(blob)).collect()
+}
+fn into_evm_access_list(access_list: AccessList) -> EvmAccessList {
+    let entries: Vec<EvmAccessListEntry> = access_list
+        .0
+        .into_iter()
+        .map(|entry| EvmAccessListEntry {
+            address: Hex20::from(entry.address.into_bytes()),
+            storage_keys: entry
+                .storage_keys
+                .into_iter()
+                .map(|key| Hex32::from(key.0))
+                .collect(),
+        })
+        .collect();
+
+    EvmAccessList(entries)
+}
+
 fn into_evm_block_tag(block: BlockSpec) -> EvmBlockTag {
     match block {
         BlockSpec::Number(n) => EvmBlockTag::Number(n.into()),
@@ -855,6 +901,73 @@ pub fn is_response_too_large(error: &HttpOutcallError) -> bool {
             code == &RejectionCode::SysFatal && message.contains("size limit")
         }
         _ => false,
+    }
+}
+
+pub fn into_evm_call_args(call_params: CallParams) -> CallArgs {
+    CallArgs {
+        transaction: TransactionRequest {
+            tx_type: call_params
+                .transaction
+                .tx_type
+                .map(|tx_type| HexByte::from(tx_type)),
+            nonce: call_params
+                .transaction
+                .nonce
+                .map(|nonce| Nat256::from_be_bytes(nonce.to_be_bytes())),
+            to: call_params
+                .transaction
+                .to
+                .map(|to| Hex20::from(to.into_bytes())),
+            from: call_params
+                .transaction
+                .from
+                .map(|from| Hex20::from(from.into_bytes())),
+            gas: call_params
+                .transaction
+                .gas
+                .map(|gas| Nat256::from_be_bytes(gas.to_be_bytes())),
+            value: call_params
+                .transaction
+                .value
+                .map(|value| Nat256::from_be_bytes(value.to_be_bytes())),
+            input: call_params.transaction.input.map(|input| Hex::from(input)),
+            gas_price: call_params
+                .transaction
+                .gas_price
+                .map(|gas_price| Nat256::from_be_bytes(gas_price.to_be_bytes())),
+            max_priority_fee_per_gas: call_params.transaction.max_priority_fee_per_gas.map(
+                |max_priority_fee_per_gas| {
+                    Nat256::from_be_bytes(max_priority_fee_per_gas.to_be_bytes())
+                },
+            ),
+
+            max_fee_per_gas: call_params
+                .transaction
+                .max_fee_per_gas
+                .map(|max_fee_per_gas| Nat256::from_be_bytes(max_fee_per_gas.to_be_bytes())),
+
+            max_fee_per_blob_gas: call_params.transaction.max_fee_per_blob_gas.map(
+                |max_fee_per_blob_gas| Nat256::from_be_bytes(max_fee_per_blob_gas.to_be_bytes()),
+            ),
+            access_list: call_params
+                .transaction
+                .access_list
+                .map(|access_list| into_evm_access_list(access_list)),
+            blob_versioned_hashes: call_params
+                .transaction
+                .blob_versioned_hashes
+                .map(|hashes| into_evm_blob_version_hashes(hashes)),
+            blobs: call_params
+                .transaction
+                .blobs
+                .map(|blobs| into_evm_blobs(blobs)),
+            chain_id: call_params
+                .transaction
+                .chain_id
+                .map(|chain_id| Nat256::from(chain_id)),
+        },
+        block: call_params.block.map(|block| into_evm_block_tag(block)),
     }
 }
 

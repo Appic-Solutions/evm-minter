@@ -79,6 +79,7 @@ mod retrieve_eth_guard {
                         from: Principal::anonymous(),
                         from_subaccount: None,
                         created_at: None,
+                        l1_fee: None,
                     }))
             })
         }

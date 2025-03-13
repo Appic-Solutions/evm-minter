@@ -10,9 +10,9 @@ use crate::state::transactions::{
     create_transaction, Erc20WithdrawalRequest, NativeWithdrawalRequest, Subaccount,
     WithdrawalRequest, WithdrawalTransactions,
 };
+use crate::tx::gas_fees::GasFeeEstimate;
 use crate::tx::{
-    AccessList, Eip1559Signature, Eip1559TransactionRequest, GasFeeEstimate,
-    SignedEip1559TransactionRequest,
+    AccessList, Eip1559Signature, Eip1559TransactionRequest, SignedEip1559TransactionRequest,
 };
 use crate::withdraw::estimate_gas_limit;
 use rand::Rng;
@@ -701,7 +701,7 @@ mod withdrawal_transactions {
         use crate::state::transactions::{
             ResubmitTransactionError, WithdrawalRequest, WithdrawalTransactions,
         };
-        use crate::tx::{Eip1559TransactionRequest, GasFeeEstimate};
+        use crate::tx::{gas_fees::GasFeeEstimate, Eip1559TransactionRequest};
         use ic_crypto_test_utils_reproducible_rng::reproducible_rng;
 
         #[test]
@@ -1053,7 +1053,7 @@ mod withdrawal_transactions {
             equal_ignoring_fee_and_amount, WithdrawalRequest, WithdrawalTransactions,
         };
         use crate::test_fixtures::expect_panic_with_message;
-        use crate::tx::{Eip1559TransactionRequest, GasFeeEstimate};
+        use crate::tx::{gas_fees::GasFeeEstimate, Eip1559TransactionRequest};
         use ic_crypto_test_utils_reproducible_rng::reproducible_rng;
         use proptest::{prop_assume, proptest};
         use std::iter;
@@ -1501,7 +1501,7 @@ mod withdrawal_transactions {
             WithdrawalRequest, WithdrawalTransactions,
         };
         use crate::test_fixtures::expect_panic_with_message;
-        use crate::tx::{GasFeeEstimate, SignedEip1559TransactionRequest};
+        use crate::tx::{gas_fees::GasFeeEstimate, SignedEip1559TransactionRequest};
         use ic_crypto_test_utils_reproducible_rng::reproducible_rng;
         use maplit::{btreemap, btreeset};
 
@@ -2234,7 +2234,7 @@ mod native_withdrawal_request {
     #[test]
     fn should_have_readable_debug_representation() {
         let request = native_withdrawal_request_with_index(LedgerBurnIndex::new(131));
-        let expected_debug = "NativeWithdrawalRequest { withdrawal_amount: 1_100_000_000_000_000, destination: 0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34, ledger_burn_index: 131, from: k2t6j-2nvnp-4zjm3-25dtz-6xhaa-c7boj-5gayf-oj3xs-i43lp-teztq-6ae, from_subaccount: Some(1111111111111111111111111111111111111111111111111111111111111111), created_at: Some(1699527697000000000) }";
+        let expected_debug = "NativeWithdrawalRequest { withdrawal_amount: 1_100_000_000_000_000, destination: 0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34, ledger_burn_index: 131, from: k2t6j-2nvnp-4zjm3-25dtz-6xhaa-c7boj-5gayf-oj3xs-i43lp-teztq-6ae, from_subaccount: Some(1111111111111111111111111111111111111111111111111111111111111111), created_at: Some(1699527697000000000), l1_fee: None }";
         assert_eq!(format!("{:?}", request), expected_debug);
     }
 }
@@ -2247,7 +2247,7 @@ mod erc_20_withdrawal_request {
     fn should_have_readable_debug_representation() {
         let request =
             erc20_withdrawal_request_with_index(LedgerBurnIndex::new(131), LedgerBurnIndex::new(2));
-        let expected_debug = "Erc20WithdrawalRequest { max_transaction_fee: 30_000_000_000_000_000, withdrawal_amount: 1_100_000_000_000_000, erc20_contract_address: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, destination: 0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34, native_ledger_burn_index: 131, erc20_ledger_id: sa4so-piaaa-aaaar-qacnq-cai, erc20_ledger_burn_index: 2, from: k2t6j-2nvnp-4zjm3-25dtz-6xhaa-c7boj-5gayf-oj3xs-i43lp-teztq-6ae, from_subaccount: Some(1111111111111111111111111111111111111111111111111111111111111111), created_at: 1699527697000000000 }";
+        let expected_debug = "Erc20WithdrawalRequest { max_transaction_fee: 30_000_000_000_000_000, withdrawal_amount: 1_100_000_000_000_000, erc20_contract_address: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, destination: 0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34, native_ledger_burn_index: 131, erc20_ledger_id: sa4so-piaaa-aaaar-qacnq-cai, erc20_ledger_burn_index: 2, from: k2t6j-2nvnp-4zjm3-25dtz-6xhaa-c7boj-5gayf-oj3xs-i43lp-teztq-6ae, from_subaccount: Some(1111111111111111111111111111111111111111111111111111111111111111), created_at: 1699527697000000000, l1_fee: None }";
         assert_eq!(format!("{:?}", request), expected_debug);
     }
 }
@@ -2265,7 +2265,7 @@ mod create_transaction {
         create_transaction, CreateTransactionError, Erc20WithdrawalRequest,
         NativeWithdrawalRequest, TransactionCallData,
     };
-    use crate::tx::GasFeeEstimate;
+    use crate::tx::gas_fees::GasFeeEstimate;
     use crate::tx::{AccessList, Eip1559TransactionRequest};
     use crate::withdraw::NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT;
     use proptest::collection::vec as pvec;
@@ -2498,8 +2498,8 @@ pub mod arbitrary {
         Erc20WithdrawalRequest, NativeWithdrawalRequest, Subaccount, WithdrawalRequest,
     };
     use crate::tx::{
-        AccessList, AccessListItem, Eip1559Signature, Eip1559TransactionRequest, GasFeeEstimate,
-        SignedEip1559TransactionRequest, StorageKey, TransactionPrice,
+        gas_fees::GasFeeEstimate, gas_fees::TransactionPrice, AccessList, AccessListItem,
+        Eip1559Signature, Eip1559TransactionRequest, SignedEip1559TransactionRequest, StorageKey,
     };
     use candid::Principal;
     use phantom_newtype::Id;
@@ -2511,6 +2511,10 @@ pub mod arbitrary {
     use proptest::strategy::Strategy;
 
     pub fn arb_checked_amount_of<Unit>() -> impl Strategy<Value = CheckedAmountOf<Unit>> {
+        uniform32(any::<u8>()).prop_map(CheckedAmountOf::from_be_bytes)
+    }
+
+    pub fn arb_l1_fee<Unit>() -> impl Strategy<Value = CheckedAmountOf<Unit>> {
         uniform32(any::<u8>()).prop_map(CheckedAmountOf::from_be_bytes)
     }
 
@@ -2550,6 +2554,7 @@ pub mod arbitrary {
             arb_principal(),
             proptest::option::of(arb_subaccount()),
             proptest::option::of(any::<u64>()),
+            proptest::option::of(arb_l1_fee()),
         )
             .prop_map(
                 |(
@@ -2559,6 +2564,7 @@ pub mod arbitrary {
                     from,
                     from_subaccount,
                     created_at,
+                    l1_fee,
                 )| {
                     NativeWithdrawalRequest {
                         withdrawal_amount,
@@ -2567,6 +2573,7 @@ pub mod arbitrary {
                         from,
                         from_subaccount,
                         created_at,
+                        l1_fee,
                     }
                 },
             )
@@ -2609,6 +2616,7 @@ pub mod arbitrary {
                         from,
                         from_subaccount,
                         created_at,
+                        l1_fee: None,
                     }
                 },
             )
@@ -2709,6 +2717,7 @@ fn native_withdrawal_request_with_index(
         from: candid::Principal::from_str(DEFAULT_PRINCIPAL).unwrap(),
         from_subaccount: Some(Subaccount(DEFAULT_SUBACCOUNT)),
         created_at: Some(DEFAULT_CREATED_AT),
+        l1_fee: None,
     }
 }
 
@@ -2728,6 +2737,7 @@ fn erc20_withdrawal_request_with_index(
         from: candid::Principal::from_str(DEFAULT_PRINCIPAL).unwrap(),
         from_subaccount: Some(Subaccount(DEFAULT_SUBACCOUNT)),
         created_at: DEFAULT_CREATED_AT,
+        l1_fee: None,
     }
 }
 

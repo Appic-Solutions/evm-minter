@@ -19,9 +19,10 @@ use crate::state::event::{Event, EventType};
 use crate::state::transactions::{Erc20WithdrawalRequest, ReimbursementIndex};
 use crate::state::{Erc20Balances, State};
 use crate::test_fixtures::arb::{arb_address, arb_checked_amount_of, arb_hash};
+use crate::tx::gas_fees::GasFeeEstimate;
 use crate::tx::{
-    AccessList, AccessListItem, Eip1559Signature, Eip1559TransactionRequest, GasFeeEstimate,
-    ResubmissionStrategy, SignedEip1559TransactionRequest, StorageKey,
+    AccessList, AccessListItem, Eip1559Signature, Eip1559TransactionRequest, ResubmissionStrategy,
+    SignedEip1559TransactionRequest, StorageKey,
 };
 use candid::{Nat, Principal};
 use ethnum::u256;
@@ -810,6 +811,7 @@ fn state_equivalence() {
         from: "2chl6-4hpzw-vqaaa-aaaaa-c".parse().unwrap(),
         from_subaccount: None,
         created_at: Some(1699527697000000000),
+        l1_fee: Some(Wei::new(1_000_000_000_000)),
     };
     let withdrawal_request2 = NativeWithdrawalRequest {
         ledger_burn_index: LedgerBurnIndex::new(20),
@@ -832,6 +834,7 @@ fn state_equivalence() {
                     .unwrap(),
                 from_subaccount: None,
                 created_at: Some(1699527697000000000),
+                l1_fee:Some(Wei::new(4_000_000_000_000))
             }.into(),
            withdrawal_request1.ledger_burn_index  => withdrawal_request1.clone().into(),
         },
@@ -1350,6 +1353,7 @@ mod native_balance {
                 .unwrap(),
             from_subaccount: None,
             created_at: Some(1699527697000000000),
+            l1_fee: None,
         };
         let withdrawal_flow = WithdrawalFlow {
             tx_fee: GasFeeEstimate {
@@ -1770,6 +1774,7 @@ fn erc20_withdrawal_request() -> Erc20WithdrawalRequest {
         .unwrap(),
         from_subaccount: None,
         created_at: 1_711_138_972_460_345_032,
+        l1_fee: Some(Wei::new(5_000_000_000_000)),
     }
 }
 

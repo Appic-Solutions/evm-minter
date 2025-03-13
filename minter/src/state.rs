@@ -32,7 +32,7 @@ use crate::{
         BlockNumber, Erc20Value, LedgerBurnIndex, LedgerMintIndex, TransactionNonce, Wei, WeiPerGas,
     },
     rpc_declarations::{BlockTag, Hash, TransactionReceipt, TransactionStatus},
-    tx::GasFeeEstimate,
+    tx::gas_fees::GasFeeEstimate,
 };
 use strum_macros::EnumIter;
 

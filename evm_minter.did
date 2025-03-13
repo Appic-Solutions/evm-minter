@@ -108,6 +108,7 @@ type EventPayload = variant {
     from : principal;
     created_at : opt nat64;
     from_subaccount : opt blob;
+    l1_fee : opt nat;
   };
   CreatedTransaction : record {
     withdrawal_id : nat;
@@ -124,6 +125,7 @@ type EventPayload = variant {
     from_subaccount : opt blob;
     erc20_contract_address : text;
     max_transaction_fee : nat;
+    l1_fee : opt nat;
     native_ledger_burn_index : nat;
   };
   FinalizedTransaction : record {

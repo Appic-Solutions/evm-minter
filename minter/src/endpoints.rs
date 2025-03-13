@@ -6,7 +6,8 @@ use crate::numeric::LedgerBurnIndex;
 use crate::rpc_declarations::TransactionReceipt;
 use crate::state::transactions::NativeWithdrawalRequest;
 use crate::state::transactions::{self, Erc20WithdrawalRequest};
-use crate::tx::{SignedEip1559TransactionRequest, TransactionPrice};
+use crate::tx::gas_fees::TransactionPrice;
+use crate::tx::SignedEip1559TransactionRequest;
 use candid::{CandidType, Deserialize, Nat, Principal};
 use icrc_ledger_types::icrc1::account::Account;
 use minicbor::{Decode, Encode};
@@ -443,6 +444,7 @@ pub mod events {
             from: Principal,
             from_subaccount: Option<[u8; 32]>,
             created_at: Option<u64>,
+            l1_fee: Option<Nat>,
         },
         CreatedTransaction {
             withdrawal_id: Nat,
@@ -494,6 +496,7 @@ pub mod events {
             from: Principal,
             from_subaccount: Option<[u8; 32]>,
             created_at: u64,
+            l1_fee: Option<Nat>,
         },
         FailedErc20WithdrawalRequest {
             withdrawal_id: Nat,

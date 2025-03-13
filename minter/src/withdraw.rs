@@ -1,3 +1,4 @@
+use crate::evm_config::EvmNetwork;
 use crate::guard::TimerGuard;
 use crate::logs::{DEBUG, INFO};
 use crate::numeric::{GasAmount, LedgerBurnIndex, LedgerMintIndex};
@@ -9,7 +10,7 @@ use crate::state::transactions::{
     ReimbursementRequest, WithdrawalRequest,
 };
 use crate::state::{mutate_state, State, TaskType};
-use crate::tx::{lazy_refresh_gas_fee_estimate, GasFeeEstimate};
+use crate::tx::gas_fees::{lazy_refresh_gas_fee_estimate, GasFeeEstimate};
 use crate::{numeric::TransactionCount, state::read_state};
 use candid::Nat;
 use futures::future::join_all;
@@ -443,9 +444,19 @@ async fn finalize_transactions_batch() {
 }
 async fn finalized_transaction_count() -> Result<TransactionCount, MultiCallError<TransactionCount>>
 {
-    read_state(RpcClient::from_state_all_providers)
-        .get_finalized_transaction_count(crate::state::minter_address().await)
-        .await
+    let evm_netowrk = read_state(|s| s.evm_network());
+    match evm_netowrk {
+        EvmNetwork::Ethereum | EvmNetwork::Sepolia | EvmNetwork::BSC => {
+            read_state(RpcClient::from_state_all_providers)
+                .get_finalized_transaction_count(crate::state::minter_address().await)
+                .await
+        }
+        _ => {
+            read_state(RpcClient::from_state_all_providers)
+                .get_latest_transaction_count(crate::state::minter_address().await)
+                .await
+        }
+    }
 }
 
 pub fn estimate_gas_limit(withdrawal_request: &WithdrawalRequest) -> GasAmount {

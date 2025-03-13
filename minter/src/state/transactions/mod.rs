@@ -8,8 +8,9 @@ use crate::evm_config::EvmNetwork;
 use crate::map::MultiKeyMap;
 use crate::numeric::{GasAmount, LedgerMintIndex, TransactionCount, TransactionNonce};
 use crate::rpc_declarations::{Hash, TransactionReceipt, TransactionStatus};
+use crate::tx::gas_fees::GasFeeEstimate;
 use crate::tx::{
-    Eip1559TransactionRequest, FinalizedEip1559Transaction, GasFeeEstimate, ResubmissionStrategy,
+    Eip1559TransactionRequest, FinalizedEip1559Transaction, ResubmissionStrategy,
     SignedEip1559TransactionRequest, SignedTransactionRequest, TransactionRequest,
 };
 use crate::{
@@ -56,6 +57,10 @@ pub struct NativeWithdrawalRequest {
     /// The IC time at which the withdrawal request arrived.
     #[n(5)]
     pub created_at: Option<u64>,
+
+    /// Fee consumed for batch l1 submission, only applicable to some l2s like Op, and Base
+    #[n(6)]
+    pub l1_fee: Option<Wei>,
 }
 
 /// ERC-20 withdrawal request issued by the user.
@@ -91,6 +96,10 @@ pub struct Erc20WithdrawalRequest {
     /// The IC time at which the withdrawal request arrived.
     #[n(9)]
     pub created_at: u64,
+
+    /// Fee consumed for batch l1 submission, only applicable to some l2s like Op, and Base
+    #[n(10)]
+    pub l1_fee: Option<Wei>,
 }
 
 struct DebugPrincipal<'a>(&'a Principal);
@@ -110,6 +119,7 @@ impl fmt::Debug for NativeWithdrawalRequest {
             from,
             from_subaccount,
             created_at,
+            l1_fee,
         } = self;
         f.debug_struct("NativeWithdrawalRequest")
             .field("withdrawal_amount", withdrawal_amount)
@@ -118,6 +128,7 @@ impl fmt::Debug for NativeWithdrawalRequest {
             .field("from", &DebugPrincipal(from))
             .field("from_subaccount", from_subaccount)
             .field("created_at", created_at)
+            .field("l1_fee", l1_fee)
             .finish()
     }
 }
@@ -135,6 +146,7 @@ impl fmt::Debug for Erc20WithdrawalRequest {
             from,
             from_subaccount,
             created_at,
+            l1_fee,
         } = self;
         f.debug_struct("Erc20WithdrawalRequest")
             .field("max_transaction_fee", max_transaction_fee)
@@ -147,6 +159,7 @@ impl fmt::Debug for Erc20WithdrawalRequest {
             .field("from", &DebugPrincipal(from))
             .field("from_subaccount", from_subaccount)
             .field("created_at", created_at)
+            .field("l1_fee", l1_fee)
             .finish()
     }
 }
@@ -1116,7 +1129,11 @@ pub fn create_transaction(
         WithdrawalRequest::Native(request) => {
             let transaction_price = gas_fee_estimate.to_price(gas_limit);
             let max_transaction_fee = transaction_price.max_transaction_fee();
-            let tx_amount = match request.withdrawal_amount.checked_sub(max_transaction_fee) {
+            let l1_fee = request.l1_fee.unwrap_or(Wei::ZERO);
+            let tx_amount = match request
+                .withdrawal_amount
+                .checked_sub(max_transaction_fee.checked_add(l1_fee).unwrap_or(Wei::MAX))
+            {
                 Some(tx_amount) => tx_amount,
                 None => {
                     return Err(CreateTransactionError::InsufficientTransactionFee {
@@ -1146,15 +1163,21 @@ pub fn create_transaction(
             // the transaction could still make it as long as `transaction.max_fee_per_gas >=  block.base_fee_per_gas`,
             // since the `priority_fee_per_gas` received by the miner is capped to (see https://eips.ethereum.org/EIPS/eip-1559)
             // min(transaction.max_priority_fee_per_gas, transaction.max_fee_per_gas - block.base_fee_per_gas).
+            let l1_fee = request.l1_fee.unwrap_or(Wei::ZERO);
             let request_max_fee_per_gas = request
                 .max_transaction_fee
+                .checked_sub(l1_fee)
+                .unwrap_or(Wei::ZERO)
                 .into_wei_per_gas(gas_limit)
                 .expect("BUG: gas_limit should be non-zero");
             let actual_min_max_fee_per_gas = gas_fee_estimate.min_max_fee_per_gas();
             if actual_min_max_fee_per_gas > request_max_fee_per_gas {
                 return Err(CreateTransactionError::InsufficientTransactionFee {
                     native_ledger_burn_index: request.native_ledger_burn_index,
-                    allowed_max_transaction_fee: request.max_transaction_fee,
+                    allowed_max_transaction_fee: request
+                        .max_transaction_fee
+                        .checked_sub(l1_fee)
+                        .unwrap_or(Wei::ZERO),
                     actual_max_transaction_fee: actual_min_max_fee_per_gas
                         .transaction_cost(gas_limit)
                         .unwrap_or(Wei::MAX),
