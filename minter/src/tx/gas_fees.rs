@@ -333,7 +333,7 @@ const ORACLE_ADDRESS: &str = "0xb528D11cC114E026F138fE568744c6D45ce6Da7A";
 
 const GET_L1_GAS_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("49948e0e");
 
-const SAMPLE_CALLDATA_FOR_GET_L1_FEE:&str="0x49948e0e000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000b602f86c0185059682f008503b9aca00825208946b175474e89094c44da98b954eedeac495271d0f80b844a9059cbb0000000000000000000000005a3c9f349cbf0d6b4c7a5671e3d06ce72c826b6b000000000000000000000000000000000000000000000000000000000016345785d8a0000c080a09d14d0d3aabc124ff0c6875b1d6db7a632a53cd0b62e94942be6b850a05af21a074bc3c2cf34378480b44843544f3d0430c8131f64cbaec99a256468e00dbf5d600000000000000000000";
+const SAMPLE_CALLDATA_FOR_GET_L1_FEE:&str="49948e0e000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000b602f86c0185059682f008503b9aca00825208946b175474e89094c44da98b954eedeac495271d0f80b844a9059cbb0000000000000000000000005a3c9f349cbf0d6b4c7a5671e3d06ce72c826b6b000000000000000000000000000000000000000000000000000000000016345785d8a0000c080a09d14d0d3aabc124ff0c6875b1d6db7a632a53cd0b62e94942be6b850a05af21a074bc3c2cf34378480b44843544f3d0430c8131f64cbaec99a256468e00dbf5d600000000000000000000";
 
 /// Asynchronously refreshes the l1 fee estimate.
 ///
@@ -372,7 +372,7 @@ pub async fn lazy_fetch_l1_fee_estimate() -> Option<Wei> {
     async fn get_l1_fee() -> Result<String, MultiCallError<String>> {
         let chain_id = read_state(|s| s.evm_network()).chain_id();
 
-        read_state(RpcClient::from_state_all_providers)
+        read_state(RpcClient::from_state_one_provider_public_node)
             .eth_call(CallParams {
                 transaction: crate::rpc_declarations::TransactionRequestParams {
                     tx_type: None,
@@ -441,6 +441,6 @@ fn check_inpts() {
 
     assert_eq!(
         Hex::from(generated_tx_call_data),
-        Hex::from_str(SAMPLE_CALLDATA_FOR_GET_L1_FEE).expect("Failed to convert to hex")
+        Hex::from(hex::decode(SAMPLE_CALLDATA_FOR_GET_L1_FEE).expect("Failed to convert to hex"))
     );
 }
