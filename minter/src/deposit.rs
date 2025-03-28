@@ -261,8 +261,8 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
                     // Waiting for 12 blocks means the transaction is practically safe on BSC
                     // So we go 12 blocks before the latest block
                     block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(12_u32)
-                            .expect("Removing 20 blocks from latest block should never fail"),
+                        BlockNumber::try_from(3_u32)
+                            .expect("Removing 5 blocks from latest block should never fail"),
                     )
                 }
                 EvmNetwork::ArbitrumOne => {
@@ -270,7 +270,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
                     // considering it to be finalized and safe from reorgs. This waiting period provides a buffer to account for potential fork scenarios
                     //  or other unexpected events.
                     block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(12_u32)
+                        BlockNumber::try_from(6_u32)
                             .expect("Removing 12 blocks from latest block should never fail"),
                     )
                 }
@@ -280,7 +280,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
                     // typically considered sufficient for most applications.
 
                     block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(12_u32)
+                        BlockNumber::try_from(3_u32)
                             .expect("Removing 12 blocks from latest block should never fail"),
                     )
                 }
