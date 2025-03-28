@@ -379,9 +379,11 @@ async fn finalize_transactions_batch() {
                 s.withdrawal_transactions
                     .sent_transactions_to_finalize(&finalized_tx_count)
             });
+
             let expected_finalized_withdrawal_ids: BTreeSet<_> =
                 txs_to_finalize.values().cloned().collect();
             let rpc_client = read_state(RpcClient::from_state_all_providers);
+
             let results = join_all(
                 txs_to_finalize
                     .keys()

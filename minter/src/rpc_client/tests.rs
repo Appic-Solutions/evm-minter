@@ -11,20 +11,38 @@ mod providers {
     #[test]
     fn should_generate_url_with_api_key() {
         set_rpc_api_key(Provider::LlamaNodes, "Test_key_Llama".to_string());
+        set_rpc_api_key(Provider::Alchemy, "Test_key_Alchemy".to_string());
+        set_rpc_api_key(Provider::Ankr, "Test_key_Ankr".to_string());
+        set_rpc_api_key(Provider::DRPC, "Test_key_DRPC".to_string());
 
         assert_eq!(
-            Provider::LlamaNodes.get_url_with_api_key("https://polygon.llamarpc.com"),
+            Provider::LlamaNodes.get_url_with_api_key("https://polygon.llamarpc.com/"),
             "https://polygon.llamarpc.com/Test_key_Llama".to_string()
         );
 
         assert_eq!(
-            Provider::PublicNode.get_url_with_api_key("https://polygon-bor-rpc.publicnode.com"),
-            "https://polygon-bor-rpc.publicnode.com".to_string()
+            Provider::PublicNode.get_url_with_api_key("https://polygon-bor-rpc.publicnode.com/"),
+            "https://polygon-bor-rpc.publicnode.com/".to_string()
+        );
+
+        assert_eq!(
+            Provider::Ankr.get_url_with_api_key("https://rpc.ankr.com/eth/"),
+            "https://rpc.ankr.com/eth/Test_key_Ankr".to_string()
+        );
+
+        assert_eq!(
+            Provider::DRPC.get_url_with_api_key("https://lb.drpc.org/ogrpc?network=ethereum&dkey="),
+            "https://lb.drpc.org/ogrpc?network=ethereum&dkey=Test_key_DRPC".to_string()
+        );
+
+        assert_eq!(
+            Provider::Alchemy.get_url_with_api_key("https://eth-mainnet.g.alchemy.com/v2/"),
+            "https://eth-mainnet.g.alchemy.com/v2/Test_key_Alchemy".to_string()
         )
     }
 
     #[test]
-    fn should_retrieve_at_least_three_providers() {
+    fn should_retrieve_at_least_four_providers() {
         for network in EvmNetwork::iter() {
             match get_providers(network) {
                 evm_rpc_types::RpcServices::Custom {
@@ -39,27 +57,318 @@ mod providers {
     }
 
     #[test]
-    fn should_retrieve_polygon_providers() {
-        let polygon_providers = RpcServices::Custom {
-            chain_id: EvmNetwork::Polygon.chain_id(),
+    fn should_retrieve_ethereum_providers() {
+        set_rpc_api_key(Provider::Ankr, "Test_key_Ankr".to_string());
+        set_rpc_api_key(Provider::DRPC, "Test_key_DRPC".to_string());
+        set_rpc_api_key(Provider::Alchemy, "Test_key_Alchemy".to_string());
+
+        let expected = RpcServices::Custom {
+            chain_id: EvmNetwork::Ethereum.chain_id(),
             services: vec![
                 RpcApi {
-                    url: Provider::LlamaNodes.get_url_with_api_key("https://polygon.llamarpc.com"),
+                    url: "https://rpc.ankr.com/eth/Test_key_Ankr".to_string(),
                     headers: None,
                 },
                 RpcApi {
-                    url: Provider::Ankr.get_url_with_api_key("https://rpc.ankr.com/polygon"),
+                    url: "https://ethereum-rpc.publicnode.com/".to_string(),
                     headers: None,
                 },
                 RpcApi {
-                    url: Provider::PublicNode
-                        .get_url_with_api_key("https://polygon-bor-rpc.publicnode.com"),
+                    url: "https://lb.drpc.org/ogrpc?network=ethereum&dkey=Test_key_DRPC"
+                        .to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://eth-mainnet.g.alchemy.com/v2/Test_key_Alchemy".to_string(),
                     headers: None,
                 },
             ],
         };
 
-        assert_eq!(get_providers(EvmNetwork::Polygon), polygon_providers)
+        assert_eq!(get_providers(EvmNetwork::Ethereum), expected);
+    }
+
+    #[test]
+    fn should_retrieve_sepolia_providers() {
+        set_rpc_api_key(Provider::Ankr, "Test_key_Ankr".to_string());
+        set_rpc_api_key(Provider::DRPC, "Test_key_DRPC".to_string());
+        set_rpc_api_key(Provider::Alchemy, "Test_key_Alchemy".to_string());
+
+        let expected = RpcServices::Custom {
+            chain_id: EvmNetwork::Sepolia.chain_id(),
+            services: vec![
+                RpcApi {
+                    url: "https://rpc.ankr.com/eth_sepolia/Test_key_Ankr".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://ethereum-sepolia-rpc.publicnode.com/".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://lb.drpc.org/ogrpc?network=sepolia&dkey=Test_key_DRPC".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://eth-sepolia.g.alchemy.com/v2/Test_key_Alchemy".to_string(),
+                    headers: None,
+                },
+            ],
+        };
+
+        assert_eq!(get_providers(EvmNetwork::Sepolia), expected);
+    }
+
+    #[test]
+    fn should_retrieve_arbitrum_one_providers() {
+        set_rpc_api_key(Provider::Ankr, "Test_key_Ankr".to_string());
+        set_rpc_api_key(Provider::DRPC, "Test_key_DRPC".to_string());
+        set_rpc_api_key(Provider::Alchemy, "Test_key_Alchemy".to_string());
+
+        let expected = RpcServices::Custom {
+            chain_id: EvmNetwork::ArbitrumOne.chain_id(),
+            services: vec![
+                RpcApi {
+                    url: "https://rpc.ankr.com/arbitrum/Test_key_Ankr".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://arbitrum-one-rpc.publicnode.com/".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://lb.drpc.org/ogrpc?network=arbitrum&dkey=Test_key_DRPC"
+                        .to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://arb-mainnet.g.alchemy.com/v2/Test_key_Alchemy".to_string(),
+                    headers: None,
+                },
+            ],
+        };
+
+        assert_eq!(get_providers(EvmNetwork::ArbitrumOne), expected);
+    }
+
+    #[test]
+    fn should_retrieve_bsc_providers() {
+        set_rpc_api_key(Provider::Ankr, "Test_key_Ankr".to_string());
+        set_rpc_api_key(Provider::DRPC, "Test_key_DRPC".to_string());
+        set_rpc_api_key(Provider::Alchemy, "Test_key_Alchemy".to_string());
+
+        let expected = RpcServices::Custom {
+            chain_id: EvmNetwork::BSC.chain_id(),
+            services: vec![
+                RpcApi {
+                    url: "https://rpc.ankr.com/bsc/Test_key_Ankr".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://bsc-rpc.publicnode.com/".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://lb.drpc.org/ogrpc?network=bsc&dkey=Test_key_DRPC".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://bnb-mainnet.g.alchemy.com/v2/Test_key_Alchemy".to_string(),
+                    headers: None,
+                },
+            ],
+        };
+
+        assert_eq!(get_providers(EvmNetwork::BSC), expected);
+    }
+
+    #[test]
+    fn should_retrieve_bsc_testnet_providers() {
+        set_rpc_api_key(Provider::Ankr, "Test_key_Ankr".to_string());
+        set_rpc_api_key(Provider::DRPC, "Test_key_DRPC".to_string());
+        set_rpc_api_key(Provider::Alchemy, "Test_key_Alchemy".to_string());
+
+        let expected = RpcServices::Custom {
+            chain_id: EvmNetwork::BSCTestnet.chain_id(),
+            services: vec![
+                RpcApi {
+                    url: "https://rpc.ankr.com/bsc_testnet_chapel/Test_key_Ankr".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://bsc-testnet-rpc.publicnode.com/".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://lb.drpc.org/ogrpc?network=bsc-testnet&dkey=Test_key_DRPC"
+                        .to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://bnb-testnet.g.alchemy.com/v2/Test_key_Alchemy".to_string(),
+                    headers: None,
+                },
+            ],
+        };
+
+        assert_eq!(get_providers(EvmNetwork::BSCTestnet), expected);
+    }
+
+    #[test]
+    fn should_retrieve_polygon_providers() {
+        set_rpc_api_key(Provider::Ankr, "Test_key_Ankr".to_string());
+        set_rpc_api_key(Provider::DRPC, "Test_key_DRPC".to_string());
+        set_rpc_api_key(Provider::Alchemy, "Test_key_Alchemy".to_string());
+
+        let expected = RpcServices::Custom {
+            chain_id: EvmNetwork::Polygon.chain_id(),
+            services: vec![
+                RpcApi {
+                    url: "https://rpc.ankr.com/polygon/Test_key_Ankr".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://polygon-bor-rpc.publicnode.com/".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://lb.drpc.org/ogrpc?network=polygon&dkey=Test_key_DRPC".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://polygon-mainnet.g.alchemy.com/v2/Test_key_Alchemy".to_string(),
+                    headers: None,
+                },
+            ],
+        };
+
+        assert_eq!(get_providers(EvmNetwork::Polygon), expected);
+    }
+
+    #[test]
+    fn should_retrieve_optimism_providers() {
+        set_rpc_api_key(Provider::Ankr, "Test_key_Ankr".to_string());
+        set_rpc_api_key(Provider::DRPC, "Test_key_DRPC".to_string());
+        set_rpc_api_key(Provider::Alchemy, "Test_key_Alchemy".to_string());
+
+        let expected = RpcServices::Custom {
+            chain_id: EvmNetwork::Optimism.chain_id(),
+            services: vec![
+                RpcApi {
+                    url: "https://rpc.ankr.com/optimism/Test_key_Ankr".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://optimism-rpc.publicnode.com/".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://lb.drpc.org/ogrpc?network=optimism&dkey=Test_key_DRPC"
+                        .to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://opt-mainnet.g.alchemy.com/v2/Test_key_Alchemy".to_string(),
+                    headers: None,
+                },
+            ],
+        };
+
+        assert_eq!(get_providers(EvmNetwork::Optimism), expected);
+    }
+
+    #[test]
+    fn should_retrieve_base_providers() {
+        set_rpc_api_key(Provider::Ankr, "Test_key_Ankr".to_string());
+        set_rpc_api_key(Provider::DRPC, "Test_key_DRPC".to_string());
+        set_rpc_api_key(Provider::Alchemy, "Test_key_Alchemy".to_string());
+
+        let expected = RpcServices::Custom {
+            chain_id: EvmNetwork::Base.chain_id(),
+            services: vec![
+                RpcApi {
+                    url: "https://rpc.ankr.com/base/Test_key_Ankr".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://base-rpc.publicnode.com/".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://lb.drpc.org/ogrpc?network=base&dkey=Test_key_DRPC".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://base-mainnet.g.alchemy.com/v2/Test_key_Alchemy".to_string(),
+                    headers: None,
+                },
+            ],
+        };
+
+        assert_eq!(get_providers(EvmNetwork::Base), expected);
+    }
+
+    #[test]
+    fn should_retrieve_avalanche_providers() {
+        set_rpc_api_key(Provider::Ankr, "Test_key_Ankr".to_string());
+        set_rpc_api_key(Provider::DRPC, "Test_key_DRPC".to_string());
+        set_rpc_api_key(Provider::Alchemy, "Test_key_Alchemy".to_string());
+
+        let expected = RpcServices::Custom {
+            chain_id: EvmNetwork::Avalanche.chain_id(),
+            services: vec![
+                RpcApi {
+                    url: "https://rpc.ankr.com/avalanche/Test_key_Ankr".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://avalanche-c-chain-rpc.publicnode.com/".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://lb.drpc.org/ogrpc?network=avalanche&dkey=Test_key_DRPC"
+                        .to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://avax-mainnet.g.alchemy.com/v2/Test_key_Alchemy".to_string(),
+                    headers: None,
+                },
+            ],
+        };
+
+        assert_eq!(get_providers(EvmNetwork::Avalanche), expected);
+    }
+
+    #[test]
+    fn should_retrieve_fantom_providers() {
+        set_rpc_api_key(Provider::Ankr, "Test_key_Ankr".to_string());
+        set_rpc_api_key(Provider::DRPC, "Test_key_DRPC".to_string());
+        set_rpc_api_key(Provider::Alchemy, "Test_key_Alchemy".to_string());
+
+        let expected = RpcServices::Custom {
+            chain_id: EvmNetwork::Fantom.chain_id(),
+            services: vec![
+                RpcApi {
+                    url: "https://rpc.ankr.com/fantom/Test_key_Ankr".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://fantom-rpc.publicnode.com/".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://lb.drpc.org/ogrpc?network=fantom&dkey=Test_key_DRPC".to_string(),
+                    headers: None,
+                },
+                RpcApi {
+                    url: "https://fantom-mainnet.g.alchemy.com/v2/Test_key_Alchemy".to_string(),
+                    headers: None,
+                },
+            ],
+        };
+
+        assert_eq!(get_providers(EvmNetwork::Fantom), expected);
     }
 }
 

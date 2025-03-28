@@ -17,6 +17,7 @@ use crate::evm_config::EvmNetwork;
 use crate::guard::TimerGuard;
 use crate::logs::{DEBUG, INFO};
 use crate::numeric::{BlockNumber, BlockRangeInclusive, LedgerMintIndex};
+use crate::rpc_client::providers::Provider;
 use crate::rpc_client::{is_response_too_large, MultiCallError, RpcClient};
 use crate::rpc_declarations::LogEntry;
 use crate::rpc_declarations::Topic;
@@ -249,7 +250,7 @@ pub async fn scrape_logs() {
 pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
     let block_height = read_state(State::block_height);
     let network = read_state(|state| state.evm_network);
-    match read_state(RpcClient::from_state_one_provider_public_node)
+    match read_state(|s| RpcClient::from_state_one_provider(s, Provider::DRPC))
         .get_block_by_number(BlockSpec::Tag(block_height))
         .await
     {

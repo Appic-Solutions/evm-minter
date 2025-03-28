@@ -207,13 +207,18 @@ pub async fn lazy_refresh_gas_fee_estimate() -> Option<GasFeeEstimate> {
     }
 
     async fn get_fee_history() -> Result<FeeHistory, MultiCallError<FeeHistory>> {
-        read_state(RpcClient::from_state_one_provider_public_node)
-            .fee_history(FeeHistoryParams {
-                block_count: Quantity::from(5_u8),
-                highest_block: BlockSpec::Tag(BlockTag::Latest),
-                reward_percentiles: vec![50],
-            })
-            .await
+        read_state(|s| {
+            RpcClient::from_state_one_provider(
+                s,
+                crate::rpc_client::providers::Provider::PublicNode,
+            )
+        })
+        .fee_history(FeeHistoryParams {
+            block_count: Quantity::from(5_u8),
+            highest_block: BlockSpec::Tag(BlockTag::Latest),
+            reward_percentiles: vec![50],
+        })
+        .await
     }
 
     let now_ns = ic_cdk::api::time();
@@ -323,7 +328,7 @@ fn median<T: Ord>(values: &mut [T]) -> Option<&T> {
 // Data: ABI-encoded transfer(address,uint256) call.
 // Access List: Empty (0x80).
 // Signature: 65 bytes (v, r, s).
-//
+
 // Sample erc20 tx is slightly longer than native transfer, so we choose erc20 transfer for both of
 // them to add some buffer for native transfer as well
 
@@ -372,7 +377,7 @@ pub async fn lazy_fetch_l1_fee_estimate() -> Option<Wei> {
     async fn get_l1_fee() -> Result<String, MultiCallError<String>> {
         let chain_id = read_state(|s| s.evm_network()).chain_id();
 
-        read_state(RpcClient::from_state_one_provider_public_node)
+        read_state(RpcClient::from_state_all_providers)
             .eth_call(CallParams {
                 transaction: crate::rpc_declarations::TransactionRequestParams {
                     tx_type: None,
