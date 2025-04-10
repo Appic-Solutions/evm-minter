@@ -69,3 +69,4 @@ contract WrappedToken is ERC20 {
         return _decimals;
     }
 }
+

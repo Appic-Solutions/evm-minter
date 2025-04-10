@@ -37,14 +37,7 @@ abstract contract TokenManager {
         uint8 decimals;
     }
     
-    // Internal function to check if caller is controller
-    function isController(address account) internal view virtual returns (bool);
-
-    // Modified to use custom errors
-    modifier onlyController() virtual {
-    if (!isController(msg.sender)) revert NotController();
-    _;
-    }
+   
 
     /**
      * @dev Constructor to initialize the TokenManager
@@ -62,12 +55,12 @@ abstract contract TokenManager {
     * @param decimals Token decimals
     * @param baseToken ICP token identifier as bytes32
      */
-    function deployERC20(
+    function _deployERC20(
     string memory name,
     string memory symbol,
     uint8 decimals,
-    bytes32 baseToken  // Changed from address to bytes32
-    ) public onlyController returns (address) {
+    bytes32 baseToken  
+    ) internal  returns (address){
         require(_baseToWrapped[baseToken] == address(0), "Wrapper already exist");
 
         WrappedToken wrappedERC20 = new WrappedToken(name, symbol, decimals, minterAddress);
@@ -114,3 +107,4 @@ abstract contract TokenManager {
         return _wrappedTokenList;
     }
 }
+
