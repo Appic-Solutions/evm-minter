@@ -43,51 +43,71 @@ contract IcpEvmBridge is TokenManager, Ownable, Pausable {
     }
 
     /**
-        * @dev Burns/Locks tokens to bridge them to ICP
-        * For native tokens (address(0)):
-        * - Locks the native token by sending to minter
-        * - Requires msg.value to cover amount + burn fee
-        * 
-        * For ERC20 tokens:
-        * - Burns the wrapped token by sending to minter (using WrappedToken burn mechanism)
-        * - Requires msg.value to cover burn fee
-        * - Requires token approval
-        *
-        * @param params BurnParams containing:
-        * - amount: Amount of tokens to burn/lock
-        * - icpRecipient: ICP recipient address as bytes32
-        * - Principal: : ICP token identifier
-        */
-    function burn(
-        BurnParams calldata params
-    ) external payable whenNotPaused {
-        if (params.amount == 0) revert ZeroAmount();
-        if (params.icpRecipient == bytes32(0)) revert InvalidICPAddress();
-        address wrappedToken = _baseToWrapped[params.principal];
-        if (wrappedToken == address(0)) revert InvalidTokenIdentifier();
-
-        // Handle native token burn/lock
-        if (wrappedToken == NATIVE_TOKEN_ADDRESS) {
-            
-            // Transfer to minter
-            (bool success,) = minterAddress.call{value: params.amount}("");
-            if (!success) revert TransferFailed();
-            
-        } 
-        // Handle ERC20 token burn
-        else {
-            
-            // Transfer tokens to minter (will automatically burn due to WrappedToken logic)
-            IERC20(wrappedToken).safeTransferFrom(msg.sender, minterAddress, params.amount);
-        }
-
-         emit TokenBurn(
+ * @dev Burns/Locks tokens to bridge them to ICP
+ * For native tokens (ETH, BNB, etc.):
+ * - Detects by checking msg.value > 0
+ * - Locks by transferring to minter
+ * 
+ * For wrapped tokens (created by this bridge):
+ * - Looks up in _baseToWrapped mapping
+ * - Burns by transferring to minter (WrappedToken handles burning)
+ * 
+ * For external ERC20 tokens:
+ * - Uses params.principal directly as token address when not found in mapping
+ * - Locks by transferring to minter
+ *
+ * @param params BurnParams containing:
+ * - amount: Amount of tokens to burn/lock
+ * - icpRecipient: ICP recipient address as bytes32
+ * - principal: ICP token identifier or ERC20 token address
+ */
+function burn(
+    BurnParams calldata params
+) external payable whenNotPaused {
+    if (params.amount == 0) revert ZeroAmount();
+    if (params.icpRecipient == bytes32(0)) revert InvalidICPAddress();
+    
+    if (msg.value > 0) {
+        if (msg.value != params.amount) revert InsufficientNativeToken();
+        
+        (bool success,) = minterAddress.call{value: params.amount}("");
+        if (!success) revert TransferFailed();
+        
+        emit TokenBurn(
+            msg.sender,
+            params.amount,
+            params.icpRecipient,
+            NATIVE_TOKEN_ADDRESS
+        );
+        return;
+    }
+    
+    address wrappedToken = _baseToWrapped[params.principal];
+    if (wrappedToken != address(0)) {
+        IERC20(wrappedToken).safeTransferFrom(msg.sender, minterAddress, params.amount);
+        
+        emit TokenBurn(
             msg.sender,
             params.amount,
             params.icpRecipient,
             wrappedToken
         );
+        return;
     }
+    
+    address externalToken = address(uint160(uint256(params.principal)));
+    if (externalToken == address(0)) revert InvalidTokenIdentifier();
+    
+    IERC20(externalToken).safeTransferFrom(msg.sender, minterAddress, params.amount);
+    
+    emit TokenBurn(
+        msg.sender,
+        params.amount,
+        params.icpRecipient,
+        externalToken
+    );
+}
+
     
     function deployERC20(
     string memory name,
