@@ -17,14 +17,14 @@ contract IcpEvmBridge is TokenManager, Ownable, Pausable {
     error TransferFailed();
     error ZeroAmount();
     error InsufficientNativeToken();
-    error InvalidTokenIdentifier();
+    error InvalidTokenAddress();
 
     
     event TokenBurn(
         address indexed fromAddress,        
         uint256 amount,              
         bytes32 indexed icpRecipient,
-        address wrappedToken
+        address indexed TokenAddress
     );
 
     event FeeWithdrawal(address indexed collector, uint256 amount, uint256 timestamp);
@@ -32,12 +32,12 @@ contract IcpEvmBridge is TokenManager, Ownable, Pausable {
     struct BurnParams {
     uint256 amount;
     bytes32 icpRecipient;
-    bytes32 principal;    
+    address TokenAddress;   
     }
 
     constructor(
         address _minterAddress
-    ) TokenManager(_minterAddress)   Ownable(msg.sender) {
+    ) TokenManager(_minterAddress) Ownable(msg.sender) {
 
        
     }
@@ -59,14 +59,14 @@ contract IcpEvmBridge is TokenManager, Ownable, Pausable {
  * @param params BurnParams containing:
  * - amount: Amount of tokens to burn/lock
  * - icpRecipient: ICP recipient address as bytes32
- * - principal: ICP token identifier or ERC20 token address
+ * - TokenAddress:  ERC20 token address
  */
 function burn(
     BurnParams calldata params
 ) external payable whenNotPaused {
     if (params.amount == 0) revert ZeroAmount();
     if (params.icpRecipient == bytes32(0)) revert InvalidICPAddress();
-    
+    //native token 
     if (msg.value > 0) {
         if (msg.value != params.amount) revert InsufficientNativeToken();
         
@@ -82,31 +82,24 @@ function burn(
         return;
     }
     
-    address wrappedToken = _baseToWrapped[params.principal];
-    if (wrappedToken != address(0)) {
-        IERC20(wrappedToken).safeTransferFrom(msg.sender, minterAddress, params.amount);
+    address token = params.TokenAddress;
+    if  (token == address(0)) revert InvalidTokenAddress();
+    
+    IERC20(token).safeTransferFrom(msg.sender, minterAddress, params.amount);
         
         emit TokenBurn(
             msg.sender,
             params.amount,
             params.icpRecipient,
-            wrappedToken
+            token
         );
         return;
-    }
     
-    address externalToken = address(uint160(uint256(params.principal)));
-    if (externalToken == address(0)) revert InvalidTokenIdentifier();
-    
-    IERC20(externalToken).safeTransferFrom(msg.sender, minterAddress, params.amount);
-    
-    emit TokenBurn(
-        msg.sender,
-        params.amount,
-        params.icpRecipient,
-        externalToken
-    );
+
+
+   
 }
+
 
     
     function deployERC20(
