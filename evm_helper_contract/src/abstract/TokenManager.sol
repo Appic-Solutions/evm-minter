@@ -1,4 +1,3 @@
-
 // SPDX-License-Identifier: MIT
 
 pragma solidity ^0.8.20;
@@ -20,7 +19,7 @@ abstract contract TokenManager {
 
     // Minter address
     address public minterAddress;
-    
+
     // Custom errors
     error WrapperAlreadyExists();
     error InvalidBaseToken();
@@ -28,7 +27,10 @@ abstract contract TokenManager {
     error InvalidMinter();
 
     /// Events
-    event WrappedTokenDeployed(bytes32 indexed baseToken, address indexed wrappedERC20);
+    event WrappedTokenDeployed(
+        bytes32 indexed baseToken,
+        address indexed wrappedERC20
+    );
 
     /// Token metadata
     struct TokenMetadata {
@@ -36,8 +38,6 @@ abstract contract TokenManager {
         bytes16 symbol;
         uint8 decimals;
     }
-    
-   
 
     /**
      * @dev Constructor to initialize the TokenManager
@@ -49,21 +49,29 @@ abstract contract TokenManager {
     }
 
     /**
-    * @dev Creates a new ERC20 compatible token contract as a wrapper
-    * @param name Token name
-    * @param symbol Token symbol
-    * @param decimals Token decimals
-    * @param baseToken ICP token identifier as bytes32
+     * @dev Creates a new ERC20 compatible token contract as a wrapper
+     * @param name Token name
+     * @param symbol Token symbol
+     * @param decimals Token decimals
+     * @param baseToken ICP token identifier as bytes32
      */
     function _deployERC20(
-    string memory name,
-    string memory symbol,
-    uint8 decimals,
-    bytes32 baseToken  
-    ) internal  returns (address){
-        require(_baseToWrapped[baseToken] == address(0), "Wrapper already exist");
+        string memory name,
+        string memory symbol,
+        uint8 decimals,
+        bytes32 baseToken
+    ) internal returns (address) {
+        require(
+            _baseToWrapped[baseToken] == address(0),
+            "Wrapper already exist"
+        );
 
-        WrappedToken wrappedERC20 = new WrappedToken(name, symbol, decimals, minterAddress);
+        WrappedToken wrappedERC20 = new WrappedToken(
+            name,
+            symbol,
+            decimals,
+            minterAddress
+        );
         address tokenAddress = address(wrappedERC20);
         _wrappedTokenList.push(tokenAddress);
 
@@ -75,12 +83,13 @@ abstract contract TokenManager {
         return tokenAddress;
     }
 
-
     /**
      * @dev Query token metadata
      * @param token Address of the token to query
      */
-    function getTokenMetadata(address token) internal view returns (TokenMetadata memory meta) {
+    function getTokenMetadata(
+        address token
+    ) internal view returns (TokenMetadata memory meta) {
         try IERC20Metadata(token).name() returns (string memory _name) {
             meta.name = StringUtils.truncateUTF8(_name);
         } catch {}
@@ -96,8 +105,10 @@ abstract contract TokenManager {
      * @dev Returns wrapped token for the given base token
      * @param baseToken ICP token identifier as bytes32
      */
-    function getWrappedToken(bytes32 baseToken) external view returns (address) {
-    return _baseToWrapped[baseToken];
+    function getWrappedToken(
+        bytes32 baseToken
+    ) external view returns (address) {
+        return _baseToWrapped[baseToken];
     }
 
     /**
@@ -107,4 +118,3 @@ abstract contract TokenManager {
         return _wrappedTokenList;
     }
 }
-

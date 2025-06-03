@@ -32,12 +32,12 @@ fn deserialize_block_spec() {
         serde_json::from_str("\"finalized\"").unwrap()
     );
 }
-mod get_deposit_logs {
-    use crate::deposit::validate_log_scraping_request;
-    use crate::deposit_logs::{
+mod get_contract_logs {
+    use crate::contract_logs::{
         LedgerSubaccount, LogParser, ReceivedDepositLogParser, ReceivedErc20Event,
         ReceivedNativeEvent,
     };
+    use crate::deposit::validate_log_scraping_request;
     use crate::endpoints::RequestScrapingError;
     use crate::eth_types::Address;
     use crate::numeric::{BlockNumber, Erc20Value, LogIndex, Wei};
@@ -88,7 +88,7 @@ mod get_deposit_logs {
 
     #[test]
     fn should_have_correct_topic() {
-        use crate::deposit_logs::RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC;
+        use crate::contract_logs::RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC;
 
         //must match event signature in minter.sol
         let event_signature = "DepositLog(address,address,uint256,bytes32,bytes32)";
@@ -263,7 +263,7 @@ mod get_deposit_logs {
 
     #[test]
     fn should_not_parse_removed_event() {
-        use crate::deposit_logs::{EventSource, EventSourceError, ReceivedDepositEventError};
+        use crate::contract_logs::{EventSource, EventSourceError, ReceivedDepositEventError};
         let event = r#"{
             "address": "0xb44b5e756a894775fc32eddf3314bb1b1944dc34",
             "topics": [

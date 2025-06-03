@@ -1,15 +1,16 @@
 use std::str::FromStr;
 
-use crate::deposit_logs::{
-    LogParser, ReceivedDepositLogParser, RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC,
-};
 use crate::eth_types::Address;
 use crate::numeric::BlockNumber;
 use crate::rpc_declarations::{FixedSizeData, Topic};
 use crate::state::State;
 
+use super::new_contract::{RECEIVED_BURNT_TOKEN_EVENT, RECEIVED_WRAPPED_ICP_DEPLOYED_EVENT};
+use super::old_contract::RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC;
+use super::parser::{LogParser, ReceivedEventsLogParser};
+
 pub struct Scrape {
-    pub contract_address: Address,
+    pub contract_addresses: Vec<Address>,
     pub last_scraped_block_number: BlockNumber,
     pub topics: Vec<Topic>,
 }
@@ -23,11 +24,12 @@ pub trait LogScraping {
     fn update_last_scraped_block_number(state: &mut State, block_number: BlockNumber);
 }
 
-pub enum ReceivedDepositLogScraping {}
+pub enum ReceivedEventsLogScraping {}
 
-impl LogScraping for ReceivedDepositLogScraping {
-    type Parser = ReceivedDepositLogParser;
+impl LogScraping for ReceivedEventsLogScraping {
+    type Parser = ReceivedEventsLogParser;
 
+    // TODO: Add contract addresses
     fn next_scrape(state: &State) -> Option<Scrape> {
         let contract_address = state
             .helper_contract_address
@@ -44,9 +46,12 @@ impl LogScraping for ReceivedDepositLogScraping {
             Address::from_str("0x0000000000000000000000000000000000000000")
                 .expect("Should not fail converting zero address"),
         );
-        let mut topics: Vec<_> = vec![Topic::from(FixedSizeData(
-            RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC,
-        ))];
+
+        let mut topics: Vec<_> = vec![
+            Topic::from(FixedSizeData(RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC)),
+            Topic::from(FixedSizeData(RECEIVED_BURNT_TOKEN_EVENT)),
+            Topic::from(FixedSizeData(RECEIVED_WRAPPED_ICP_DEPLOYED_EVENT)),
+        ];
         // We add token contract addresses as additional topics to match.
         // It has a disjunction semantics, so it will match if event matches any one of these addresses.
         topics.push(
@@ -58,7 +63,7 @@ impl LogScraping for ReceivedDepositLogScraping {
         );
 
         Some(Scrape {
-            contract_address,
+            contract_addresses: vec![],
             last_scraped_block_number,
             topics,
         })

@@ -853,7 +853,6 @@ dependencies = [
  "ic-cdk-timers",
  "ic-crypto-sha2",
  "ic-crypto-test-utils-reproducible-rng",
- "ic-ethereum-types",
  "ic-icrc1-index-ng",
  "ic-icrc1-ledger",
  "ic-management-canister-types",
@@ -1529,18 +1528,6 @@ dependencies = [
  "serde",
  "strum",
  "strum_macros",
-]
-
-[[package]]
-name = "ic-ethereum-types"
-version = "1.0.0"
-source = "git+https://github.com/dfinity/ic.git#a31f1db8fb38a6a28fa7f32228955b638754606f"
-dependencies = [
- "hex",
- "ic-sha3",
- "minicbor",
- "minicbor-derive",
- "serde",
 ]
 
 [[package]]

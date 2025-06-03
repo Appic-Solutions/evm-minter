@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests;
-use crate::deposit_logs::ReceivedDepositEvent;
+use crate::contract_logs::ReceivedDepositEvent;
 use crate::erc20::ERC20TokenSymbol;
 use crate::eth_types::Address;
 use crate::numeric::{Erc20Value, LogIndex};

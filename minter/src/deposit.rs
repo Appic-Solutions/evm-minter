@@ -6,11 +6,11 @@ use ic_canister_log::log;
 use icrc_ledger_types::icrc1::account::Account;
 use scopeguard::ScopeGuard;
 
-use crate::deposit_logs::{
+use crate::contract_logs::{
     report_transaction_error, ReceivedDepositEvent, ReceivedDepositEventError,
 };
-use crate::deposit_logs::{LogParser, ReceivedDepositLogParser};
-use crate::deposit_logs::{LogScraping, ReceivedDepositLogScraping};
+use crate::contract_logs::{LogParser, ReceivedDepositLogParser};
+use crate::contract_logs::{LogScraping, ReceivedDepositLogScraping};
 use crate::endpoints::RequestScrapingError;
 use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;

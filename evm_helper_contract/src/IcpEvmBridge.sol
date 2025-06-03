@@ -10,7 +10,6 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 contract IcpEvmBridge is TokenManager, Ownable, Pausable {
     using SafeERC20 for IERC20;
 
-    
     // Custom errors
     error InvalidICPAddress();
     error InvalidRecipient();
@@ -19,94 +18,94 @@ contract IcpEvmBridge is TokenManager, Ownable, Pausable {
     error InsufficientNativeToken();
     error InvalidTokenAddress();
 
-    
     event TokenBurn(
-        address indexed fromAddress,        
-        uint256 amount,              
+        address indexed fromAddress,
+        uint256 amount,
         bytes32 indexed icpRecipient,
-        address indexed TokenAddress
+        address indexed TokenAddress,
+        bytes32 subaccount
     );
 
-    event FeeWithdrawal(address indexed collector, uint256 amount, uint256 timestamp);
+    event FeeWithdrawal(
+        address indexed collector,
+        uint256 amount,
+        uint256 timestamp
+    );
 
     struct BurnParams {
-    uint256 amount;
-    bytes32 icpRecipient;
-    address TokenAddress;   
+        uint256 amount;
+        bytes32 icpRecipient;
+        address TokenAddress;
+        bytes32 subaccount;
     }
 
     constructor(
         address _minterAddress
-    ) TokenManager(_minterAddress) Ownable(msg.sender) {
-
-       
-    }
+    ) TokenManager(_minterAddress) Ownable(msg.sender) {}
 
     /**
- * @dev Burns/Locks tokens to bridge them to ICP
- * For native tokens (ETH, BNB, etc.):
- * - Detects by checking msg.value > 0
- * - Locks by transferring to minter
- * 
- * For wrapped tokens (created by this bridge):
- * - Looks up in _baseToWrapped mapping
- * - Burns by transferring to minter (WrappedToken handles burning)
- * 
- * For external ERC20 tokens:
- * - Uses params.principal directly as token address when not found in mapping
- * - Locks by transferring to minter
- *
- * @param params BurnParams containing:
- * - amount: Amount of tokens to burn/lock
- * - icpRecipient: ICP recipient address as bytes32
- * - TokenAddress:  ERC20 token address
- */
-function burn(
-    BurnParams calldata params
-) external payable whenNotPaused {
-    if (params.amount == 0) revert ZeroAmount();
-    if (params.icpRecipient == bytes32(0)) revert InvalidICPAddress();
-    //native token 
-    if (msg.value > 0) {
-        if (msg.value != params.amount) revert InsufficientNativeToken();
-        
-        (bool success,) = minterAddress.call{value: params.amount}("");
-        if (!success) revert TransferFailed();
-        
+     * @dev Burns/Locks tokens to bridge them to ICP
+     * For native tokens (ETH, BNB, etc.):
+     * - Detects by checking msg.value > 0
+     * - Locks by transferring to minter
+     *
+     * For wrapped tokens (created by this bridge):
+     * - Looks up in _baseToWrapped mapping
+     * - Burns by transferring to minter (WrappedToken handles burning)
+     *
+     * For external ERC20 tokens:
+     * - Uses params.principal directly as token address when not found in mapping
+     * - Locks by transferring to minter
+     *
+     * @param params BurnParams containing:
+     * - amount: Amount of tokens to burn/lock
+     * - icpRecipient: ICP recipient address as bytes32
+     * - TokenAddress:  ERC20 token address
+     */
+    function burn(BurnParams calldata params) external payable whenNotPaused {
+        if (params.amount == 0) revert ZeroAmount();
+        if (params.icpRecipient == bytes32(0)) revert InvalidICPAddress();
+        //native token
+        if (msg.value > 0) {
+            if (msg.value != params.amount) revert InsufficientNativeToken();
+
+            (bool success, ) = minterAddress.call{value: params.amount}("");
+            if (!success) revert TransferFailed();
+
+            emit TokenBurn(
+                msg.sender,
+                params.amount,
+                params.icpRecipient,
+                NATIVE_TOKEN_ADDRESS,
+                params.subaccount
+            );
+            return;
+        }
+
+        address token = params.TokenAddress;
+        if (token == address(0)) revert InvalidTokenAddress();
+
+        IERC20(token).safeTransferFrom(
+            msg.sender,
+            minterAddress,
+            params.amount
+        );
+
         emit TokenBurn(
             msg.sender,
             params.amount,
             params.icpRecipient,
-            NATIVE_TOKEN_ADDRESS
+            token,
+            params.subaccount
         );
         return;
     }
-    
-    address token = params.TokenAddress;
-    if  (token == address(0)) revert InvalidTokenAddress();
-    
-    IERC20(token).safeTransferFrom(msg.sender, minterAddress, params.amount);
-        
-        emit TokenBurn(
-            msg.sender,
-            params.amount,
-            params.icpRecipient,
-            token
-        );
-        return;
-    
 
-
-   
-}
-
-
-    
     function deployERC20(
-    string memory name,
-    string memory symbol,
-    uint8 decimals,
-    bytes32 baseToken
+        string memory name,
+        string memory symbol,
+        uint8 decimals,
+        bytes32 baseToken
     ) public onlyOwner returns (address) {
         return _deployERC20(name, symbol, decimals, baseToken);
     }
@@ -127,6 +126,3 @@ function burn(
         revert("Unsupported operation");
     }
 }
-
-
-

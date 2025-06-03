@@ -2,14 +2,17 @@
 mod tests;
 
 pub mod audit;
+pub mod balances;
 pub mod event;
 pub mod transactions;
+
 use std::{
     cell::RefCell,
     collections::{btree_map, BTreeMap, BTreeSet, HashSet},
     fmt::{Display, Formatter},
 };
 
+use balances::{Erc20Balances, IcrcBalances, NativeBalance};
 use candid::Principal;
 use ic_canister_log::log;
 use secp256k1::PublicKey;
@@ -20,7 +23,7 @@ use transactions::{
 
 use crate::{
     address::ecdsa_public_key_to_address,
-    deposit_logs::{EventSource, ReceivedDepositEvent},
+    contract_logs::{EventSource, ReceivedContractEvent},
     endpoints::DepositStatus,
     erc20::{ERC20Token, ERC20TokenSymbol},
     eth_types::Address,
@@ -83,17 +86,27 @@ pub enum InvalidStateError {
     InvalidFeeInput(String),
 }
 
+// events for minted(wrapped) erc20 tokens
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MintedEvent {
-    pub deposit_event: ReceivedDepositEvent,
+    pub event: ReceivedContractEvent,
     pub mint_block_index: LedgerMintIndex,
     pub token_symbol: String,
     pub erc20_contract_address: Option<Address>,
 }
 
+// events for unlocked(unwrapped) icp tokens
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReleasedEvent {
+    pub event: ReceivedContractEvent,
+    pub release_block_index: LedgerMintIndex,
+    pub icp_ledger_principal: Principal,
+    pub erc20_contract_address: Address,
+}
+
 impl MintedEvent {
     pub fn source(&self) -> EventSource {
-        self.deposit_event.source()
+        self.event.source()
     }
 }
 
@@ -118,8 +131,14 @@ pub struct State {
     pub last_scraped_block_number: BlockNumber,
     pub last_observed_block_number: Option<BlockNumber>,
     pub last_observed_block_time: Option<u64>,
-    pub events_to_mint: BTreeMap<EventSource, ReceivedDepositEvent>,
+
+    // after icp-evm bridge update we have both events to mint and events to release locked
+    // icp tokens in case the wrapped ones on the evm side are already burnt
+    pub events_to_mint: BTreeMap<EventSource, ReceivedContractEvent>,
+    pub events_to_release: BTreeMap<EventSource, ReceivedContractEvent>,
+
     pub minted_events: BTreeMap<EventSource, MintedEvent>,
+    pub released_events: BTreeMap<EventSource, ReleasedEvent>,
     pub invalid_events: BTreeMap<EventSource, InvalidEventReason>,
 
     pub withdrawal_transactions: WithdrawalTransactions,
@@ -133,6 +152,8 @@ pub struct State {
     // Computed based on audit events.
     pub erc20_balances: Erc20Balances,
 
+    pub icp_tokens_balances: IcrcBalances,
+
     // /// Per-principal lock for pending withdrawals
     pub pending_withdrawal_principals: BTreeSet<Principal>,
 
@@ -142,22 +163,27 @@ pub struct State {
     // Transaction price estimate
     pub last_transaction_price_estimate: Option<(u64, GasFeeEstimate)>,
 
-    // Fees taken per deposit and withdrawal in native token format
-    // Option types, since the operation can be free as well
-    // If the deposit type is Erc20, Fees will be free cause fees will be charged in native token wei format
-    // How ever for withdrawal users need native token anyways so we can charge them with fees in twin native token
-    // Withdrawal fees should cover cycles cost for signing messages
-    pub deposit_native_fee: Option<Wei>,
-    pub withdrawal_native_fee: Option<Wei>,
+    /// fees charged for withdraw and mint_wrapped icp tokens operations in order to cover signing cost,
+    /// can be none in case there is no need to charge any withdrawal fees.
+    pub withdraw_native_fee: Option<Wei>,
+
+    pub total_withdraw_fee_collected: Wei,
 
     // Canister ID of the ledger suite manager that
     // can add new ERC-20 token to the minter
     pub ledger_suite_manager_id: Option<Principal>,
+
     /// ERC-20 tokens that the minter can mint:
     /// - primary key: ledger ID for the ERC20 token
-    /// - secondary key: ERC-20 contract address on Ethereum
+    /// - secondary key: ERC-20 contract address on EVM
     /// - value: ERC20 token symbol
     pub erc20_tokens: DedupMultiKeyMap<Principal, Address, ERC20TokenSymbol>,
+
+    /// Icrc tokens that the minter can lock, and mint on the evm side
+    /// - primary key: ledger ID for the ICRC token
+    /// - secondary key: ERC-20 contract address on EVM
+    /// - value: ICRC token symbol
+    pub wrapped_icp_tokens: DedupMultiKeyMap<Principal, Address, String>,
 
     pub min_max_priority_fee_per_gas: WeiPerGas,
 
@@ -225,7 +251,7 @@ impl State {
         1000_u16
     }
 
-    pub fn events_to_mint(&self) -> Vec<ReceivedDepositEvent> {
+    pub fn events_to_mint(&self) -> Vec<ReceivedContractEvent> {
         self.events_to_mint.values().cloned().collect()
     }
 
@@ -247,14 +273,21 @@ impl State {
         }
     }
 
-    fn record_event_to_mint(&mut self, event: &ReceivedDepositEvent) {
+    fn record_event_to_mint_or_release(&mut self, event: &ReceivedContractEvent) {
         let event_source = event.source();
         assert!(
             !self.events_to_mint.contains_key(&event_source),
             "there must be no two different events with the same source"
         );
+        assert!(
+            !self.events_to_release.contains_key(&event_source),
+            "there must be no two different events with the same source"
+        );
+
         assert!(!self.minted_events.contains_key(&event_source));
+        assert!(!self.released_events.contains_key(&event_source));
         assert!(!self.invalid_events.contains_key(&event_source));
+
         if let ReceivedDepositEvent::Erc20(event) = event {
             assert!(
                 self.erc20_tokens
@@ -374,10 +407,12 @@ impl State {
         self.update_balance_upon_withdrawal(withdrawal_id, receipt);
     }
 
-    fn update_balance_upon_deposit(&mut self, event: &ReceivedDepositEvent) {
+    fn update_balance_upon_deposit(&mut self, event: &ReceivedContractEvent) {
         match event {
-            ReceivedDepositEvent::Native(event) => self.native_balance.eth_balance_add(event.value),
-            ReceivedDepositEvent::Erc20(event) => self
+            ReceivedContractEvent::NativeDeposit(event) => {
+                self.native_balance.eth_balance_add(event.value)
+            }
+            ReceivedContractEvent::Erc20Deposit(event) => self
                 .erc20_balances
                 .erc20_add(event.erc20_contract_address, event.value),
         };
@@ -632,138 +667,6 @@ where
             .as_mut()
             .expect("BUG: state is not initialized"))
     })
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NativeBalance {
-    /// Amount of ETH controlled by the minter's address via tECDSA.
-    /// Note that invalid deposits are not accounted for and so this value
-    /// might be less than what is displayed by Etherscan
-    /// or retrieved by the JSON-RPC call `eth_getBalance`.
-    /// Also, some transactions may have gone directly to the minter's address
-    /// without going via the helper smart contract.
-    native_balance: Wei,
-    /// Total amount of fees across all finalized transactions icNative -> Native. conversion of twin native token to token on the home chain.
-    total_effective_tx_fees: Wei,
-    /// Total amount of fees that were charged to the user during the withdrawal
-    /// but not consumed by the finalized transaction icNative -> Native. conversion of twin native token to token on the home chain.
-    total_unspent_tx_fees: Wei,
-}
-
-impl Default for NativeBalance {
-    fn default() -> Self {
-        Self {
-            native_balance: Wei::ZERO,
-            total_effective_tx_fees: Wei::ZERO,
-            total_unspent_tx_fees: Wei::ZERO,
-        }
-    }
-}
-
-impl NativeBalance {
-    fn eth_balance_add(&mut self, value: Wei) {
-        self.native_balance = self.native_balance.checked_add(value).unwrap_or_else(|| {
-            panic!(
-                "BUG: overflow when adding {} to {}",
-                value, self.native_balance
-            )
-        })
-    }
-
-    fn eth_balance_sub(&mut self, value: Wei) {
-        self.native_balance = self.native_balance.checked_sub(value).unwrap_or_else(|| {
-            panic!(
-                "BUG: underflow when subtracting {} from {}",
-                value, self.native_balance
-            )
-        })
-    }
-
-    fn total_effective_tx_fees_add(&mut self, value: Wei) {
-        self.total_effective_tx_fees = self
-            .total_effective_tx_fees
-            .checked_add(value)
-            .unwrap_or_else(|| {
-                panic!(
-                    "BUG: overflow when adding {} to {}",
-                    value, self.total_effective_tx_fees
-                )
-            })
-    }
-
-    fn total_unspent_tx_fees_add(&mut self, value: Wei) {
-        self.total_unspent_tx_fees = self
-            .total_unspent_tx_fees
-            .checked_add(value)
-            .unwrap_or_else(|| {
-                panic!(
-                    "BUG: overflow when adding {} to {}",
-                    value, self.total_unspent_tx_fees
-                )
-            })
-    }
-
-    pub fn native_balance(&self) -> Wei {
-        self.native_balance
-    }
-
-    pub fn total_effective_tx_fees(&self) -> Wei {
-        self.total_effective_tx_fees
-    }
-
-    pub fn total_unspent_tx_fees(&self) -> Wei {
-        self.total_unspent_tx_fees
-    }
-}
-
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct Erc20Balances {
-    balance_by_erc20_contract: BTreeMap<Address, Erc20Value>,
-}
-
-impl Erc20Balances {
-    pub fn balance_of(&self, erc20_contract: &Address) -> Erc20Value {
-        *self
-            .balance_by_erc20_contract
-            .get(erc20_contract)
-            .unwrap_or(&Erc20Value::ZERO)
-    }
-
-    pub fn erc20_add(&mut self, erc20_contract: Address, deposit: Erc20Value) {
-        match self.balance_by_erc20_contract.get(&erc20_contract) {
-            Some(previous_value) => {
-                let new_value = previous_value.checked_add(deposit).unwrap_or_else(|| {
-                    panic!(
-                        "BUG: overflow when adding {} to {}",
-                        deposit, previous_value
-                    )
-                });
-                self.balance_by_erc20_contract
-                    .insert(erc20_contract, new_value);
-            }
-            None => {
-                self.balance_by_erc20_contract
-                    .insert(erc20_contract, deposit);
-            }
-        }
-    }
-
-    pub fn erc20_sub(&mut self, erc20_contract: Address, withdrawal_amount: Erc20Value) {
-        let previous_value = self
-            .balance_by_erc20_contract
-            .get(&erc20_contract)
-            .expect("BUG: Cannot subtract from a missing ERC-20 balance");
-        let new_value = previous_value
-            .checked_sub(withdrawal_amount)
-            .unwrap_or_else(|| {
-                panic!(
-                    "BUG: underflow when subtracting {} from {}",
-                    withdrawal_amount, previous_value
-                )
-            });
-        self.balance_by_erc20_contract
-            .insert(erc20_contract, new_value);
-    }
 }
 
 #[derive(Debug, Hash, Copy, Clone, PartialEq, Eq, EnumIter)]

@@ -1,4 +1,4 @@
-use crate::deposit_logs::{
+use crate::contract_logs::{
     EventSource, LedgerSubaccount, ReceivedDepositEvent, ReceivedErc20Event, ReceivedNativeEvent,
 };
 use crate::endpoints::CandidBlockTag;
@@ -56,7 +56,7 @@ fn initial_state() -> State {
 }
 
 mod mint_transaction {
-    use crate::deposit_logs::{EventSourceError, ReceivedNativeEvent};
+    use crate::contract_logs::{EventSourceError, ReceivedNativeEvent};
     use crate::erc20::ERC20Token;
     use crate::evm_config::EvmNetwork;
     use crate::numeric::{LedgerMintIndex, LogIndex};
@@ -1632,7 +1632,7 @@ mod native_balance {
 }
 
 mod erc20_balance {
-    use crate::deposit_logs::{ReceivedDepositEvent, ReceivedErc20Event};
+    use crate::contract_logs::{ReceivedDepositEvent, ReceivedErc20Event};
     use crate::eth_types::Address;
     use crate::state::audit::EventType::AcceptedErc20WithdrawalRequest;
     use crate::state::audit::{apply_state_transition, EventType};

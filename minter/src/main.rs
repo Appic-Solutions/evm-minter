@@ -1,7 +1,7 @@
 use candid::Nat;
 use evm_minter::address::{validate_address_as_destination, AddressValidationError};
+use evm_minter::contract_logs::{EventSource, ReceivedErc20Event, ReceivedNativeEvent};
 use evm_minter::deposit::{scrape_logs, validate_log_scraping_request};
-use evm_minter::deposit_logs::{EventSource, ReceivedErc20Event, ReceivedNativeEvent};
 use evm_minter::endpoints::events::{
     Event as CandidEvent, EventSource as CandidEventSource, GetEventsArg, GetEventsResult,
 };
@@ -42,8 +42,8 @@ use evm_minter::withdraw::{
     ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT, NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
 };
 use evm_minter::{
-    state, storage, PROCESS_REIMBURSEMENT, PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL,
-    SCRAPING_DEPOSIT_LOGS_INTERVAL,
+    state, storage, SCRAPING_contract_logs_INTERVAL, PROCESS_REIMBURSEMENT,
+    PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL,
 };
 use ic_canister_log::log;
 use ic_cdk::{init, post_upgrade, pre_upgrade, query, update};
@@ -83,7 +83,7 @@ fn setup_timers() {
 
     // Start scraping logs immediately after the install, then repeat with the interval.
     ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(scrape_logs()));
-    ic_cdk_timers::set_timer_interval(SCRAPING_DEPOSIT_LOGS_INTERVAL, || {
+    ic_cdk_timers::set_timer_interval(SCRAPING_contract_logs_INTERVAL, || {
         ic_cdk::spawn(scrape_logs())
     });
     ic_cdk_timers::set_timer_interval(PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL, || {

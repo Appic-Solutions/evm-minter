@@ -24,16 +24,20 @@ contract IcpEvmBridgeTest is Test {
             IcpEvmBridge.BurnParams({
                 amount: 1 ether,
                 icpRecipient: bytes32("recipient"),
-                TokenAddress: address(0) 
+                TokenAddress: address(0),
+                subaccount: bytes32(0)
             })
         );
-
-        
     }
 
     function testBurnERC20Token() public {
         bytes32 baseToken = bytes32("token1");
-        address wrapped = bridge.deployERC20("Wrapped Gold", "wGOLD", 18, baseToken);
+        address wrapped = bridge.deployERC20(
+            "Wrapped Gold",
+            "wGOLD",
+            18,
+            baseToken
+        );
 
         uint256 amount = 100 ether;
         vm.prank(minter);
@@ -46,7 +50,8 @@ contract IcpEvmBridgeTest is Test {
             IcpEvmBridge.BurnParams({
                 amount: amount,
                 icpRecipient: bytes32("recipient"),
-                TokenAddress: wrapped
+                TokenAddress: wrapped,
+                subaccount: bytes32(0)
             })
         );
 
@@ -61,7 +66,8 @@ contract IcpEvmBridgeTest is Test {
             IcpEvmBridge.BurnParams({
                 amount: 0,
                 icpRecipient: bytes32("abc"),
-                TokenAddress: address(0)
+                TokenAddress: address(0),
+                subaccount: bytes32(0)
             })
         );
     }
@@ -73,7 +79,8 @@ contract IcpEvmBridgeTest is Test {
             IcpEvmBridge.BurnParams({
                 amount: 1 ether,
                 icpRecipient: bytes32(0),
-                TokenAddress: address(0)
+                TokenAddress: address(0),
+                subaccount: bytes32(0)
             })
         );
     }
@@ -87,7 +94,8 @@ contract IcpEvmBridgeTest is Test {
             IcpEvmBridge.BurnParams({
                 amount: 1 ether,
                 icpRecipient: bytes32("bad"),
-                TokenAddress: address(0)
+                TokenAddress: address(0),
+                subaccount: bytes32(0)
             })
         );
     }
@@ -99,7 +107,8 @@ contract IcpEvmBridgeTest is Test {
             IcpEvmBridge.BurnParams({
                 amount: 1 ether,
                 icpRecipient: bytes32("invalid"),
-                TokenAddress: address(0)
+                TokenAddress: address(0),
+                subaccount: bytes32(0)
             })
         );
     }

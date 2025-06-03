@@ -3,8 +3,8 @@ use std::time::Duration;
 pub mod address;
 mod cbor;
 pub mod checked_amount;
+pub mod contract_logs;
 pub mod deposit;
-pub mod deposit_logs;
 pub mod endpoints;
 pub mod erc20;
 pub mod eth_types;
@@ -32,7 +32,7 @@ pub mod test_fixtures;
 mod tests;
 
 // Log scraping can also be requested manually
-pub const SCRAPING_DEPOSIT_LOGS_INTERVAL: Duration = Duration::from_secs(20 * 60);
+pub const SCRAPING_contract_logs_INTERVAL: Duration = Duration::from_secs(20 * 60);
 pub const PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL: Duration = Duration::from_secs(1 * 60);
 pub const PROCESS_REIMBURSEMENT: Duration = Duration::from_secs(1 * 60);
 pub const PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_RETRY_INTERVAL: Duration = Duration::from_secs(30);

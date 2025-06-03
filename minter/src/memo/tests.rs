@@ -1,5 +1,5 @@
 use crate::cbor::tests::check_roundtrip;
-use crate::deposit_logs::{ReceivedDepositEvent, ReceivedNativeEvent};
+use crate::contract_logs::{ReceivedDepositEvent, ReceivedNativeEvent};
 use crate::memo::BurnMemo;
 use crate::memo::{Address, MintMemo};
 use crate::numeric::{BlockNumber, Erc20TokenAmount, LedgerBurnIndex, LogIndex, Wei};

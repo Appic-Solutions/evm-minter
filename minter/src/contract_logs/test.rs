@@ -1,5 +1,5 @@
 mod parse_principal_from_slice {
-    use crate::deposit_logs::parse_principal_from_slice;
+    use crate::contract_logs::parse_principal_from_slice;
     use crate::rpc_declarations::FixedSizeData;
     use assert_matches::assert_matches;
     use candid::Principal;
@@ -119,7 +119,7 @@ mod parse_principal_from_slice {
 }
 
 mod subaccount {
-    use crate::deposit_logs::LedgerSubaccount;
+    use crate::contract_logs::LedgerSubaccount;
     use proptest::{array::uniform32, prelude::any, prop_assert_eq, prop_assume, proptest};
 
     proptest! {
