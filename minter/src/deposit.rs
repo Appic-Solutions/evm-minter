@@ -17,6 +17,7 @@ use crate::evm_config::EvmNetwork;
 use crate::guard::TimerGuard;
 use crate::logs::{DEBUG, INFO};
 use crate::numeric::{BlockNumber, BlockRangeInclusive, LedgerMintIndex};
+use crate::rpc_client::providers::Provider;
 use crate::rpc_client::{is_response_too_large, MultiCallError, RpcClient};
 use crate::rpc_declarations::LogEntry;
 use crate::rpc_declarations::Topic;
@@ -249,7 +250,7 @@ pub async fn scrape_logs() {
 pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
     let block_height = read_state(State::block_height);
     let network = read_state(|state| state.evm_network);
-    match read_state(RpcClient::from_state_one_provider_public_node)
+    match read_state(|s| RpcClient::from_state_one_provider(s, Provider::DRPC))
         .get_block_by_number(BlockSpec::Tag(block_height))
         .await
     {
@@ -257,11 +258,11 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
             let mut block_number = Some(latest_block.number);
             match network {
                 EvmNetwork::BSC => {
-                    // Waiting for 20 blocks means the transaction is practically safe on BSC
-                    // So we go 15 blocks before the latest block
+                    // Waiting for 12 blocks means the transaction is practically safe on BSC
+                    // So we go 12 blocks before the latest block
                     block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(20_u32)
-                            .expect("Removing 20 blocks from latest block should never fail"),
+                        BlockNumber::try_from(3_u32)
+                            .expect("Removing 5 blocks from latest block should never fail"),
                     )
                 }
                 EvmNetwork::ArbitrumOne => {
@@ -269,7 +270,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
                     // considering it to be finalized and safe from reorgs. This waiting period provides a buffer to account for potential fork scenarios
                     //  or other unexpected events.
                     block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(12_u32)
+                        BlockNumber::try_from(6_u32)
                             .expect("Removing 12 blocks from latest block should never fail"),
                     )
                 }
@@ -279,7 +280,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
                     // typically considered sufficient for most applications.
 
                     block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(12_u32)
+                        BlockNumber::try_from(3_u32)
                             .expect("Removing 12 blocks from latest block should never fail"),
                     )
                 }

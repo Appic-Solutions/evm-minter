@@ -1,6 +1,8 @@
 use crate::endpoints::CandidBlockTag;
 use crate::eth_types::serde_data;
 use crate::eth_types::Address;
+use crate::numeric::TransactionNonce;
+use crate::numeric::WeiPerBlobGas;
 use crate::numeric::{BlockNumber, GasAmount, LogIndex, Wei, WeiPerGas};
 use evm_rpc_types::SendRawTransactionStatus as EvmSendRawTransactionStatus;
 use minicbor::{Decode, Encode};
@@ -240,6 +242,75 @@ impl From<Vec<FixedSizeData>> for Topic {
     }
 }
 
+// Params for eth_call method
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CallParams {
+    pub transaction: TransactionRequestParams,
+    /// Integer block number, or "latest" for the last mined block or "pending", "earliest" for not yet mined transactions.
+    /// Default to "latest" if unspecified, see https://github.com/ethereum/execution-apis/issues/461.
+    pub block: Option<BlockSpec>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TransactionRequestParams {
+    /// The type of the transaction:
+    /// - "0x0" for legacy transactions (pre- EIP-2718)
+    /// - "0x1" for access list transactions (EIP-2930)
+    /// - "0x2" for EIP-1559 transactions
+    pub tx_type: Option<u8>,
+
+    /// Transaction nonce
+    pub nonce: Option<TransactionNonce>,
+
+    /// Address of the receiver or `None` in a contract creation transaction.
+    pub to: Option<Address>,
+
+    /// The address of the sender.
+    pub from: Option<Address>,
+
+    /// Gas limit for the transaction.
+    pub gas: Option<GasAmount>,
+
+    /// Amount of ETH sent with this transaction.
+    pub value: Option<Wei>,
+
+    /// Transaction input data
+    pub input: Option<Vec<u8>>,
+
+    /// The legacy gas price willing to be paid by the sender in wei.
+    pub gas_price: Option<WeiPerGas>,
+
+    /// Maximum fee per gas the sender is willing to pay to miners in wei.
+    pub max_priority_fee_per_gas: Option<WeiPerGas>,
+
+    /// The maximum total fee per gas the sender is willing to pay (includes the network / base fee and miner / priority fee) in wei.
+    pub max_fee_per_gas: Option<WeiPerGas>,
+
+    /// The maximum total fee per gas the sender is willing to pay for blob gas in wei.
+    pub max_fee_per_blob_gas: Option<WeiPerBlobGas>,
+
+    /// EIP-2930 access list
+    pub access_list: Option<AccessList>,
+
+    /// List of versioned blob hashes associated with the transaction's EIP-4844 data blobs.
+    pub blob_versioned_hashes: Option<Vec<Hash>>,
+
+    /// Raw blob data.
+    pub blobs: Option<Vec<Vec<u8>>>,
+
+    /// Chain ID that this transaction is valid on.
+    pub chain_id: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AccessList(pub Vec<AccessListEntry>);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AccessListEntry {
+    pub address: Address,
+    pub storage_keys: Vec<Hash>,
+}
+
 /// Parameters of the [`eth_getLogs`](https://ethereum.org/en/developers/docs/apis/json-rpc/#eth_getlogs) call.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -273,7 +344,7 @@ pub struct GetLogsParam {
 //    "logIndex": "0x8",
 //    "removed": false
 //  }
-// ```
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LogEntry {

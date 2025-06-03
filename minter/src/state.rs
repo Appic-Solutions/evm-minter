@@ -12,7 +12,7 @@ use std::{
 
 use candid::Principal;
 use ic_canister_log::log;
-use ic_crypto_secp256k1::PublicKey;
+use secp256k1::PublicKey;
 use serde_bytes::ByteBuf;
 use transactions::{
     Erc20WithdrawalRequest, TransactionCallData, WithdrawalRequest, WithdrawalTransactions,
@@ -21,6 +21,7 @@ use transactions::{
 use crate::{
     address::ecdsa_public_key_to_address,
     deposit_logs::{EventSource, ReceivedDepositEvent},
+    endpoints::DepositStatus,
     erc20::{ERC20Token, ERC20TokenSymbol},
     eth_types::Address,
     evm_config::EvmNetwork,
@@ -30,8 +31,8 @@ use crate::{
     numeric::{
         BlockNumber, Erc20Value, LedgerBurnIndex, LedgerMintIndex, TransactionNonce, Wei, WeiPerGas,
     },
-    rpc_declarations::{BlockTag, TransactionReceipt, TransactionStatus},
-    tx::GasFeeEstimate,
+    rpc_declarations::{BlockTag, Hash, TransactionReceipt, TransactionStatus},
+    tx::gas_fees::GasFeeEstimate,
 };
 use strum_macros::EnumIter;
 
@@ -166,7 +167,7 @@ pub struct State {
 
 impl State {
     pub fn minter_address(&self) -> Option<Address> {
-        let pubkey = PublicKey::deserialize_sec1(&self.ecdsa_public_key.as_ref()?.public_key)
+        let pubkey = PublicKey::from_slice(&self.ecdsa_public_key.as_ref()?.public_key)
             .unwrap_or_else(|e| {
                 ic_cdk::trap(&format!("failed to decode minter's public key: {:?}", e))
             });
@@ -322,6 +323,34 @@ impl State {
             None,
             "attempted to mint native twice for the same event {source:?}"
         );
+    }
+
+    pub fn get_deposit_status(&self, tx_hash: Hash) -> Option<DepositStatus> {
+        if self
+            .minted_events
+            .keys()
+            .any(|event_source| event_source.transaction_hash == tx_hash)
+        {
+            return Some(DepositStatus::Minted);
+        }
+
+        if self
+            .events_to_mint()
+            .iter()
+            .any(|deposit_event| deposit_event.transaction_hash() == tx_hash)
+        {
+            return Some(DepositStatus::Accepted);
+        }
+
+        if self
+            .invalid_events
+            .keys()
+            .any(|event_source| event_source.transaction_hash == tx_hash)
+        {
+            return Some(DepositStatus::InvalidDeposit);
+        }
+
+        None
     }
 
     pub fn record_erc20_withdrawal_request(&mut self, request: Erc20WithdrawalRequest) {
@@ -753,7 +782,7 @@ pub async fn lazy_call_ecdsa_public_key() -> PublicKey {
     };
 
     fn to_public_key(response: &EcdsaPublicKeyResponse) -> PublicKey {
-        PublicKey::deserialize_sec1(&response.public_key).unwrap_or_else(|e| {
+        PublicKey::from_slice(&response.public_key).unwrap_or_else(|e| {
             ic_cdk::trap(&format!("failed to decode minter's public key: {:?}", e))
         })
     }

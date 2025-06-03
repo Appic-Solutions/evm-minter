@@ -1,24 +1,23 @@
+pub mod gas_fees;
+
 use ethnum::u256;
-use ic_canister_log::log;
+use gas_fees::{GasFeeEstimate, TransactionPrice};
 use minicbor;
 use minicbor::{Decode, Encode};
 use rlp::RlpStream;
+use secp256k1::ecdsa::{RecoverableSignature, RecoveryId};
 
-use crate::guard::TimerGuard;
-use crate::logs::{DEBUG, INFO};
-use crate::rpc_client::{MultiCallError, RpcClient};
-use crate::rpc_declarations::{
-    BlockSpec, BlockTag, FeeHistory, FeeHistoryParams, Hash, Quantity, TransactionStatus,
-};
-use crate::state::{lazy_call_ecdsa_public_key, TaskType};
-use crate::state::{mutate_state, read_state};
+use crate::rpc_declarations::{Hash, TransactionStatus};
+use crate::state::lazy_call_ecdsa_public_key;
+use crate::state::read_state;
 use crate::{
     eth_types::Address,
     numeric::{BlockNumber, GasAmount, TransactionNonce, Wei, WeiPerGas},
     rpc_declarations::TransactionReceipt,
 };
-use ic_crypto_secp256k1::RecoveryId;
 use ic_management_canister_types::DerivationPath;
+
+use secp256k1::{ecdsa::Signature, Message, PublicKey, Secp256k1};
 
 // Constant representing the transaction type identifier for EIP-1559 transactions.
 const EIP1559_TX_ID: u8 = 2;
@@ -543,17 +542,15 @@ impl Eip1559TransactionRequest {
                 .await
                 .map_err(|e| format!("failed to sign tx: {}", e))?; // Sign the hash with the ECDSA key.
 
-        let recid = compute_recovery_id(&hash, &signature).await; // Compute the recovery ID.
-        if recid.is_x_reduced() {
-            return Err("BUG: affine x-coordinate of r is reduced which is so unlikely to happen that it's probably a bug".to_string());
-        }
-
+        let public_key = verifiy_signature(&hash, &signature).await; // Compute the recovery ID.
+        let signature_y_parity = determine_signature_y_parity(&public_key, &hash, &signature)
+            .expect("Bug: Failed to determine y parity");
         let (r_bytes, s_bytes) = split_in_two(signature); // Split the signature into r and s components.
         let r = u256::from_be_bytes(r_bytes);
         let s = u256::from_be_bytes(s_bytes);
 
         let sig = Eip1559Signature {
-            signature_y_parity: recid.is_y_odd(),
+            signature_y_parity,
             r,
             s,
         };
@@ -576,303 +573,53 @@ impl Eip1559TransactionRequest {
 ///
 /// # Panics
 /// Panics if the signature verification or public key recovery fails.
-async fn compute_recovery_id(digest: &Hash, signature: &[u8]) -> RecoveryId {
+async fn verifiy_signature(digest: &Hash, signature: &[u8]) -> PublicKey {
     let ecdsa_public_key = lazy_call_ecdsa_public_key().await;
+
+    let secp = Secp256k1::verification_only();
+    let msg = Message::from_digest(digest.0);
+    let sig = Signature::from_compact(signature)
+        .expect("compact signatures are 64 bytes; DER signatures are 68-72 bytes");
 
     // Ensure that the signature verification passes.
     debug_assert!(
-        ecdsa_public_key.verify_signature_prehashed(&digest.0, signature),
+        secp.verify_ecdsa(&msg, &sig, &ecdsa_public_key).is_ok(),
         "failed to verify signature prehashed, digest: {:?}, signature: {:?}, public_key: {:?}",
         hex::encode(digest.0),
         hex::encode(signature),
-        hex::encode(ecdsa_public_key.serialize_sec1(true)),
+        hex::encode(ecdsa_public_key.serialize_uncompressed()),
     );
 
-    // Attempt to recover the public key from the digest and signature.
     ecdsa_public_key
-        .try_recovery_from_digest(&digest.0, signature)
-        .unwrap_or_else(|e| {
-            panic!(
-                "BUG: failed to recover public key {:?} from digest {:?} and signature {:?}: {:?}",
-                hex::encode(ecdsa_public_key.serialize_sec1(true)),
-                hex::encode(digest.0),
-                hex::encode(signature),
-                e
-            )
-        })
 }
 
-/// Represents an estimate of gas fees.
+/// Determines the signature_y_parity (i.e. the recovery bit) from a signature given the known public key,
+/// a 32-byte message hash, and a 64-byte signature (r and s concatenated).
 ///
-/// Contains the base fee per gas and the maximum priority fee per gas.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct GasFeeEstimate {
-    pub base_fee_per_gas: WeiPerGas,
-    pub max_priority_fee_per_gas: WeiPerGas,
-}
+/// Returns:
+/// - Some(true) if the recovery id is 1 (odd y coordinate),
+/// - Some(false) if the recovery id is 0 (even y coordinate),
+/// - None if neither candidate recovers the known public key.
+pub fn determine_signature_y_parity(
+    public_key: &PublicKey,
+    digest: &Hash,
+    sig: &[u8; 64],
+) -> Option<bool> {
+    let secp = Secp256k1::new();
 
-impl GasFeeEstimate {
-    /// Computes the maximum fee per gas by doubling the base fee and adding the priority fee.
-    ///
-    /// # Returns
-    /// An `Option` containing the estimated maximum fee per gas if it does not overflow, otherwise `None`.
-    pub fn checked_estimate_max_fee_per_gas(&self) -> Option<WeiPerGas> {
-        self.base_fee_per_gas
-            .checked_mul(2_u8)
-            .and_then(|base_fee_estimate| {
-                base_fee_estimate.checked_add(self.max_priority_fee_per_gas)
-            })
-    }
-
-    /// Estimates the maximum fee per gas. Falls back to `WeiPerGas::MAX` if the calculation fails.
-    ///
-    /// # Returns
-    /// The estimated maximum fee per gas.
-    pub fn estimate_max_fee_per_gas(&self) -> WeiPerGas {
-        self.checked_estimate_max_fee_per_gas()
-            .unwrap_or(WeiPerGas::MAX)
-    }
-
-    /// Converts the gas fee estimate to a transaction price with a specified gas limit.
-    ///
-    /// # Arguments
-    /// * `gas_limit` - The gas limit for the transaction.
-    ///
-    /// # Returns
-    /// A `TransactionPrice` containing the gas limit and fee estimates.
-    pub fn to_price(self, gas_limit: GasAmount) -> TransactionPrice {
-        TransactionPrice {
-            gas_limit,
-            max_fee_per_gas: self.estimate_max_fee_per_gas(),
-            max_priority_fee_per_gas: self.max_priority_fee_per_gas,
-        }
-    }
-
-    /// Computes the minimum of the maximum fee per gas by adding base and priority fees.
-    /// Falls back to `WeiPerGas::MAX` if the calculation fails.
-    ///
-    /// # Returns
-    /// The minimum maximum fee per gas.
-    pub fn min_max_fee_per_gas(&self) -> WeiPerGas {
-        self.base_fee_per_gas
-            .checked_add(self.max_priority_fee_per_gas)
-            .unwrap_or(WeiPerGas::MAX)
-    }
-}
-
-/// Represents the price of a transaction.
-///
-/// Includes the gas limit, maximum fee per gas, and maximum priority fee per gas.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TransactionPrice {
-    pub gas_limit: GasAmount,
-    pub max_fee_per_gas: WeiPerGas,
-    pub max_priority_fee_per_gas: WeiPerGas,
-}
-
-impl TransactionPrice {
-    /// Computes the maximum transaction fee based on the gas limit and maximum fee per gas.
-    ///
-    /// # Returns
-    /// The maximum transaction fee if calculation is successful, otherwise `Wei::MAX`.
-    pub fn max_transaction_fee(&self) -> Wei {
-        self.max_fee_per_gas
-            .transaction_cost(self.gas_limit)
-            .unwrap_or(Wei::MAX)
-    }
-
-    /// Estimates the new transaction price required to resubmit a transaction with updated gas fees.
-    ///
-    /// If the current transaction price is sufficient, it remains unchanged. Otherwise, it adjusts
-    /// the maximum priority fee and possibly the maximum fee per gas to ensure the transaction can be resubmitted.
-    ///
-    /// # Arguments
-    /// * `new_gas_fee` - The new gas fee estimate.
-    ///
-    /// # Returns
-    /// A new `TransactionPrice` with updated values.
-    pub fn resubmit_transaction_price(self, new_gas_fee: GasFeeEstimate) -> Self {
-        let plus_10_percent = |amount: WeiPerGas| {
-            amount
-                .checked_add(
-                    amount
-                        .checked_div_ceil(10_u8)
-                        .expect("BUG: must be Some() because divisor is non-zero"),
-                )
-                .unwrap_or(WeiPerGas::MAX)
-        };
-
-        if self.max_fee_per_gas >= new_gas_fee.min_max_fee_per_gas()
-            && self.max_priority_fee_per_gas >= new_gas_fee.max_priority_fee_per_gas
-        {
-            self
-        } else {
-            // Increase max_priority_fee_per_gas by at least 10% if necessary, ensuring the transaction
-            // remains resubmittable. Update max_fee_per_gas if it doesn't cover the new max_priority_fee_per_gas.
-            let updated_max_priority_fee_per_gas = plus_10_percent(self.max_priority_fee_per_gas)
-                .max(new_gas_fee.max_priority_fee_per_gas);
-            let new_gas_fee = GasFeeEstimate {
-                max_priority_fee_per_gas: updated_max_priority_fee_per_gas,
-                ..new_gas_fee
-            };
-            let new_max_fee_per_gas = new_gas_fee.min_max_fee_per_gas().max(self.max_fee_per_gas);
-            TransactionPrice {
-                gas_limit: self.gas_limit,
-                max_fee_per_gas: new_max_fee_per_gas,
-                max_priority_fee_per_gas: updated_max_priority_fee_per_gas,
+    // Try both possible recovery IDs: 0 (even y) and 1 (odd y)
+    for rec in 0..=1 {
+        let recovery_id = RecoveryId::try_from(rec).ok()?;
+        if let Ok(recoverable_sig) = RecoverableSignature::from_compact(sig, recovery_id) {
+            let message = Message::from_digest(digest.0);
+            if let Ok(recovered_pubkey) = secp.recover_ecdsa(&message, &recoverable_sig) {
+                if &recovered_pubkey == public_key {
+                    return Some(rec == 1);
+                }
             }
         }
     }
-}
-
-/// Asynchronously refreshes the gas fee estimate.
-///
-/// Uses a cached estimate if it is recent enough. Otherwise, fetches the latest fee history and recalculates the estimate.
-///
-/// # Returns
-/// An `Option` containing the new `GasFeeEstimate` if successful, or `None` if the refresh fails.
-pub async fn lazy_refresh_gas_fee_estimate() -> Option<GasFeeEstimate> {
-    const MAX_AGE_NS: u64 = 30_000_000_000_u64; // 30 seconds
-
-    async fn do_refresh() -> Option<GasFeeEstimate> {
-        let _guard = match TimerGuard::new(TaskType::RefreshGasFeeEstimate) {
-            Ok(guard) => guard,
-            Err(e) => {
-                log!(
-                    DEBUG,
-                    "[refresh_gas_fee_estimate]: Failed retrieving guard: {e:?}",
-                );
-                return None;
-            }
-        };
-
-        let fee_history = match get_fee_history().await {
-            Ok(fee_history) => fee_history,
-            Err(e) => {
-                log!(
-                    INFO,
-                    "[refresh_gas_fee_estimate]: Failed retrieving fee history: {e:?}",
-                );
-                return None;
-            }
-        };
-
-        let gas_fee_estimate = match estimate_transaction_fee(&fee_history) {
-            Ok(estimate) => {
-                mutate_state(|s| {
-                    s.last_transaction_price_estimate =
-                        Some((ic_cdk::api::time(), estimate.clone()));
-                });
-                estimate
-            }
-            Err(e) => {
-                log!(
-                    INFO,
-                    "[refresh_gas_fee_estimate]: Failed estimating gas fee: {e:?}",
-                );
-                return None;
-            }
-        };
-        log!(
-            INFO,
-            "[refresh_gas_fee_estimate]: Estimated transaction fee: {:?}",
-            gas_fee_estimate,
-        );
-        Some(gas_fee_estimate)
-    }
-
-    async fn get_fee_history() -> Result<FeeHistory, MultiCallError<FeeHistory>> {
-        read_state(RpcClient::from_state_one_provider_public_node)
-            .fee_history(FeeHistoryParams {
-                block_count: Quantity::from(5_u8),
-                highest_block: BlockSpec::Tag(BlockTag::Latest),
-                reward_percentiles: vec![20],
-            })
-            .await
-    }
-
-    let now_ns = ic_cdk::api::time();
-    match read_state(|s| s.last_transaction_price_estimate.clone()) {
-        Some((last_estimate_timestamp_ns, estimate))
-            if now_ns < last_estimate_timestamp_ns.saturating_add(MAX_AGE_NS) =>
-        {
-            Some(estimate)
-        }
-        _ => do_refresh().await,
-    }
-}
-
-/// Possible errors when estimating transaction fees.
-#[derive(Debug, PartialEq, Eq)]
-pub enum TransactionFeeEstimationError {
-    InvalidFeeHistory(String),
-    Overflow(String),
-}
-
-/// Estimates
-
-/// the transaction fee based on fee history.
-
-/// Determines the base fee per gas for the next block and computes the maximum priority fee based on historic values.
-/// Returns an estimate of the gas fee.
-///
-/// # Arguments
-/// * `fee_history` - The fee history to use for estimation.
-///
-/// # Returns
-/// A `Result` containing the `GasFeeEstimate` if successful, or an error if estimation fails.
-pub fn estimate_transaction_fee(
-    fee_history: &FeeHistory,
-) -> Result<GasFeeEstimate, TransactionFeeEstimationError> {
-    let min_max_priority_fee_per_gas: WeiPerGas =
-        read_state(|state| state.min_max_priority_fee_per_gas); // Different on each network
-
-    let base_fee_per_gas_next_block = *fee_history.base_fee_per_gas.last().ok_or(
-        TransactionFeeEstimationError::InvalidFeeHistory(
-            "base_fee_per_gas should not be empty to be able to evaluate transaction price"
-                .to_string(),
-        ),
-    )?;
-
-    let max_priority_fee_per_gas = {
-        let mut rewards: Vec<&WeiPerGas> = fee_history.reward.iter().flatten().collect();
-        let historic_max_priority_fee_per_gas =
-            **median(&mut rewards).ok_or(TransactionFeeEstimationError::InvalidFeeHistory(
-                "should be non-empty with rewards of the last 5 blocks".to_string(),
-            ))?;
-        historic_max_priority_fee_per_gas.max(min_max_priority_fee_per_gas)
-    };
-
-    let gas_fee_estimate = GasFeeEstimate {
-        base_fee_per_gas: base_fee_per_gas_next_block,
-        max_priority_fee_per_gas,
-    };
-
-    if gas_fee_estimate
-        .checked_estimate_max_fee_per_gas()
-        .is_none()
-    {
-        return Err(TransactionFeeEstimationError::Overflow(
-            "max_fee_per_gas overflowed".to_string(),
-        ));
-    }
-
-    Ok(gas_fee_estimate)
-}
-
-/// Computes the median of a slice of values.
-///
-/// # Arguments
-/// * `values` - The slice of values to compute the median of.
-///
-/// # Returns
-/// An `Option` containing the median value, or `None` if the slice is empty.
-fn median<T: Ord>(values: &mut [T]) -> Option<&T> {
-    if values.is_empty() {
-        return None;
-    }
-    let (_, item, _) = values.select_nth_unstable(values.len() / 2);
-    Some(item)
+    None
 }
 
 /// Splits an array into two halves.

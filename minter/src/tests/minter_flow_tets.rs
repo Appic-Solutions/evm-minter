@@ -4,9 +4,9 @@ use candid::{Nat, Principal};
 
 use crate::{
     endpoints::{
-        Eip1559TransactionPrice, RequestScrapingError, RetrieveErc20Request, RetrieveNativeRequest,
-        RetrieveWithdrawalStatus, TxFinalizedStatus, WithdrawErc20Arg, WithdrawErc20Error,
-        WithdrawalArg, WithdrawalError,
+        DepositStatus, Eip1559TransactionPrice, RequestScrapingError, RetrieveErc20Request,
+        RetrieveNativeRequest, RetrieveWithdrawalStatus, TxFinalizedStatus, WithdrawErc20Arg,
+        WithdrawErc20Error, WithdrawalArg, WithdrawalError,
     },
     evm_config::EvmNetwork,
     tests::{
@@ -128,6 +128,12 @@ fn should_deposit_and_withdrawal_native() {
     // Ankr mock submission
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 1, MOCK_GET_LOGS);
 
+    // Drpc mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 2, MOCK_GET_LOGS);
+
+    // Alchemy mock submissios
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 3, MOCK_GET_LOGS);
+
     five_ticks(&pic);
 
     // Check deposit
@@ -221,23 +227,19 @@ fn should_deposit_and_withdrawal_native() {
     assert_eq!(withdrawal_request_result.block_index, Nat::from(4_u64));
 
     five_ticks(&pic);
-
-    // Advance time for PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL amount.
-    pic.advance_time(PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL);
-
     five_ticks(&pic);
 
     // At this point there should be an http request for refreshing the fee history
     // Once there is a withdrawal request, The first attempt should be updating fee history
     // Cause there should be a maximum gap of 30 seconds between the previous gas fee estimate
     // we just advance time for amount
-    let canister_http_requests = pic.get_canister_http();
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        0,
-        MOCK_FEE_HISTORY_RESPONSE,
-    );
+    //let canister_http_requests = pic.get_canister_http();
+    //generate_and_submit_mock_http_response(
+    //    &pic,
+    //    &canister_http_requests,
+    //    0,
+    //    MOCK_FEE_HISTORY_RESPONSE,
+    //);
 
     five_ticks(&pic);
 
@@ -248,6 +250,28 @@ fn should_deposit_and_withdrawal_native() {
         &pic,
         &canister_http_requests,
         0,
+        MOCK_TRANSACTION_COUNT_LATEST,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        1,
+        MOCK_TRANSACTION_COUNT_LATEST,
+    );
+
+    // Generating the latest transaction count for inserting the correct nonce
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_TRANSACTION_COUNT_LATEST,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
         MOCK_TRANSACTION_COUNT_LATEST,
     );
 
@@ -278,6 +302,22 @@ fn should_deposit_and_withdrawal_native() {
         MOCK_SEND_TRANSACTION_ERROR,
     );
 
+    // drpc request
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_SEND_TRANSACTION_ERROR,
+    );
+
+    // alchemy request
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
+        MOCK_SEND_TRANSACTION_ERROR,
+    );
+
     five_ticks(&pic);
 
     // 5th getting the finalized transaction count after sending transaction was successful.
@@ -290,12 +330,35 @@ fn should_deposit_and_withdrawal_native() {
         MOCK_TRANSACTION_COUNT_FINALIZED,
     );
 
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        1,
+        MOCK_TRANSACTION_COUNT_FINALIZED,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_TRANSACTION_COUNT_FINALIZED,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
+        MOCK_TRANSACTION_COUNT_FINALIZED,
+    );
+
     five_ticks(&pic);
 
     // 6th Getting the transaction receipt.
     // At this point there should be two requests for eth_getTransactionReceipt
     // [0] public_node
     // [1] ankr
+    // drpc
+    // alchemy
     let canister_http_requests = pic.get_canister_http();
 
     // public_node
@@ -311,6 +374,22 @@ fn should_deposit_and_withdrawal_native() {
         &pic,
         &canister_http_requests,
         1,
+        MOCK_TRANSACTION_RECEIPT,
+    );
+
+    // drpc
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_TRANSACTION_RECEIPT,
+    );
+
+    // alchemy
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
         MOCK_TRANSACTION_RECEIPT,
     );
 
@@ -377,6 +456,12 @@ fn should_not_deposit_twice() {
     // Ankr mock submission
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 1, MOCK_GET_LOGS);
 
+    // Drpc mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 2, MOCK_GET_LOGS);
+
+    // Alchemy mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 3, MOCK_GET_LOGS);
+
     five_ticks(&pic);
 
     // There should be a gap of at least one minute between each log scraping so we advance time for 1 min
@@ -423,8 +508,14 @@ fn should_not_deposit_twice() {
     // public_node mock submission
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_GET_LOGS);
 
-    // Ankr mock submission
+    // ankr mock submission
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 1, MOCK_GET_LOGS);
+
+    // Drpc mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 2, MOCK_GET_LOGS);
+
+    // Alchemy mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 3, MOCK_GET_LOGS);
 
     five_ticks(&pic);
 
@@ -497,6 +588,12 @@ fn should_deposit_and_withdrawal_erc20() {
 
     // Ankr mock submission
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 1, MOCK_GET_LOGS);
+
+    // Drpc mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 2, MOCK_GET_LOGS);
+
+    // Alchemy mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 3, MOCK_GET_LOGS);
 
     five_ticks(&pic);
     five_ticks(&pic);
@@ -658,6 +755,12 @@ fn should_deposit_and_withdrawal_erc20() {
     // Ankr mock submission
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 1, MOCK_GET_LOGS_ERC20);
 
+    // Drpc mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 2, MOCK_GET_LOGS_ERC20);
+
+    // Alchemy mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 3, MOCK_GET_LOGS_ERC20);
+
     five_ticks(&pic);
     five_ticks(&pic);
     five_ticks(&pic);
@@ -665,6 +768,16 @@ fn should_deposit_and_withdrawal_erc20() {
     five_ticks(&pic);
     five_ticks(&pic);
     five_ticks(&pic);
+
+    // Check the deposit status
+    let status = query_call::<String, Option<DepositStatus>>(
+        &pic,
+        minter_principal(),
+        "retrieve_deposit_status",
+        String::from("0x0ce8486575f4a3fe725c463ad0c9a3da2484f68305edcec7bea5db26c95aa18c"),
+    );
+
+    assert_eq!(status, Some(DepositStatus::Minted));
 
     // Check Erc20 icLINK deposit
     // Based on the logs there should be 3_000_000_000_000_000_000 icLINK minted to b4any-vxcgx-dm654-xhumb-4pl7k-5kysk-qnjlt-w7hcb-2hd2h-ttzpz-fqe
@@ -792,7 +905,7 @@ fn should_deposit_and_withdrawal_erc20() {
     five_ticks(&pic);
 
     // Advance time for PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL amount.
-    pic.advance_time(PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL);
+    //pic.advance_time(PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL);
 
     five_ticks(&pic);
 
@@ -809,6 +922,9 @@ fn should_deposit_and_withdrawal_erc20() {
     );
 
     five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
 
     let canister_http_requests = pic.get_canister_http();
 
@@ -820,9 +936,31 @@ fn should_deposit_and_withdrawal_erc20() {
         MOCK_TRANSACTION_COUNT_LATEST,
     );
 
-    five_ticks(&pic);
-    five_ticks(&pic);
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        1,
+        MOCK_TRANSACTION_COUNT_LATEST,
+    );
 
+    // Generating the latest transaction count for inserting the correct nonce
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_TRANSACTION_COUNT_LATEST,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
+        MOCK_TRANSACTION_COUNT_LATEST,
+    );
+
+    five_ticks(&pic);
+    five_ticks(&pic);
+    //
     // At this point there should be 2 http_requests
     // [0] public_node eth_sendRawTransaction
     // [1] ankr eth_sendRawTransaction
@@ -846,6 +984,23 @@ fn should_deposit_and_withdrawal_erc20() {
         MOCK_SEND_TRANSACTION_ERROR,
     );
 
+    // Drpc request
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_SEND_TRANSACTION_ERROR,
+    );
+
+    // Alchemy request
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
+        MOCK_SEND_TRANSACTION_ERROR,
+    );
+
+    println!("Hellooooooo {}", canister_http_requests.len());
     five_ticks(&pic);
 
     // getting the finalized transaction count after sending transaction was successful.
@@ -855,6 +1010,27 @@ fn should_deposit_and_withdrawal_erc20() {
         &pic,
         &canister_http_requests,
         0,
+        MOCK_TRANSACTION_COUNT_FINALIZED,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        1,
+        MOCK_TRANSACTION_COUNT_FINALIZED,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_TRANSACTION_COUNT_FINALIZED,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
         MOCK_TRANSACTION_COUNT_FINALIZED,
     );
 
@@ -878,6 +1054,22 @@ fn should_deposit_and_withdrawal_erc20() {
         &pic,
         &canister_http_requests,
         1,
+        MOCK_SECOND_NATIVE_TRANSACTION_RECEIPT,
+    );
+
+    // public_node
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_SECOND_NATIVE_TRANSACTION_RECEIPT,
+    );
+
+    // ankr
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
         MOCK_SECOND_NATIVE_TRANSACTION_RECEIPT,
     );
 
@@ -933,7 +1125,7 @@ fn should_deposit_and_withdrawal_erc20() {
     );
 
     // Advance time for PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL amount.
-    pic.advance_time(PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL);
+    //pic.advance_time(PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL);
 
     five_ticks(&pic);
 
@@ -941,13 +1133,13 @@ fn should_deposit_and_withdrawal_erc20() {
     // Once there is a withdrawal request, The first attempt should be updating fee history
     // Cause there should be a maximum gap of 30 seconds between the previous gas fee estimate
     // we just advance time for amount
-    let canister_http_requests = pic.get_canister_http();
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        0,
-        MOCK_FEE_HISTORY_RESPONSE,
-    );
+    //let canister_http_requests = pic.get_canister_http();
+    //generate_and_submit_mock_http_response(
+    //    &pic,
+    //    &canister_http_requests,
+    //    0,
+    //    MOCK_FEE_HISTORY_RESPONSE,
+    //);
 
     five_ticks(&pic);
 
@@ -958,6 +1150,28 @@ fn should_deposit_and_withdrawal_erc20() {
         &pic,
         &canister_http_requests,
         0,
+        MOCK_TRANSACTION_COUNT_LATEST_ERC20,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        1,
+        MOCK_TRANSACTION_COUNT_LATEST_ERC20,
+    );
+
+    // Generating the latest transaction count for inserting the correct nonce
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_TRANSACTION_COUNT_LATEST_ERC20,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
         MOCK_TRANSACTION_COUNT_LATEST_ERC20,
     );
 
@@ -988,6 +1202,22 @@ fn should_deposit_and_withdrawal_erc20() {
         MOCK_SEND_TRANSACTION_ERROR,
     );
 
+    // Drpc request
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_SEND_TRANSACTION_ERROR,
+    );
+
+    // Alchemy request
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
+        MOCK_SEND_TRANSACTION_ERROR,
+    );
+
     five_ticks(&pic);
 
     // getting the finalized transaction count after sending transaction was successful.
@@ -997,6 +1227,27 @@ fn should_deposit_and_withdrawal_erc20() {
         &pic,
         &canister_http_requests,
         0,
+        MOCK_TRANSACTION_COUNT_FINALIZED_ERC20,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        1,
+        MOCK_TRANSACTION_COUNT_FINALIZED_ERC20,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_TRANSACTION_COUNT_FINALIZED_ERC20,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
         MOCK_TRANSACTION_COUNT_FINALIZED_ERC20,
     );
 
@@ -1021,6 +1272,22 @@ fn should_deposit_and_withdrawal_erc20() {
         &pic,
         &canister_http_requests,
         1,
+        MOCK_TRANSACTION_RECEIPT_ERC20,
+    );
+
+    // public_node
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_TRANSACTION_RECEIPT_ERC20,
+    );
+
+    // ankr
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
         MOCK_TRANSACTION_RECEIPT_ERC20,
     );
 
@@ -1086,6 +1353,12 @@ fn should_fail_log_scrapping_request_without_proper_gap() {
 
     // Ankr mock submission
     generate_and_submit_mock_http_response(&pic, &canister_http_requests, 1, MOCK_GET_LOGS);
+
+    // drpc mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 2, MOCK_GET_LOGS);
+
+    // Alchemy mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 3, MOCK_GET_LOGS);
 
     five_ticks(&pic);
 

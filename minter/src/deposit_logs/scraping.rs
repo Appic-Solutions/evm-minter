@@ -29,7 +29,10 @@ impl LogScraping for ReceivedDepositLogScraping {
     type Parser = ReceivedDepositLogParser;
 
     fn next_scrape(state: &State) -> Option<Scrape> {
-        let contract_address = state.helper_contract_address.unwrap();
+        let contract_address = state
+            .helper_contract_address
+            .expect("Scraping not activated");
+
         let last_scraped_block_number = state.last_scraped_block_number;
 
         // We add native token address as 0;

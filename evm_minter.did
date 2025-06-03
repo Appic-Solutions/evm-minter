@@ -27,6 +27,7 @@ type DefiniteCanisterSettings = record {
   memory_allocation : nat;
   compute_allocation : nat;
 };
+type DepositStatus = variant { Minted; Accepted; InvalidDeposit; Quarantined };
 type Eip1559TransactionPrice = record {
   max_priority_fee_per_gas : nat;
   max_fee_per_gas : nat;
@@ -107,6 +108,7 @@ type EventPayload = variant {
     from : principal;
     created_at : opt nat64;
     from_subaccount : opt blob;
+    l1_fee : opt nat;
   };
   CreatedTransaction : record {
     withdrawal_id : nat;
@@ -123,6 +125,7 @@ type EventPayload = variant {
     from_subaccount : opt blob;
     erc20_contract_address : text;
     max_transaction_fee : nat;
+    l1_fee : opt nat;
     native_ledger_burn_index : nat;
   };
   FinalizedTransaction : record {
@@ -363,6 +366,7 @@ service : (MinterArg) -> {
   icrc28_trusted_origins : () -> (Icrc28TrustedOriginsResponse);
   minter_address : () -> (text);
   request_scraping_logs : () -> (Result);
+  retrieve_deposit_status : (text) -> (opt DepositStatus) query;
   retrieve_withdrawal_status : (nat64) -> (RetrieveWithdrawalStatus);
   smart_contract_address : () -> (text) query;
   withdraw_erc20 : (WithdrawErc20Arg) -> (Result_1);

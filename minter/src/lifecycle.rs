@@ -84,12 +84,18 @@ impl TryFrom<InitArg> for State {
                 InvalidStateError::InvalidMinimumLedgerTransferFee(format!("ERROR: {}", e))
             })?;
         let native_symbol = ERC20TokenSymbol::new(native_symbol);
-        let helper_contract_address = helper_contract_address
-            .map(|a| Address::from_str(&a))
-            .transpose()
-            .map_err(|e| {
-                InvalidStateError::InvalidHelperContractAddress(format!("ERROR: {}", e))
-            })?;
+
+        let helper_contract_address = match helper_contract_address {
+            Some(address_string) => match Address::from_str(&address_string) {
+                Ok(address) => Ok(Some(address)),
+                Err(e) => Err(InvalidStateError::InvalidHelperContractAddress(format!(
+                    "ERROR: {}",
+                    e
+                ))),
+            },
+            None => Ok(None),
+        }?;
+
         let last_scraped_block_number =
             BlockNumber::try_from(last_scraped_block_number).map_err(|e| {
                 InvalidStateError::InvalidLastScrapedBlockNumber(format!("ERROR: {}", e))

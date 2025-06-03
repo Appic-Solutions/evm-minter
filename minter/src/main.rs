@@ -7,7 +7,8 @@ use evm_minter::endpoints::events::{
 };
 
 use evm_minter::endpoints::{
-    self, AddErc20Token, FeeError, Icrc28TrustedOriginsResponse, RequestScrapingError,
+    self, AddErc20Token, DepositStatus, FeeError, Icrc28TrustedOriginsResponse,
+    RequestScrapingError,
 };
 use evm_minter::endpoints::{
     Eip1559TransactionPrice, Eip1559TransactionPriceArg, Erc20Balance, GasFeeEstimate, MinterInfo,
@@ -16,6 +17,7 @@ use evm_minter::endpoints::{
 };
 use evm_minter::endpoints::{RetrieveErc20Request, WithdrawErc20Arg, WithdrawErc20Error};
 use evm_minter::erc20::ERC20Token;
+use evm_minter::evm_config::EvmNetwork;
 use evm_minter::guard::retrieve_withdraw_guard;
 use evm_minter::ledger_client::{LedgerBurnError, LedgerClient};
 use evm_minter::lifecycle::MinterArg;
@@ -24,6 +26,7 @@ use evm_minter::lsm_client::lazy_add_native_ls_to_lsm_canister;
 use evm_minter::memo::BurnMemo;
 use evm_minter::numeric::{Erc20Value, LedgerBurnIndex, Wei};
 use evm_minter::rpc_client::providers::Provider;
+use evm_minter::rpc_declarations::Hash;
 use evm_minter::state::audit::{process_event, Event, EventType};
 use evm_minter::state::transactions::{
     Erc20WithdrawalRequest, NativeWithdrawalRequest, Reimbursed, ReimbursementIndex,
@@ -33,7 +36,7 @@ use evm_minter::state::{
     lazy_call_ecdsa_public_key, mutate_state, read_state, transactions, State, STATE,
 };
 use evm_minter::storage::set_rpc_api_key;
-use evm_minter::tx::lazy_refresh_gas_fee_estimate;
+use evm_minter::tx::gas_fees::{lazy_fetch_l1_fee_estimate, lazy_refresh_gas_fee_estimate};
 use evm_minter::withdraw::{
     process_reimbursement, process_retrieve_tokens_requests,
     ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT, NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
@@ -46,11 +49,14 @@ use ic_canister_log::log;
 use ic_cdk::{init, post_upgrade, pre_upgrade, query, update};
 use std::collections::BTreeSet;
 use std::convert::TryFrom;
+use std::str::FromStr;
 use std::time::Duration;
 
 // Set api_keys for rpc providers
 const ANKR_API_KEY: Option<&'static str> = option_env!("Ankr_Api_Key");
 const LLAMA_API_KEY: Option<&'static str> = option_env!("Llama_Api_Key");
+const DRPC_API_KEY: Option<&'static str> = option_env!("DRPC_Api_Key");
+const ALCHEMY_API_KEY: Option<&'static str> = option_env!("Alchemy_Api_Key");
 
 fn validate_caller_not_anonymous() -> candid::Principal {
     let principal = ic_cdk::caller();
@@ -105,12 +111,16 @@ async fn init(arg: MinterArg) {
             ic_cdk::trap("cannot init canister state with upgrade args");
         }
     }
+
     let ankr_api_key = ANKR_API_KEY.unwrap();
     let llama_api_key = LLAMA_API_KEY.unwrap();
+    let drpc_api_key = DRPC_API_KEY.unwrap();
+    let alchemy_api_key = ALCHEMY_API_KEY.unwrap();
+
     set_rpc_api_key(Provider::Ankr, ankr_api_key.to_string());
     set_rpc_api_key(Provider::LlamaNodes, llama_api_key.to_string());
-
-    setup_timers();
+    set_rpc_api_key(Provider::DRPC, drpc_api_key.to_string());
+    set_rpc_api_key(Provider::Alchemy, alchemy_api_key.to_string());
 
     // Add native ledger suite to the lsm canister.
     ic_cdk_timers::set_timer(Duration::from_secs(0), || {
@@ -146,8 +156,13 @@ fn post_upgrade(minter_arg: Option<MinterArg>) {
 
     let ankr_api_key = ANKR_API_KEY.unwrap();
     let llama_api_key = LLAMA_API_KEY.unwrap();
+    let drpc_api_key = DRPC_API_KEY.unwrap();
+    let alchemy_api_key = ALCHEMY_API_KEY.unwrap();
+
     set_rpc_api_key(Provider::Ankr, ankr_api_key.to_string());
     set_rpc_api_key(Provider::LlamaNodes, llama_api_key.to_string());
+    set_rpc_api_key(Provider::DRPC, drpc_api_key.to_string());
+    set_rpc_api_key(Provider::Alchemy, alchemy_api_key.to_string());
 
     setup_timers();
 }
@@ -268,6 +283,13 @@ async fn request_scraping_logs() -> Result<(), RequestScrapingError> {
     Ok(())
 }
 
+#[query]
+async fn retrieve_deposit_status(tx_hash: String) -> Option<DepositStatus> {
+    read_state(|s| {
+        s.get_deposit_status(Hash::from_str(&tx_hash).expect("Invalid transaction hash"))
+    })
+}
+
 #[update]
 async fn withdraw_native_token(
     WithdrawalArg { amount, recipient }: WithdrawalArg,
@@ -301,6 +323,19 @@ async fn withdraw_native_token(
             min_withdrawal_amount: minimum_withdrawal_amount.into(),
         });
     }
+
+    // Check if l1_fee is required for this network
+    let l1_fee = match read_state(|s| s.evm_network) {
+        EvmNetwork::Base | EvmNetwork::Optimism => match lazy_fetch_l1_fee_estimate().await {
+            Some(fee) => Some(fee),
+            None => {
+                return Err(WithdrawalError::TemporarilyUnavailable(
+                    "Failed to retrieve current l1 fee".to_string(),
+                ));
+            }
+        },
+        _ => None,
+    };
 
     // Fee transfer and calculation
     // The amount of transferred fee is as follow
@@ -362,6 +397,7 @@ async fn withdraw_native_token(
                 from: caller,
                 from_subaccount: None,
                 created_at: Some(now),
+                l1_fee,
             };
 
             log!(
@@ -376,6 +412,11 @@ async fn withdraw_native_token(
                     EventType::AcceptedNativeWithdrawalRequest(withdrawal_request.clone()),
                 );
             });
+
+            ic_cdk_timers::set_timer(Duration::from_secs(0), || {
+                ic_cdk::spawn(process_retrieve_tokens_requests())
+            });
+
             Ok(RetrieveNativeRequest::from(withdrawal_request))
         }
         Err(e) => {
@@ -494,6 +535,19 @@ async fn withdraw_erc20(
         WithdrawErc20Error::TemporarilyUnavailable("Failed to retrieve current gas fee".to_string())
     })?;
 
+    // Check if l1_fee is required for this network
+    let l1_fee = match read_state(|s| s.evm_network) {
+        EvmNetwork::Base | EvmNetwork::Optimism => match lazy_fetch_l1_fee_estimate().await {
+            Some(fee) => Some(fee),
+            None => {
+                return Err(WithdrawErc20Error::TemporarilyUnavailable(
+                    "Failed to retrieve current l1 fee".to_string(),
+                ));
+            }
+        },
+        _ => None,
+    };
+
     // withdrawal fee deducted in native token
     let withdrawal_native_fee = read_state(|s| s.withdrawal_native_fee);
 
@@ -532,11 +586,15 @@ async fn withdraw_erc20(
     }?;
 
     let now = ic_cdk::api::time();
+    let max_transaction_fee = erc20_tx_fee
+        .checked_add(l1_fee.unwrap_or(Wei::ZERO))
+        .unwrap_or(Wei::MAX);
+
     log!(INFO, "[withdraw_erc20]: burning {:?} native", erc20_tx_fee);
     match native_ledger
         .burn_from(
             caller.into(),
-            erc20_tx_fee,
+            max_transaction_fee,
             BurnMemo::Erc20GasFee {
                 erc20_token_symbol: erc20_token.erc20_token_symbol.clone(),
                 erc20_withdrawal_amount,
@@ -565,7 +623,7 @@ async fn withdraw_erc20(
             {
                 Ok(erc20_ledger_burn_index) => {
                     let withdrawal_request = Erc20WithdrawalRequest {
-                        max_transaction_fee: erc20_tx_fee,
+                        max_transaction_fee,
                         withdrawal_amount: erc20_withdrawal_amount,
                         destination,
                         native_ledger_burn_index,
@@ -575,6 +633,7 @@ async fn withdraw_erc20(
                         from: caller,
                         from_subaccount: None,
                         created_at: now,
+                        l1_fee,
                     };
                     log!(
                         INFO,
@@ -587,14 +646,19 @@ async fn withdraw_erc20(
                             EventType::AcceptedErc20WithdrawalRequest(withdrawal_request.clone()),
                         );
                     });
+
+                    ic_cdk_timers::set_timer(Duration::from_secs(0), || {
+                        ic_cdk::spawn(process_retrieve_tokens_requests())
+                    });
+
                     Ok(RetrieveErc20Request::from(withdrawal_request))
                 }
                 Err(erc20_burn_error) => {
                     let reimbursed_amount = match &erc20_burn_error {
-                        LedgerBurnError::TemporarilyUnavailable { .. } => erc20_tx_fee, //don't penalize user in case of an error outside of their control
+                        LedgerBurnError::TemporarilyUnavailable { .. } => max_transaction_fee, //don't penalize user in case of an error outside of their control
                         LedgerBurnError::InsufficientFunds { .. }
                         | LedgerBurnError::AmountTooLow { .. }
-                        | LedgerBurnError::InsufficientAllowance { .. } => erc20_tx_fee
+                        | LedgerBurnError::InsufficientAllowance { .. } => max_transaction_fee
                             .checked_sub(native_transfer_fee)
                             .unwrap_or(Wei::ZERO),
                     };
@@ -870,6 +934,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     from,
                     from_subaccount,
                     created_at,
+                    l1_fee,
                 }) => EP::AcceptedNativeWithdrawalRequest {
                     withdrawal_amount: withdrawal_amount.into(),
                     destination: destination.to_string(),
@@ -877,6 +942,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     from,
                     from_subaccount: from_subaccount.map(|s| s.0),
                     created_at,
+                    l1_fee: l1_fee.map(|fee| fee.into()),
                 },
                 EventType::CreatedTransaction {
                     withdrawal_id,
@@ -949,6 +1015,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     from,
                     from_subaccount,
                     created_at,
+                    l1_fee,
                 }) => EP::AcceptedErc20WithdrawalRequest {
                     max_transaction_fee: max_transaction_fee.into(),
                     withdrawal_amount: withdrawal_amount.into(),
@@ -960,6 +1027,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     from,
                     from_subaccount: from_subaccount.map(|s| s.0),
                     created_at,
+                    l1_fee: l1_fee.map(|fee| fee.into()),
                 },
                 EventType::MintedErc20 {
                     event_source,

@@ -4,6 +4,7 @@ mod tests;
 use async_trait::async_trait;
 use candid::utils::ArgumentEncoder;
 use candid::{CandidType, Principal};
+use evm_rpc_types::CallArgs;
 use ic_canister_log::{log, Sink};
 use ic_cdk::api::call::RejectionCode;
 use serde::de::DeserializeOwned;
@@ -60,6 +61,7 @@ pub struct OverrideRpcConfig {
     pub eth_get_transaction_receipt: Option<RpcConfig>,
     pub eth_get_transaction_count: Option<RpcConfig>,
     pub eth_send_raw_transaction: Option<RpcConfig>,
+    pub eth_call: Option<RpcConfig>,
 }
 
 // Clinet for making intercanister calls to evm_rpc_canister
@@ -76,6 +78,15 @@ pub struct EvmRpcClient<L: Sink> {
 impl<L: Sink> EvmRpcClient<L> {
     pub fn builder(caller_service: CallerService, logger: L) -> EvmRpcClientBuilder<L> {
         EvmRpcClientBuilder::new(caller_service, logger)
+    }
+
+    pub async fn eth_call(&self, call_args: CallArgs) -> MultiRpcResult<String> {
+        self.call_internal(
+            "eth_call",
+            self.override_rpc_config.eth_call.clone(),
+            call_args,
+        )
+        .await
     }
 
     pub async fn eth_get_block_by_number(&self, block: BlockTag) -> MultiRpcResult<Block> {
