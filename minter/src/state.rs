@@ -35,6 +35,7 @@ use crate::{
         BlockNumber, Erc20Value, LedgerBurnIndex, LedgerMintIndex, TransactionNonce, Wei, WeiPerGas,
     },
     rpc_declarations::{BlockTag, Hash, TransactionReceipt, TransactionStatus},
+    tests::pocket_ic_helpers::native_ledger_principal,
     tx::gas_fees::GasFeeEstimate,
 };
 use strum_macros::EnumIter;
@@ -473,6 +474,15 @@ impl State {
                 chain_id: self.evm_network,
                 erc20_token_symbol: symbol.clone(),
             })
+    }
+
+    pub fn find_icp_token_ledger_id_by_wrapped_erc20_address(
+        &self,
+        wrapped_erc20_address: &Address,
+    ) -> Option<Principal> {
+        self.wrapped_icp_tokens
+            .get_entry_alt(wrapped_erc20_address)
+            .map(|(ledger_id, symbol)| ledger_id.clone())
     }
 
     pub fn supported_erc20_tokens(&self) -> impl Iterator<Item = ERC20Token> + '_ {

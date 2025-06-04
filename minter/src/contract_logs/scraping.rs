@@ -5,9 +5,12 @@ use crate::numeric::BlockNumber;
 use crate::rpc_declarations::{FixedSizeData, Topic};
 use crate::state::State;
 
-use super::new_contract::{RECEIVED_BURNT_TOKEN_EVENT, RECEIVED_WRAPPED_ICP_DEPLOYED_EVENT};
-use super::old_contract::RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC;
 use super::parser::{LogParser, ReceivedEventsLogParser};
+use super::types::{
+    RECEIVED_DEPLOYED_WRAPPED_ICP_ERC20_TOKEN_EVENT_TOPIC,
+    RECEIVED_DEPOSITED_AND_BURNT_TOKENS_EVENT_TOPIC_NEW_CONTRACT,
+    RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT,
+};
 
 pub struct Scrape {
     pub contract_addresses: Vec<Address>,
@@ -48,9 +51,15 @@ impl LogScraping for ReceivedEventsLogScraping {
         );
 
         let mut topics: Vec<_> = vec![
-            Topic::from(FixedSizeData(RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC)),
-            Topic::from(FixedSizeData(RECEIVED_BURNT_TOKEN_EVENT)),
-            Topic::from(FixedSizeData(RECEIVED_WRAPPED_ICP_DEPLOYED_EVENT)),
+            Topic::from(FixedSizeData(
+                RECEIVED_DEPOSITED_AND_BURNT_TOKENS_EVENT_TOPIC_NEW_CONTRACT,
+            )),
+            Topic::from(FixedSizeData(
+                RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT,
+            )),
+            Topic::from(FixedSizeData(
+                RECEIVED_DEPLOYED_WRAPPED_ICP_ERC20_TOKEN_EVENT_TOPIC,
+            )),
         ];
         // We add token contract addresses as additional topics to match.
         // It has a disjunction semantics, so it will match if event matches any one of these addresses.

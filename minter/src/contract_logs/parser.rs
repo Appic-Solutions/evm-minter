@@ -4,16 +4,17 @@ use crate::contract_logs::{
 };
 
 use crate::eth_types::Address;
-use crate::numeric::{BlockNumber, Erc20Value, Wei};
+use crate::numeric::{BlockNumber, Erc20Value, IcrcValue, Wei};
 use crate::rpc_declarations::{Data, FixedSizeData, LogEntry};
+use crate::state::read_state;
 use candid::Principal;
+use ethers_core::abi::token;
 
-use super::new_contract::{
-    AmountType, ReceivedBurnEvent, ReceivedWrappedIcpTokenDeployedEvent,
-    RECEIVED_BURNT_TOKEN_EVENT, RECEIVED_WRAPPED_ICP_DEPLOYED_EVENT,
-};
-use super::old_contract::{
-    ReceivedErc20Event, ReceivedNativeEvent, RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC,
+use super::types::{
+    ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent,
+    ReceivedWrappedIcpErc20DeployedEvent, RECEIVED_DEPLOYED_WRAPPED_ICP_ERC20_TOKEN_EVENT_TOPIC,
+    RECEIVED_DEPOSITED_AND_BURNT_TOKENS_EVENT_TOPIC_NEW_CONTRACT,
+    RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT,
 };
 use super::ReceivedContractEvent;
 
@@ -49,7 +50,7 @@ impl LogParser for ReceivedEventsLogParser {
         let event_signature = entry.topics.first();
 
         match event_signature {
-            Some(&FixedSizeData(RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC)) => {
+            Some(&FixedSizeData(RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT)) => {
                 // We have 4 indexed topics for all deposit events:
                 // The overall event is as follow :
                 // DepositLog(
@@ -68,6 +69,15 @@ impl LogParser for ReceivedEventsLogParser {
 
                 let token_contract_address = parse_address(&entry.topics[1], event_source)?;
 
+                if read_state(|s| s.erc20_tokens.get_alt(&token_contract_address).is_none()) {
+                    return Err(ReceivedContractEventError::InvalidEventSource {
+                        source: event_source,
+                        error: EventSourceError::InvalidEvent(
+                            "Deposited Erc20 token is not supported by the minter".to_string(),
+                        ),
+                    });
+                }
+
                 let principal = parse_principal(&entry.topics[3], event_source)?;
 
                 let value = &entry.topics[2];
@@ -78,32 +88,28 @@ impl LogParser for ReceivedEventsLogParser {
                 } = event_source;
 
                 match token_contract_address.is_native_token() {
-                    true => Ok(ReceivedContractEvent::NativeDepositDeposit(
-                        ReceivedNativeEvent {
-                            transaction_hash,
-                            block_number,
-                            log_index,
-                            from_address,
-                            value: Wei::from_be_bytes(value.0),
-                            principal,
-                            subaccount,
-                        },
-                    )),
-                    false => Ok(ReceivedContractEvent::Erc20DepositDeposit(
-                        ReceivedErc20Event {
-                            transaction_hash,
-                            block_number,
-                            log_index,
-                            from_address,
-                            value: Erc20Value::from_be_bytes(value.0),
-                            principal,
-                            erc20_contract_address: token_contract_address,
-                            subaccount,
-                        },
-                    )),
+                    true => Ok(ReceivedContractEvent::NativeDeposit(ReceivedNativeEvent {
+                        transaction_hash,
+                        block_number,
+                        log_index,
+                        from_address,
+                        value: Wei::from_be_bytes(value.0),
+                        principal,
+                        subaccount,
+                    })),
+                    false => Ok(ReceivedContractEvent::Erc20Deposit(ReceivedErc20Event {
+                        transaction_hash,
+                        block_number,
+                        log_index,
+                        from_address,
+                        value: Erc20Value::from_be_bytes(value.0),
+                        principal,
+                        erc20_contract_address: token_contract_address,
+                        subaccount,
+                    })),
                 }
             }
-            Some(&FixedSizeData(RECEIVED_BURNT_TOKEN_EVENT)) => {
+            Some(&FixedSizeData(RECEIVED_DEPOSITED_AND_BURNT_TOKENS_EVENT_TOPIC_NEW_CONTRACT)) => {
                 let EventSource {
                     transaction_hash,
                     log_index,
@@ -122,30 +128,60 @@ impl LogParser for ReceivedEventsLogParser {
                 let [amount_bytes, subaccount_bytes] =
                     parse_data_into_32_byte_words(entry.data, event_source)?;
 
-                let from_erc20 = parse_address(&entry.topics[3], event_source)?;
-
-                let amount = if from_erc20.is_native_token() {
-                    AmountType::Native(Wei::from_be_bytes(amount_bytes))
-                } else {
-                    AmountType::Erc20(Erc20Value::from_be_bytes(amount_bytes))
-                };
+                let burnt_erc20 = parse_address(&entry.topics[3], event_source)?;
 
                 let principal = parse_principal(&entry.topics[2], event_source)?;
 
                 let subaccount = LedgerSubaccount::from_bytes(subaccount_bytes);
 
-                Ok(ReceivedContractEvent::TokenBurn(ReceivedBurnEvent {
-                    transaction_hash,
-                    block_number,
-                    log_index,
-                    from_address,
-                    amount,
-                    from_erc20,
-                    principal,
-                    subaccount,
-                }))
+                if burnt_erc20.is_native_token() {
+                    Ok(ReceivedContractEvent::NativeDeposit(ReceivedNativeEvent {
+                        transaction_hash,
+                        block_number,
+                        log_index,
+                        from_address,
+                        value: Wei::from_be_bytes(amount_bytes),
+                        principal,
+                        subaccount,
+                    }))
+                } else {
+                    if let Some(twin_erc20) = read_state(|s| s.erc20_tokens.get_alt(&burnt_erc20)) {
+                        Ok(ReceivedContractEvent::Erc20Deposit(ReceivedErc20Event {
+                            transaction_hash,
+                            block_number,
+                            log_index,
+                            from_address,
+                            value: Erc20Value::from_be_bytes(amount_bytes),
+                            principal,
+                            erc20_contract_address: burnt_erc20,
+                            subaccount,
+                        }))
+                    } else if let Some(icrc_ledger) = read_state(|s| {
+                        s.find_icp_token_ledger_id_by_wrapped_erc20_address(&burnt_erc20)
+                    }) {
+                        Ok(ReceivedContractEvent::WrappedIcpErc20Burn(
+                            ReceivedBurnEvent {
+                                transaction_hash,
+                                block_number,
+                                log_index,
+                                from_address,
+                                value: IcrcValue::from_be_bytes(amount_bytes),
+                                principal,
+                                wrapped_erc20_contract_address: burnt_erc20,
+                                subaccount,
+                            },
+                        ))
+                    } else {
+                        Err(ReceivedContractEventError::InvalidEventSource {
+                            source: event_source,
+                            error: EventSourceError::InvalidEvent(
+                                "Burnt erc20 token is not supported by minter.".to_string(),
+                            ),
+                        })
+                    }
+                }
             }
-            Some(&FixedSizeData(RECEIVED_WRAPPED_ICP_DEPLOYED_EVENT)) => {
+            Some(&FixedSizeData(RECEIVED_DEPLOYED_WRAPPED_ICP_ERC20_TOKEN_EVENT_TOPIC)) => {
                 let EventSource {
                     transaction_hash,
                     log_index,
@@ -155,20 +191,21 @@ impl LogParser for ReceivedEventsLogParser {
                 //    bytes32 indexed baseToken,
                 //    address indexed wrappedERC20
                 //);
-                let base_token = parse_principal_from_slice(&entry.topics[1])?;
+                let base_token = parse_principal(&entry.topics[1], event_source)?;
 
-                let wrapped_erc20 = parse_address(&entry.topics[2], event_source)?;
+                let deployed_wrapped_erc20 = parse_address(&entry.topics[2], event_source)?;
 
                 Ok(ReceivedContractEvent::WrappedDeployed(
-                    ReceivedWrappedIcpTokenDeployedEvent {
+                    ReceivedWrappedIcpErc20DeployedEvent {
                         transaction_hash,
                         block_number,
                         log_index,
                         base_token,
-                        wrapped_erc20,
+                        deployed_wrapped_erc20,
                     },
                 ))
             }
+
             Some(_) => {
                 return Err(ReceivedContractEventError::InvalidEventSource {
                     source: event_source,

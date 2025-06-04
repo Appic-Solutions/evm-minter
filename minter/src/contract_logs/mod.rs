@@ -3,9 +3,12 @@ use core::fmt;
 use candid::Principal;
 use ic_canister_log::log;
 use minicbor::{Decode, Encode};
-use new_contract::{ReceivedBurnEvent, ReceivedWrappedIcpTokenDeployedEvent};
-use old_contract::{ReceivedErc20Event, ReceivedNativeEvent};
+//use new_contract::{ReceivedBurnEvent, ReceivedWrappedIcpTokenDeployedEvent};
 use thiserror::Error;
+use types::{
+    ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent,
+    ReceivedWrappedIcpErc20DeployedEvent,
+};
 
 use crate::{
     checked_amount::CheckedAmountOf,
@@ -17,10 +20,9 @@ use crate::{
 #[cfg(test)]
 mod test;
 
-pub mod new_contract;
-pub mod old_contract;
 pub mod parser;
 pub mod scraping;
+pub mod types;
 
 /// A unique identifier of the event source: the source transaction hash and the log
 /// entry index.
@@ -48,12 +50,11 @@ pub enum EventSourceError {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReceivedContractEvent {
-    // old contract events
     NativeDeposit(ReceivedNativeEvent),
     Erc20Deposit(ReceivedErc20Event),
     // new contract events
-    TokenBurn(ReceivedBurnEvent),
-    WrappedDeployed(ReceivedWrappedIcpTokenDeployedEvent),
+    WrappedIcpErc20Burn(ReceivedBurnEvent),
+    WrappedDeployed(ReceivedWrappedIcpErc20DeployedEvent),
 }
 
 impl ReceivedContractEvent {
@@ -65,7 +66,7 @@ impl ReceivedContractEvent {
         match self {
             ReceivedContractEvent::NativeDeposit(evt) => evt.source(),
             ReceivedContractEvent::Erc20Deposit(evt) => evt.source(),
-            ReceivedContractEvent::TokenBurn(evt) => evt.source(),
+            ReceivedContractEvent::WrappedIcpErc20Burn(evt) => evt.source(),
             ReceivedContractEvent::WrappedDeployed(evt) => evt.source(),
         }
     }
@@ -73,7 +74,7 @@ impl ReceivedContractEvent {
         match self {
             ReceivedContractEvent::NativeDeposit(evt) => evt.block_number,
             ReceivedContractEvent::Erc20Deposit(evt) => evt.block_number,
-            ReceivedContractEvent::TokenBurn(evt) => evt.block_number,
+            ReceivedContractEvent::WrappedIcpErc20Burn(evt) => evt.block_number,
             ReceivedContractEvent::WrappedDeployed(evt) => evt.block_number,
         }
     }
@@ -81,7 +82,7 @@ impl ReceivedContractEvent {
         match self {
             ReceivedContractEvent::NativeDeposit(evt) => evt.log_index,
             ReceivedContractEvent::Erc20Deposit(evt) => evt.log_index,
-            ReceivedContractEvent::TokenBurn(evt) => evt.log_index,
+            ReceivedContractEvent::WrappedIcpErc20Burn(evt) => evt.log_index,
             ReceivedContractEvent::WrappedDeployed(evt) => evt.log_index,
         }
     }
@@ -89,7 +90,7 @@ impl ReceivedContractEvent {
         match self {
             ReceivedContractEvent::NativeDeposit(evt) => evt.transaction_hash,
             ReceivedContractEvent::Erc20Deposit(evt) => evt.transaction_hash,
-            ReceivedContractEvent::TokenBurn(evt) => evt.transaction_hash,
+            ReceivedContractEvent::WrappedIcpErc20Burn(evt) => evt.transaction_hash,
             ReceivedContractEvent::WrappedDeployed(evt) => evt.transaction_hash,
         }
     }

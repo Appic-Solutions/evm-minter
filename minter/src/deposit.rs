@@ -1,16 +1,15 @@
 use std::collections::VecDeque;
 use std::time::Duration;
 
+use candid::types::principal;
 use candid::Nat;
 use ic_canister_log::log;
 use icrc_ledger_types::icrc1::account::Account;
 use scopeguard::ScopeGuard;
 
-use crate::contract_logs::{
-    report_transaction_error, ReceivedDepositEvent, ReceivedDepositEventError,
-};
-use crate::contract_logs::{LogParser, ReceivedDepositLogParser};
-use crate::contract_logs::{LogScraping, ReceivedDepositLogScraping};
+use crate::checked_amount::CheckedAmountOf;
+use crate::contract_logs::new_contract::AmountType;
+use crate::contract_logs::ReceivedContractEvent;
 use crate::endpoints::RequestScrapingError;
 use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
@@ -39,8 +38,6 @@ async fn mint() {
     let (native_ledger_canister_id, events) =
         read_state(|s| (s.native_ledger_id, s.events_to_mint()));
 
-    let deposit_native_fee = read_state(|s| s.deposit_native_fee).map(|fee| Nat::from(fee));
-
     let mut error_count = 0;
 
     for event in events {
@@ -56,50 +53,66 @@ async fn mint() {
                 )
             });
         });
-        let (token_symbol, ledger_canister_id, is_native_deposit) = match &event {
-            ReceivedDepositEvent::Native(_) => {
-                ("Native".to_string(), native_ledger_canister_id, true)
-            }
-            ReceivedDepositEvent::Erc20(event) => {
-                if let Some(result) = read_state(|s| {
-                    s.erc20_tokens
-                        .get_entry_alt(&event.erc20_contract_address)
-                        .map(|(principal, symbol)| (symbol.to_string(), *principal, false))
-                }) {
-                    result
-                } else {
-                    panic!(
-                        "Failed to mint ERC20: {event:?} Unsupported ERC20 contract address. (This should have already been filtered out by process_event)"
-                    )
+        let (token_symbol, ledger_canister_id, is_native_deposit, amount, recepient, subaccount) =
+            match &event {
+                ReceivedContractEvent::NativeDeposit(event) => (
+                    "Native".to_string(),
+                    native_ledger_canister_id,
+                    true,
+                    AmountType::Native(event.value),
+                    event.principal,
+                    event.subaccount,
+                ),
+                ReceivedContractEvent::Erc20Deposit(event) => {
+                    if let Some(result) = read_state(|s| {
+                        s.erc20_tokens
+                            .get_entry_alt(&event.erc20_contract_address)
+                            .map(|(principal, symbol)| {
+                                (
+                                    symbol.to_string(),
+                                    *principal,
+                                    false,
+                                    AmountType::Erc20(event.value),
+                                    event.principal,
+                                    event.subaccount,
+                                )
+                            })
+                    }) {
+                        result
+                    } else {
+                        panic!("Failed to mint ERC20: {event:?} Unsupported ERC20 contract address. (This should have already been filtered out by process_event)");
+                    }
                 }
-            }
-        };
+                ReceivedContractEvent::TokenBurn(received_burn_event) => todo!(),
+                ReceivedContractEvent::WrappedDeployed(
+                    received_wrapped_icp_token_deployed_event,
+                ) => {
+                    todo!()
+                }
+            };
+
         let client = ICRC1Client {
             runtime: CdkRuntime,
             ledger_canister_id,
         };
 
-        // If deposit type is native_deposit and the fees are not set to zero,
-        // The minted amount for user should be as follow
-        // event.value() - deposit_native_fee
-        let amount = calculate_deposit_amount_deducting_fee(
-            event.value(),
-            &deposit_native_fee,
-            is_native_deposit,
-        );
+        let amount = match amount {
+            AmountType::Native(wei) => Nat::from(wei),
+            AmountType::Erc20(erc20_value) => Nat::from(erc20_value),
+        };
 
         // Mint tokens for the user
         let block_index = match client
             .transfer(TransferArg {
                 from_subaccount: None,
                 to: Account {
-                    owner: event.principal(),
-                    subaccount: event.subaccount(),
+                    owner: recepient,
+                    subaccount: subaccount.map(|subaccount| subaccount.to_bytes()),
                 },
                 fee: None,
                 created_at_time: None,
                 memo: Some((&event).into()),
-                amount: amount.clone(),
+                amount,
             })
             .await
         {
@@ -123,64 +136,17 @@ async fn mint() {
             }
         };
 
-        // In case the deposit is native and there is deposit fee,
-        // Mint the fees for the fee collector account
-        // If minting tokens is successful and minting deposit fees fails,
-        // The minting process will be considered as successful and will not go for another iteration,
-        // To prevent double minting
-        if is_native_deposit {
-            match deposit_native_fee {
-                Some(ref deposit_fee) => {
-                    // Minting deposit fees in minters fee collector subaccount
-                    match client
-                        .transfer(TransferArg {
-                            from_subaccount: None,
-                            to: Account {
-                                owner: ic_cdk::id(),
-                                subaccount: Some(FEES_SUBACCOUNT),
-                            },
-                            fee: None,
-                            created_at_time: None,
-                            memo: None,
-                            amount: deposit_fee.clone(),
-                        })
-                        .await
-                    {
-                        Ok(Ok(block_index)) => {
-                            log!(
-                                INFO,
-                                "Minted deposit fee {} in fee collecting account in block {}",
-                                deposit_fee,
-                                block_index
-                            );
-                        }
-                        Ok(Err(err)) => {
-                            log!(
-                                INFO,
-                                "Failed to minter fees {}: {err:?}",
-                                deposit_fee.clone()
-                            );
-                        }
-                        Err(err) => {
-                            log!(INFO,"Failed to send a message to the ledger for minting fees({ledger_canister_id}): {err:?}");
-                        }
-                    };
-                }
-                None => {}
-            }
-        };
-
         // Record event
         mutate_state(|s| {
             process_event(
                 s,
                 match &event {
-                    ReceivedDepositEvent::Native(event) => EventType::MintedNative {
+                    ReceivedContractEvent::NativeDeposit(event) => EventType::MintedNative {
                         event_source: event.source(),
                         mint_block_index: LedgerMintIndex::new(block_index),
                     },
 
-                    ReceivedDepositEvent::Erc20(event) => EventType::MintedErc20 {
+                    ReceivedContractEvent::Erc20Deposit(event) => EventType::MintedErc20 {
                         event_source: event.source(),
                         mint_block_index: LedgerMintIndex::new(block_index),
                         erc20_contract_address: event.erc20_contract_address,
@@ -193,7 +159,7 @@ async fn mint() {
             INFO,
             "Minted {} {token_symbol} to {} in block {block_index} ",
             amount,
-            event.principal(),
+            recepient.to_text(),
         );
         // minting succeeded, defuse guard
         ScopeGuard::into_inner(prevent_double_minting_guard);
@@ -377,7 +343,7 @@ async fn scrape_until_block(last_block_number: BlockNumber, max_block_spread: u1
 
 async fn scrape_block_range(
     rpc_client: &RpcClient,
-    contract_address: Address,
+    contract_addresses: Vec<Address>,
     topics: Vec<Topic>,
     block_range: BlockRangeInclusive,
 ) -> Result<(), MultiCallError<Vec<LogEntry>>> {
@@ -391,7 +357,7 @@ async fn scrape_block_range(
         let request = GetLogsParam {
             from_block: BlockSpec::from(from_block),
             to_block: BlockSpec::from(to_block),
-            address: vec![contract_address],
+            address: contract_addresses,
             topics: topics.clone(),
         };
 
@@ -494,21 +460,4 @@ pub fn validate_log_scraping_request(
     }
 
     Ok(())
-}
-
-pub fn calculate_deposit_amount_deducting_fee(
-    amount: Nat,
-    deposit_native_fee: &Option<Nat>,
-    is_native_deposit: bool,
-) -> candid::Nat {
-    // Calculate Amount - Deposit fee
-    if is_native_deposit {
-        // If there is a deposit fee
-        match deposit_native_fee {
-            Some(fee) => amount - fee.clone(),
-            None => amount,
-        }
-    } else {
-        amount
-    }
 }
