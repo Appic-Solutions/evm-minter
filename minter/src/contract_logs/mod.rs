@@ -53,8 +53,8 @@ pub enum ReceivedContractEvent {
     NativeDeposit(ReceivedNativeEvent),
     Erc20Deposit(ReceivedErc20Event),
     // new contract events
-    WrappedIcpErc20Burn(ReceivedBurnEvent),
-    WrappedDeployed(ReceivedWrappedIcpErc20DeployedEvent),
+    WrappedIcrcBurn(ReceivedBurnEvent),
+    WrappedIcrcDeployed(ReceivedWrappedIcpErc20DeployedEvent),
 }
 
 impl ReceivedContractEvent {

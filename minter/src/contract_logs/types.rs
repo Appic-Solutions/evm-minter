@@ -75,7 +75,9 @@ pub struct ReceivedBurnEvent {
     pub principal: Principal,
     #[n(6)]
     pub wrapped_erc20_contract_address: Address,
-    #[n(7)]
+    #[cbor(n(7), with = "crate::cbor::principal")]
+    pub icp_token_principal: Principal,
+    #[n(8)]
     pub subaccount: Option<LedgerSubaccount>,
 }
 
@@ -93,7 +95,13 @@ impl From<ReceivedErc20Event> for ReceivedContractEvent {
 
 impl From<ReceivedBurnEvent> for ReceivedContractEvent {
     fn from(event: ReceivedBurnEvent) -> Self {
-        ReceivedContractEvent::WrappedErc20Burn(event)
+        ReceivedContractEvent::WrappedIcrcBurn(event)
+    }
+}
+
+impl From<ReceivedWrappedIcrcDeployedEvent> for ReceivedContractEvent {
+    fn from(event: ReceivedWrappedIcrcDeployedEvent) -> Self {
+        ReceivedContractEvent::WrappedIcrcDeployed(event)
     }
 }
 
@@ -172,12 +180,12 @@ impl ReceivedBurnEvent {
 }
 
 //  "WrappedTokenDeployed(bytes32,address)": "0xe63ddf723173735772522be59b64b9c95be6eb8f14b87948f670ad6f8949ab2e"
-pub(crate) const RECEIVED_DEPLOYED_WRAPPED_ICP_ERC20_TOKEN_EVENT_TOPIC: [u8; 32] =
+pub(crate) const RECEIVED_DEPLOYED_WRAPPED_ICRC_TOKEN_EVENT_TOPIC: [u8; 32] =
     hex!("e63ddf723173735772522be59b64b9c95be6eb8f14b87948f670ad6f8949ab2e");
 
-// Fetched ReceivedWrappedIcpErc20DeployedEvent events to be saved into state
+// Fetched ReceivedWrappedIcrcDeployedEvent events to be saved into state
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
-pub struct ReceivedWrappedIcpErc20DeployedEvent {
+pub struct ReceivedWrappedIcrcDeployedEvent {
     #[n(0)]
     pub transaction_hash: Hash,
     #[n(1)]
@@ -190,9 +198,9 @@ pub struct ReceivedWrappedIcpErc20DeployedEvent {
     pub deployed_wrapped_erc20: Address,
 }
 
-impl fmt::Debug for ReceivedWrappedIcpErc20DeployedEvent {
+impl fmt::Debug for ReceivedWrappedIcrcDeployedEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ReceivedWrappedIcpErc20DeployedEvent")
+        f.debug_struct("ReceivedWrappedIcrcDeployedEvent")
             .field("transaction_hash", &self.transaction_hash)
             .field("block_number", &self.block_number)
             .field("log_index", &self.log_index)
@@ -202,7 +210,7 @@ impl fmt::Debug for ReceivedWrappedIcpErc20DeployedEvent {
     }
 }
 
-impl ReceivedWrappedIcpErc20DeployedEvent {
+impl ReceivedWrappedIcrcDeployedEvent {
     pub fn source(&self) -> EventSource {
         EventSource {
             transaction_hash: self.transaction_hash,

@@ -8,7 +8,6 @@ use icrc_ledger_types::icrc1::account::Account;
 use scopeguard::ScopeGuard;
 
 use crate::checked_amount::CheckedAmountOf;
-use crate::contract_logs::new_contract::AmountType;
 use crate::contract_logs::ReceivedContractEvent;
 use crate::endpoints::RequestScrapingError;
 use crate::eth_types::Address;
@@ -26,7 +25,7 @@ use crate::state::{mutate_state, read_state, State, TaskType};
 use crate::FEES_SUBACCOUNT;
 use num_traits::ToPrimitive;
 
-async fn mint() {
+async fn mint_and_release() {
     use icrc_ledger_client_cdk::{CdkRuntime, ICRC1Client};
     use icrc_ledger_types::icrc1::transfer::TransferArg;
 
@@ -35,12 +34,17 @@ async fn mint() {
         Err(_) => return,
     };
 
-    let (native_ledger_canister_id, events) =
-        read_state(|s| (s.native_ledger_id, s.events_to_mint()));
+    let (native_ledger_canister_id, events_to_mint, events_to_release) = read_state(|s| {
+        (
+            s.native_ledger_id,
+            s.events_to_mint(),
+            s.events_to_release(),
+        )
+    });
 
     let mut error_count = 0;
 
-    for event in events {
+    for event in events_to_mint {
         // Ensure that even if we were to panic in the callback, after having contacted the ledger to mint the tokens,
         // this event will not be processed again.
         let prevent_double_minting_guard = scopeguard::guard(event.clone(), |event| {
@@ -59,7 +63,7 @@ async fn mint() {
                     "Native".to_string(),
                     native_ledger_canister_id,
                     true,
-                    AmountType::Native(event.value),
+                    Nat::from(event.value),
                     event.principal,
                     event.subaccount,
                 ),
@@ -72,7 +76,7 @@ async fn mint() {
                                     symbol.to_string(),
                                     *principal,
                                     false,
-                                    AmountType::Erc20(event.value),
+                                    Nat::from(event.value),
                                     event.principal,
                                     event.subaccount,
                                 )
@@ -83,22 +87,12 @@ async fn mint() {
                         panic!("Failed to mint ERC20: {event:?} Unsupported ERC20 contract address. (This should have already been filtered out by process_event)");
                     }
                 }
-                ReceivedContractEvent::TokenBurn(received_burn_event) => todo!(),
-                ReceivedContractEvent::WrappedDeployed(
-                    received_wrapped_icp_token_deployed_event,
-                ) => {
-                    todo!()
-                }
+                _ => panic!("BUG: Only deposit events should be in the minting list"),
             };
 
         let client = ICRC1Client {
             runtime: CdkRuntime,
             ledger_canister_id,
-        };
-
-        let amount = match amount {
-            AmountType::Native(wei) => Nat::from(wei),
-            AmountType::Erc20(erc20_value) => Nat::from(erc20_value),
         };
 
         // Mint tokens for the user
@@ -152,6 +146,7 @@ async fn mint() {
                         erc20_contract_address: event.erc20_contract_address,
                         erc20_token_symbol: token_symbol.clone(),
                     },
+                    _ => panic!("BUG: Only deposit events should be in the minting list"),
                 },
             )
         });
@@ -165,12 +160,17 @@ async fn mint() {
         ScopeGuard::into_inner(prevent_double_minting_guard);
     }
 
+    for event in events_to_release {}
+
     if error_count > 0 {
         log!(
             INFO,
-            "Failed to mint {error_count} events, rescheduling the minting"
+            "Failed to mint or release {error_count} events, rescheduling the minting and releasing"
         );
-        ic_cdk_timers::set_timer(crate::MINT_RETRY_DELAY, || ic_cdk::spawn(mint()));
+        ic_cdk_timers::set_timer(
+            crate::MINT_RETRY_DELAY,
+            || ic_cdk::spawn(mint_and_release()),
+        );
     }
 }
 

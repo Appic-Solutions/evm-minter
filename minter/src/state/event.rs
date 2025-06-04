@@ -2,7 +2,13 @@ use candid::Principal;
 use minicbor::{Decode, Encode};
 
 use crate::{
-    contract_logs::{EventSource, ReceivedDepositEvent, ReceivedErc20Event, ReceivedNativeEvent},
+    contract_logs::{
+        types::{
+            ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent,
+            ReceivedWrappedIcrcDeployedEvent,
+        },
+        EventSource, ReceivedContractEvent,
+    },
     erc20::ERC20Token,
     eth_types::Address,
     lifecycle::{InitArg, UpgradeArg},
@@ -160,13 +166,23 @@ pub enum EventType {
         #[n(0)]
         block_number: BlockNumber,
     },
+    #[n(24)]
+    AcceptedWrappedIcrcBurn(#[n(0)] ReceivedBurnEvent),
+    #[n(25)]
+    DeployedWrappedIcrcToken(#[n(0)] ReceivedWrappedIcrcDeployedEvent),
 }
 
-impl ReceivedDepositEvent {
-    pub fn into_deposit(self) -> EventType {
+impl ReceivedContractEvent {
+    pub fn into_event_type(self) -> EventType {
         match self {
-            ReceivedDepositEvent::Native(event) => EventType::AcceptedDeposit(event),
-            ReceivedDepositEvent::Erc20(event) => EventType::AcceptedErc20Deposit(event),
+            ReceivedContractEvent::NativeDeposit(event) => EventType::AcceptedDeposit(event),
+            ReceivedContractEvent::Erc20Deposit(event) => EventType::AcceptedErc20Deposit(event),
+            ReceivedContractEvent::WrappedIcrcBurn(event) => {
+                EventType::AcceptedWrappedIcrcBurn(event)
+            }
+            ReceivedContractEvent::WrappedIcrcDeployed(event) => {
+                EventType::DeployedWrappedIcrcToken(event)
+            }
         }
     }
 }

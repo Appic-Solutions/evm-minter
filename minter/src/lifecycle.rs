@@ -191,6 +191,7 @@ pub struct UpgradeArg {
     pub native_ledger_transfer_fee: Option<Nat>,
     #[cbor(n(7), with = "crate::cbor::nat::option")]
     pub min_max_priority_fee_per_gas: Option<Nat>,
+    // deposit_native_fee is deprecated
     #[cbor(n(8), with = "crate::cbor::nat::option")]
     pub deposit_native_fee: Option<Nat>,
     #[cbor(n(9), with = "crate::cbor::nat::option")]

@@ -32,10 +32,9 @@ use crate::{
     logs::DEBUG,
     map::DedupMultiKeyMap,
     numeric::{
-        BlockNumber, Erc20Value, LedgerBurnIndex, LedgerMintIndex, TransactionNonce, Wei, WeiPerGas,
+        BlockNumber, IcrcValue, LedgerBurnIndex, LedgerMintIndex, TransactionNonce, Wei, WeiPerGas,
     },
     rpc_declarations::{BlockTag, Hash, TransactionReceipt, TransactionStatus},
-    tests::pocket_ic_helpers::native_ledger_principal,
     tx::gas_fees::GasFeeEstimate,
 };
 use strum_macros::EnumIter;
@@ -50,10 +49,10 @@ pub const MAIN_DERIVATION_PATH: Vec<ByteBuf> = vec![];
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum InvalidEventReason {
-    /// Deposit is invalid and was never minted.
+    /// Deposit or release is invalid and was never minted or released.
     /// This is most likely due to a user error (e.g., user's IC principal cannot be decoded)
     /// or there is a critical issue in the logs returned from the JSON-RPC providers.
-    InvalidDeposit(String),
+    InvalidEvent(String),
 
     /// Deposit is valid but it's unknown whether it was minted or not,
     /// most likely because there was an unexpected panic in the callback.
@@ -65,8 +64,8 @@ pub enum InvalidEventReason {
 impl Display for InvalidEventReason {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            InvalidEventReason::InvalidDeposit(reason) => {
-                write!(f, "Invalid deposit: {}", reason)
+            InvalidEventReason::InvalidEvent(reason) => {
+                write!(f, "Invalid event: {}", reason)
             }
             InvalidEventReason::QuarantinedDeposit => {
                 write!(f, "Quarantined deposit")
@@ -100,7 +99,8 @@ pub struct MintedEvent {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReleasedEvent {
     pub event: ReceivedContractEvent,
-    pub release_block_index: LedgerMintIndex,
+    pub transfer_block_index: LedgerMintIndex,
+    pub transfer_fee: IcrcValue,
     pub icp_ledger_principal: Principal,
     pub erc20_contract_address: Address,
 }
@@ -153,7 +153,7 @@ pub struct State {
     // Computed based on audit events.
     pub erc20_balances: Erc20Balances,
 
-    pub icp_tokens_balances: IcrcBalances,
+    pub icrc_balances: IcrcBalances,
 
     // /// Per-principal lock for pending withdrawals
     pub pending_withdrawal_principals: BTreeSet<Principal>,
@@ -166,7 +166,7 @@ pub struct State {
 
     /// fees charged for withdraw and mint_wrapped icp tokens operations in order to cover signing cost,
     /// can be none in case there is no need to charge any withdrawal fees.
-    pub withdraw_native_fee: Option<Wei>,
+    pub withdrawal_native_fee: Option<Wei>,
 
     pub total_withdraw_fee_collected: Wei,
 
@@ -183,8 +183,8 @@ pub struct State {
     /// Icrc tokens that the minter can lock, and mint on the evm side
     /// - primary key: ledger ID for the ICRC token
     /// - secondary key: ERC-20 contract address on EVM
-    /// - value: ICRC token symbol
-    pub wrapped_icp_tokens: DedupMultiKeyMap<Principal, Address, String>,
+    /// - value: IcrcValue token transfer fee
+    pub wrapped_icrc_tokens: DedupMultiKeyMap<Principal, Address, Option<IcrcValue>>,
 
     pub min_max_priority_fee_per_gas: WeiPerGas,
 
@@ -260,6 +260,14 @@ impl State {
         !self.events_to_mint.is_empty()
     }
 
+    pub fn events_to_release(&self) -> Vec<ReceivedContractEvent> {
+        self.events_to_release.values().cloned().collect()
+    }
+
+    pub fn has_events_to_release(&self) -> bool {
+        !self.events_to_release.is_empty()
+    }
+
     /// Quarantine the deposit event to prevent double minting.
     /// WARNING!: It's crucial that this method does not panic,
     /// since it's called inside the clean-up callback, when an unexpected panic did occur before.
@@ -274,7 +282,7 @@ impl State {
         }
     }
 
-    fn record_event_to_mint_or_release(&mut self, event: &ReceivedContractEvent) {
+    fn record_contract_events(&mut self, event: &ReceivedContractEvent) {
         let event_source = event.source();
         assert!(
             !self.events_to_mint.contains_key(&event_source),
@@ -289,15 +297,45 @@ impl State {
         assert!(!self.released_events.contains_key(&event_source));
         assert!(!self.invalid_events.contains_key(&event_source));
 
-        if let ReceivedDepositEvent::Erc20(event) = event {
-            assert!(
-                self.erc20_tokens
-                    .contains_alt(&event.erc20_contract_address),
-                "BUG: unsupported ERC-20 contract address in event {event:?}"
-            )
-        }
+        match event {
+            ReceivedContractEvent::NativeDeposit(_received_native_event) => {
+                self.events_to_mint.insert(event_source, event.clone());
+            }
+            ReceivedContractEvent::Erc20Deposit(received_erc20_event) => {
+                assert!(
+                    self.erc20_tokens
+                        .contains_alt(&received_erc20_event.erc20_contract_address),
+                    "BUG: unsupported ERC-20 contract address in event {event:?}"
+                );
 
-        self.events_to_mint.insert(event_source, event.clone());
+                self.events_to_mint.insert(event_source, event.clone());
+            }
+            ReceivedContractEvent::WrappedIcrcBurn(received_burn_event) => {
+                assert!(
+                    self.wrapped_icrc_tokens
+                        .contains_alt(&received_burn_event.wrapped_erc20_contract_address),
+                    "BUG: unsupported wrapped ICR contract address in event{event:?}"
+                );
+
+                self.events_to_release.insert(event_source, event.clone());
+            }
+            ReceivedContractEvent::WrappedIcrcDeployed(wrapped_icrc_deployed) => {
+                assert!(
+                    !self
+                        .wrapped_icrc_tokens
+                        .contains_alt(&wrapped_icrc_deployed.deployed_wrapped_erc20),
+                    "BUG: deployed ERC20 wrapped ICRC token has been already recorded"
+                );
+
+                self.wrapped_icrc_tokens
+                    .try_insert(
+                        wrapped_icrc_deployed.base_token,
+                        wrapped_icrc_deployed.deployed_wrapped_erc20,
+                        None,
+                    )
+                    .expect("Bug: duplicate wrapped icp token should've been detected before");
+            }
+        };
 
         self.update_balance_upon_deposit(event)
     }
@@ -310,7 +348,7 @@ impl State {
         );
     }
 
-    fn record_invalid_deposit(&mut self, source: EventSource, error: String) -> bool {
+    fn record_invalid_event(&mut self, source: EventSource, error: String) -> bool {
         assert!(
             !self.events_to_mint.contains_key(&source),
             "attempted to mark an accepted event as invalid"
@@ -319,11 +357,15 @@ impl State {
             !self.minted_events.contains_key(&source),
             "attempted to mark a minted event {source:?} as invalid"
         );
+        assert!(
+            !self.released_events.contains_key(&source),
+            "attempted to mark a released event {source:?} as invalid"
+        );
 
         match self.invalid_events.entry(source) {
             btree_map::Entry::Occupied(_) => false,
             btree_map::Entry::Vacant(entry) => {
-                entry.insert(InvalidEventReason::InvalidDeposit(error));
+                entry.insert(InvalidEventReason::InvalidEvent(error));
                 true
             }
         }
@@ -340,7 +382,7 @@ impl State {
             !self.invalid_events.contains_key(&source),
             "attempted to mint an event previously marked as invalid {source:?}"
         );
-        let deposit_event = match self.events_to_mint.remove(&source) {
+        let event = match self.events_to_mint.remove(&source) {
             Some(event) => event,
             None => panic!("attempted to mint Twin tokens for an unknown event {source:?}"),
         };
@@ -348,10 +390,43 @@ impl State {
             self.minted_events.insert(
                 source,
                 MintedEvent {
-                    deposit_event,
+                    event,
                     mint_block_index,
                     token_symbol: token_symbol.to_string(),
                     erc20_contract_address,
+                },
+            ),
+            None,
+            "attempted to mint native twice for the same event {source:?}"
+        );
+    }
+
+    fn record_successful_release(
+        &mut self,
+        source: EventSource,
+        transfer_fee: IcrcValue,
+        transfer_block_index: LedgerMintIndex,
+        erc20_contract_address: Address,
+        icp_ledger_principal: Principal,
+    ) {
+        assert!(
+            !self.invalid_events.contains_key(&source),
+            "attempted to mint an event previously marked as invalid {source:?}"
+        );
+        let event = match self.events_to_release.remove(&source) {
+            Some(event) => event,
+            None => panic!("attempted to mint Twin tokens for an unknown event {source:?}"),
+        };
+
+        assert_eq!(
+            self.released_events.insert(
+                source,
+                ReleasedEvent {
+                    event,
+                    erc20_contract_address,
+                    transfer_block_index,
+                    transfer_fee,
+                    icp_ledger_principal
                 },
             ),
             None,
@@ -416,6 +491,21 @@ impl State {
             ReceivedContractEvent::Erc20Deposit(event) => self
                 .erc20_balances
                 .erc20_add(event.erc20_contract_address, event.value),
+
+            _ => panic!("Bug: Invalid event, it should have already been filtered out"),
+        };
+    }
+
+    // update balance upopn releaseing locked icrc tokens
+    fn update_balance_upon_release(&mut self, event: &ReceivedContractEvent) {
+        match event {
+            ReceivedContractEvent::WrappedIcrcBurn(received_burn_event) => {
+                self.icrc_balances.icrc_sub(
+                    received_burn_event.icp_token_principal,
+                    received_burn_event.value,
+                );
+            }
+            _ => panic!("Bug: Invalid event, it should have already been filtered out"),
         };
     }
 
@@ -480,7 +570,7 @@ impl State {
         &self,
         wrapped_erc20_address: &Address,
     ) -> Option<Principal> {
-        self.wrapped_icp_tokens
+        self.wrapped_icrc_tokens
             .get_entry_alt(wrapped_erc20_address)
             .map(|(ledger_id, symbol)| ledger_id.clone())
     }
@@ -574,6 +664,7 @@ impl State {
             evm_rpc_id,
             native_ledger_transfer_fee,
             min_max_priority_fee_per_gas,
+            // deposit native fee is deprecated
             deposit_native_fee,
             withdrawal_native_fee,
         } = upgrade_args;
@@ -625,21 +716,6 @@ impl State {
 
         if let Some(evm_id) = evm_rpc_id {
             self.evm_canister_id = evm_id;
-        }
-
-        if let Some(deposit_native_fee) = deposit_native_fee {
-            // Conversion to Wei tag
-            let deposit_native_fee_converted = Wei::try_from(deposit_native_fee)
-                .map_err(|e| InvalidStateError::InvalidFeeInput(format!("ERROR: {}", e)))?;
-
-            // If fee is set to zero it should be remapped to None
-            let deposit_native_fee = if deposit_native_fee_converted == Wei::ZERO {
-                None
-            } else {
-                Some(deposit_native_fee_converted)
-            };
-
-            self.deposit_native_fee = deposit_native_fee;
         }
 
         if let Some(withdrawal_native_fee) = withdrawal_native_fee {

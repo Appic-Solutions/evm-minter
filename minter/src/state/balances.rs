@@ -34,7 +34,7 @@ impl Default for NativeBalance {
 }
 
 impl NativeBalance {
-    fn eth_balance_add(&mut self, value: Wei) {
+    pub fn eth_balance_add(&mut self, value: Wei) {
         self.native_balance = self.native_balance.checked_add(value).unwrap_or_else(|| {
             panic!(
                 "BUG: overflow when adding {} to {}",
@@ -43,7 +43,7 @@ impl NativeBalance {
         })
     }
 
-    fn eth_balance_sub(&mut self, value: Wei) {
+    pub fn eth_balance_sub(&mut self, value: Wei) {
         self.native_balance = self.native_balance.checked_sub(value).unwrap_or_else(|| {
             panic!(
                 "BUG: underflow when subtracting {} from {}",
@@ -52,7 +52,7 @@ impl NativeBalance {
         })
     }
 
-    fn total_effective_tx_fees_add(&mut self, value: Wei) {
+    pub fn total_effective_tx_fees_add(&mut self, value: Wei) {
         self.total_effective_tx_fees = self
             .total_effective_tx_fees
             .checked_add(value)
@@ -64,7 +64,7 @@ impl NativeBalance {
             })
     }
 
-    fn total_unspent_tx_fees_add(&mut self, value: Wei) {
+    pub fn total_unspent_tx_fees_add(&mut self, value: Wei) {
         self.total_unspent_tx_fees = self
             .total_unspent_tx_fees
             .checked_add(value)

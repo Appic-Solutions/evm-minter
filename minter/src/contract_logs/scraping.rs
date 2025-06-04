@@ -7,7 +7,7 @@ use crate::state::State;
 
 use super::parser::{LogParser, ReceivedEventsLogParser};
 use super::types::{
-    RECEIVED_DEPLOYED_WRAPPED_ICP_ERC20_TOKEN_EVENT_TOPIC,
+    RECEIVED_DEPLOYED_WRAPPED_ICRC_TOKEN_EVENT_TOPIC,
     RECEIVED_DEPOSITED_AND_BURNT_TOKENS_EVENT_TOPIC_NEW_CONTRACT,
     RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT,
 };
@@ -58,7 +58,7 @@ impl LogScraping for ReceivedEventsLogScraping {
                 RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT,
             )),
             Topic::from(FixedSizeData(
-                RECEIVED_DEPLOYED_WRAPPED_ICP_ERC20_TOKEN_EVENT_TOPIC,
+                RECEIVED_DEPLOYED_WRAPPED_ICRC_TOKEN_EVENT_TOPIC,
             )),
         ];
         // We add token contract addresses as additional topics to match.

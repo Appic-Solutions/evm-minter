@@ -8,11 +8,10 @@ use crate::numeric::{BlockNumber, Erc20Value, IcrcValue, Wei};
 use crate::rpc_declarations::{Data, FixedSizeData, LogEntry};
 use crate::state::read_state;
 use candid::Principal;
-use ethers_core::abi::token;
 
 use super::types::{
-    ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent,
-    ReceivedWrappedIcpErc20DeployedEvent, RECEIVED_DEPLOYED_WRAPPED_ICP_ERC20_TOKEN_EVENT_TOPIC,
+    ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent, ReceivedWrappedIcrcDeployedEvent,
+    RECEIVED_DEPLOYED_WRAPPED_ICRC_TOKEN_EVENT_TOPIC,
     RECEIVED_DEPOSITED_AND_BURNT_TOKENS_EVENT_TOPIC_NEW_CONTRACT,
     RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT,
 };
@@ -156,21 +155,20 @@ impl LogParser for ReceivedEventsLogParser {
                             erc20_contract_address: burnt_erc20,
                             subaccount,
                         }))
-                    } else if let Some(icrc_ledger) = read_state(|s| {
+                    } else if let Some(icp_token_principal) = read_state(|s| {
                         s.find_icp_token_ledger_id_by_wrapped_erc20_address(&burnt_erc20)
                     }) {
-                        Ok(ReceivedContractEvent::WrappedIcpErc20Burn(
-                            ReceivedBurnEvent {
-                                transaction_hash,
-                                block_number,
-                                log_index,
-                                from_address,
-                                value: IcrcValue::from_be_bytes(amount_bytes),
-                                principal,
-                                wrapped_erc20_contract_address: burnt_erc20,
-                                subaccount,
-                            },
-                        ))
+                        Ok(ReceivedContractEvent::WrappedIcrcBurn(ReceivedBurnEvent {
+                            transaction_hash,
+                            block_number,
+                            log_index,
+                            from_address,
+                            value: IcrcValue::from_be_bytes(amount_bytes),
+                            principal,
+                            wrapped_erc20_contract_address: burnt_erc20,
+                            subaccount,
+                            icp_token_principal,
+                        }))
                     } else {
                         Err(ReceivedContractEventError::InvalidEventSource {
                             source: event_source,
@@ -181,7 +179,7 @@ impl LogParser for ReceivedEventsLogParser {
                     }
                 }
             }
-            Some(&FixedSizeData(RECEIVED_DEPLOYED_WRAPPED_ICP_ERC20_TOKEN_EVENT_TOPIC)) => {
+            Some(&FixedSizeData(RECEIVED_DEPLOYED_WRAPPED_ICRC_TOKEN_EVENT_TOPIC)) => {
                 let EventSource {
                     transaction_hash,
                     log_index,
@@ -195,8 +193,8 @@ impl LogParser for ReceivedEventsLogParser {
 
                 let deployed_wrapped_erc20 = parse_address(&entry.topics[2], event_source)?;
 
-                Ok(ReceivedContractEvent::WrappedDeployed(
-                    ReceivedWrappedIcpErc20DeployedEvent {
+                Ok(ReceivedContractEvent::WrappedIcrcDeployed(
+                    ReceivedWrappedIcrcDeployedEvent {
                         transaction_hash,
                         block_number,
                         log_index,

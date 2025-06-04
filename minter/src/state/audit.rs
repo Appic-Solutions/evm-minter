@@ -19,16 +19,16 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
                 .expect("applying upgrade event should succeed");
         }
         EventType::AcceptedDeposit(native_event) => {
-            state.record_event_to_mint(&native_event.clone().into());
+            state.record_contract_events(&native_event.clone().into());
         }
         EventType::AcceptedErc20Deposit(erc20_event) => {
-            state.record_event_to_mint(&erc20_event.clone().into());
+            state.record_contract_events(&erc20_event.clone().into());
         }
         EventType::InvalidDeposit {
             event_source,
             reason,
         } => {
-            let _ = state.record_invalid_deposit(*event_source, reason.clone());
+            let _ = state.record_invalid_event(*event_source, reason.clone());
         }
         EventType::MintedNative {
             event_source,
@@ -147,6 +147,12 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
             state
                 .withdrawal_transactions
                 .record_quarantined_reimbursement(index.clone());
+        }
+        EventType::AcceptedWrappedIcrcBurn(received_burn_event) => {
+            state.record_contract_events(&received_burn_event.clone().into());
+        }
+        EventType::DeployedWrappedIcrcToken(received_wrapped_icrc_deployed_event) => {
+            state.record_contract_events(&received_wrapped_icrc_deployed_event.clone().into())
         }
     }
 }
