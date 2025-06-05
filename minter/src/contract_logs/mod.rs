@@ -66,32 +66,32 @@ impl ReceivedContractEvent {
         match self {
             ReceivedContractEvent::NativeDeposit(evt) => evt.source(),
             ReceivedContractEvent::Erc20Deposit(evt) => evt.source(),
-            ReceivedContractEvent::WrappedIcpErc20Burn(evt) => evt.source(),
-            ReceivedContractEvent::WrappedDeployed(evt) => evt.source(),
+            ReceivedContractEvent::WrappedIcrcBurn(evt) => evt.source(),
+            ReceivedContractEvent::WrappedIcrcDeployed(evt) => evt.source(),
         }
     }
     pub fn block_number(&self) -> BlockNumber {
         match self {
             ReceivedContractEvent::NativeDeposit(evt) => evt.block_number,
             ReceivedContractEvent::Erc20Deposit(evt) => evt.block_number,
-            ReceivedContractEvent::WrappedIcpErc20Burn(evt) => evt.block_number,
-            ReceivedContractEvent::WrappedDeployed(evt) => evt.block_number,
+            ReceivedContractEvent::WrappedIcrcBurn(evt) => evt.block_number,
+            ReceivedContractEvent::WrappedIcrcDeployed(evt) => evt.block_number,
         }
     }
     pub fn log_index(&self) -> LogIndex {
         match self {
             ReceivedContractEvent::NativeDeposit(evt) => evt.log_index,
             ReceivedContractEvent::Erc20Deposit(evt) => evt.log_index,
-            ReceivedContractEvent::WrappedIcpErc20Burn(evt) => evt.log_index,
-            ReceivedContractEvent::WrappedDeployed(evt) => evt.log_index,
+            ReceivedContractEvent::WrappedIcrcBurn(evt) => evt.log_index,
+            ReceivedContractEvent::WrappedIcrcDeployed(evt) => evt.log_index,
         }
     }
     pub fn transaction_hash(&self) -> Hash {
         match self {
             ReceivedContractEvent::NativeDeposit(evt) => evt.transaction_hash,
             ReceivedContractEvent::Erc20Deposit(evt) => evt.transaction_hash,
-            ReceivedContractEvent::WrappedIcpErc20Burn(evt) => evt.transaction_hash,
-            ReceivedContractEvent::WrappedDeployed(evt) => evt.transaction_hash,
+            ReceivedContractEvent::WrappedIcrcBurn(evt) => evt.transaction_hash,
+            ReceivedContractEvent::WrappedIcrcDeployed(evt) => evt.transaction_hash,
         }
     }
 }

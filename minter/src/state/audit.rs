@@ -3,7 +3,10 @@ use super::{
     transactions::{Reimbursed, ReimbursementIndex},
     State,
 };
-use crate::storage::{record_event, with_event_iter};
+use crate::{
+    contract_logs::ReceivedContractEvent,
+    storage::{record_event, with_event_iter},
+};
 
 /// Updates the state to reflect the given state transition.
 // public because it's used in tests since process_event
@@ -151,8 +154,38 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
         EventType::AcceptedWrappedIcrcBurn(received_burn_event) => {
             state.record_contract_events(&received_burn_event.clone().into());
         }
+        EventType::InvalidEvent {
+            event_source,
+            reason,
+        } => {
+            state.record_invalid_event(event_source.clone(), reason.clone());
+        }
         EventType::DeployedWrappedIcrcToken(received_wrapped_icrc_deployed_event) => {
-            state.record_contract_events(&received_wrapped_icrc_deployed_event.clone().into())
+            state.record_contract_events(&received_wrapped_icrc_deployed_event.clone().into());
+        }
+        EventType::QuarantinedRelease {
+            event_source,
+            release_event,
+        } => {
+            state.record_quarantined_release(
+                event_source.clone(),
+                ReceivedContractEvent::WrappedIcrcBurn(release_event.clone()),
+            );
+        }
+        EventType::ReleasedIcrcToken {
+            event_source,
+            release_block_index,
+            released_icrc_token,
+            wrapped_erc20_contract_address,
+            transfer_fee,
+        } => {
+            state.record_successful_release(
+                *event_source,
+                *transfer_fee,
+                *release_block_index,
+                *wrapped_erc20_contract_address,
+                *released_icrc_token,
+            );
         }
     }
 }

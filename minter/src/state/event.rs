@@ -12,7 +12,7 @@ use crate::{
     erc20::ERC20Token,
     eth_types::Address,
     lifecycle::{InitArg, UpgradeArg},
-    numeric::{BlockNumber, LedgerBurnIndex, LedgerMintIndex},
+    numeric::{BlockNumber, IcrcValue, LedgerBurnIndex, LedgerMintIndex, LedgerReleaseIndex},
     rpc_declarations::TransactionReceipt,
     tx::{Eip1559TransactionRequest, SignedEip1559TransactionRequest},
 };
@@ -167,9 +167,46 @@ pub enum EventType {
         block_number: BlockNumber,
     },
     #[n(24)]
+    /// Accepted burn icrc wrapped burn event, so the token to be released(unlocked) on the icp
+    /// side
     AcceptedWrappedIcrcBurn(#[n(0)] ReceivedBurnEvent),
     #[n(25)]
+    /// The minter discovered an invalid burn or deposit event in the helper contract logs.
+    InvalidEvent {
+        /// The unique identifier of the deposit on the Ethereum network.
+        #[n(0)]
+        event_source: EventSource,
+        /// The reason why minter considers the deposit invalid.
+        #[n(1)]
+        reason: String,
+    },
+    // The minter discovered a new wrapped erc20 token deployed for an Icrc based token
+    #[n(26)]
     DeployedWrappedIcrcToken(#[n(0)] ReceivedWrappedIcrcDeployedEvent),
+    #[n(27)]
+    // The release event was quarantined due to transfer errors, will retry later
+    QuarantinedRelease {
+        #[n(0)]
+        event_source: EventSource,
+        #[n(1)]
+        release_event: ReceivedBurnEvent,
+    },
+
+    #[n(28)]
+    ReleasedIcrcToken {
+        /// The unique identifier of the deposit on the Ethereum network.
+        #[n(0)]
+        event_source: EventSource,
+        /// The transaction index on the native ledger.
+        #[cbor(n(1), with = "crate::cbor::id")]
+        release_block_index: LedgerReleaseIndex,
+        #[cbor(n(2), with = "crate::cbor::principal")]
+        released_icrc_token: Principal,
+        #[n(3)]
+        wrapped_erc20_contract_address: Address,
+        #[n(4)]
+        transfer_fee: IcrcValue,
+    },
 }
 
 impl ReceivedContractEvent {

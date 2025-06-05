@@ -1,20 +1,25 @@
 use std::collections::VecDeque;
 use std::time::Duration;
 
-use candid::types::principal;
 use candid::Nat;
 use ic_canister_log::log;
 use icrc_ledger_types::icrc1::account::Account;
 use scopeguard::ScopeGuard;
 
-use crate::checked_amount::CheckedAmountOf;
-use crate::contract_logs::ReceivedContractEvent;
+use crate::contract_logs::parser::{LogParser, ReceivedEventsLogParser};
+use crate::contract_logs::scraping::{LogScraping, ReceivedEventsLogScraping};
+use crate::contract_logs::types::ReceivedBurnEvent;
+use crate::contract_logs::{
+    report_transaction_error, ReceivedContractEvent, ReceivedContractEventError,
+};
 use crate::endpoints::RequestScrapingError;
 use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
 use crate::guard::TimerGuard;
 use crate::logs::{DEBUG, INFO};
-use crate::numeric::{BlockNumber, BlockRangeInclusive, LedgerMintIndex};
+use crate::numeric::{
+    BlockNumber, BlockRangeInclusive, IcrcValue, LedgerMintIndex, LedgerReleaseIndex,
+};
 use crate::rpc_client::providers::Provider;
 use crate::rpc_client::{is_response_too_large, MultiCallError, RpcClient};
 use crate::rpc_declarations::LogEntry;
@@ -22,7 +27,6 @@ use crate::rpc_declarations::Topic;
 use crate::rpc_declarations::{BlockSpec, GetLogsParam};
 use crate::state::audit::{process_event, EventType};
 use crate::state::{mutate_state, read_state, State, TaskType};
-use crate::FEES_SUBACCOUNT;
 use num_traits::ToPrimitive;
 
 async fn mint_and_release() {
@@ -160,7 +164,126 @@ async fn mint_and_release() {
         ScopeGuard::into_inner(prevent_double_minting_guard);
     }
 
-    for event in events_to_release {}
+    for event in events_to_release {
+        let received_burn_event = match &event {
+            ReceivedContractEvent::WrappedIcrcBurn(event) => event,
+
+            _ => panic!("BUG: Only burn events should be in the minting list"),
+        };
+
+        let client = ICRC1Client {
+            runtime: CdkRuntime,
+            ledger_canister_id: received_burn_event.icrc_token_principal,
+        };
+
+        let fee = match client.fee().await {
+            Ok(fee) => fee,
+            Err(err) => {
+                log!(
+                    INFO,
+                    "Failed to send a message to the ledger ({}): {err:?}",
+                    received_burn_event.icrc_token_principal
+                );
+                error_count += 1;
+                mutate_state(|s| {
+                    process_event(
+                        s,
+                        EventType::QuarantinedRelease {
+                            event_source: event.source(),
+                            release_event: received_burn_event.clone(),
+                        },
+                    )
+                });
+                continue;
+            }
+        };
+
+        // sub transfer fee from amount
+        let transfer_fee = IcrcValue::try_from(fee).unwrap_or(IcrcValue::MAX);
+
+        let amount = received_burn_event
+            .value
+            .checked_sub(transfer_fee)
+            .unwrap_or(IcrcValue::ZERO);
+
+        let mut block_index = 0_u64;
+
+        // if amount is greater than transfer fee
+        if amount != IcrcValue::ZERO {
+            // Release tokens for the user
+            block_index = match client
+                .transfer(TransferArg {
+                    from_subaccount: None,
+                    to: Account {
+                        owner: received_burn_event.principal,
+                        subaccount: received_burn_event
+                            .subaccount
+                            .map(|subaccount| subaccount.to_bytes()),
+                    },
+                    fee: Some(fee),
+                    created_at_time: None,
+                    memo: Some((&event).into()),
+                    amount: amount.into(),
+                })
+                .await
+            {
+                Ok(Ok(block_index)) => block_index.0.to_u64().expect("nat does not fit into u64"),
+                Ok(Err(err)) => {
+                    log!(
+                        INFO,
+                        "Failed to release {}: {event:?} {err}",
+                        received_burn_event.icrc_token_principal.to_text()
+                    );
+                    error_count += 1;
+                    // releasing failed
+                    mutate_state(|s| {
+                        process_event(
+                            s,
+                            EventType::QuarantinedRelease {
+                                event_source: event.source(),
+                                release_event: received_burn_event.clone(),
+                            },
+                        )
+                    });
+                    continue;
+                }
+                Err(err) => {
+                    log!(
+                        INFO,
+                        "Failed to send a message to the ledger ({}): {err:?}",
+                        received_burn_event.icrc_token_principal
+                    );
+                    error_count += 1;
+                    // releasing failed, defuse guard
+                    mutate_state(|s| {
+                        process_event(
+                            s,
+                            EventType::QuarantinedRelease {
+                                event_source: event.source(),
+                                release_event: received_burn_event.clone(),
+                            },
+                        )
+                    });
+                    continue;
+                }
+            };
+        }
+
+        // record event
+        mutate_state(|s| {
+            process_event(
+                s,
+                EventType::ReleasedIcrcToken {
+                    event_source: event.source(),
+                    release_block_index: block_index.into(),
+                    released_icrc_token: received_burn_event.icrc_token_principal,
+                    wrapped_erc20_contract_address: received_burn_event
+                        .wrapped_erc20_contract_address,
+                    transfer_fee,
+                },
+            )
+        })
+    }
 
     if error_count > 0 {
         log!(
@@ -298,7 +421,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
 }
 
 async fn scrape_until_block(last_block_number: BlockNumber, max_block_spread: u16) {
-    let scrape = match read_state(|state| ReceivedDepositLogScraping::next_scrape(state)) {
+    let scrape = match read_state(|state| ReceivedEventsLogScraping::next_scrape(state)) {
         Some(s) => s,
         None => {
             log!(
@@ -323,7 +446,7 @@ async fn scrape_until_block(last_block_number: BlockNumber, max_block_spread: u1
     for block_range in block_range.into_chunks(max_block_spread) {
         match scrape_block_range(
             &rpc_client,
-            scrape.contract_address,
+            scrape.contract_addresses.clone(),
             scrape.topics.clone(),
             block_range.clone(),
         )
@@ -364,7 +487,7 @@ async fn scrape_block_range(
         let result = rpc_client
             .get_logs(request)
             .await
-            .map(ReceivedDepositLogParser::parse_all_logs);
+            .map(ReceivedEventsLogParser::parse_all_logs);
 
         match result {
             Ok((events, errors)) => {
@@ -412,28 +535,51 @@ async fn scrape_block_range(
 }
 
 pub fn register_deposit_events(
-    transaction_events: Vec<ReceivedDepositEvent>,
-    errors: Vec<ReceivedDepositEventError>,
+    transaction_events: Vec<ReceivedContractEvent>,
+    errors: Vec<ReceivedContractEventError>,
 ) {
     for event in transaction_events {
-        log!(
-            INFO,
-            "Received event {event:?}; will mint {} to {}",
-            event.value(),
-            event.principal()
-        );
+        match event {
+            ReceivedContractEvent::NativeDeposit(received_native_event) => {
+                log!(
+                    INFO,
+                    "Received event {event:?}; will mint {} to {}",
+                    received_native_event.value,
+                    received_native_event.principal.to_text()
+                );
+            }
+            ReceivedContractEvent::Erc20Deposit(received_erc20_event) => {
+                log!(
+                    INFO,
+                    "Received event {event:?}; will mint {} to {}",
+                    received_erc20_event.value,
+                    received_erc20_event.principal.to_text()
+                );
+            }
+            ReceivedContractEvent::WrappedIcrcBurn(received_burn_event) => {
+                log!(
+                    INFO,
+                    "Received event {event:?}; will release {} to {}",
+                    received_burn_event.value,
+                    received_burn_event.principal.to_text()
+                );
+            }
+            ReceivedContractEvent::WrappedIcrcDeployed(wrapped_icrc_deployed) => {
+                log!(INFO, "Received event {event:?}",);
+            }
+        }
 
-        mutate_state(|s| process_event(s, event.into_deposit()));
+        mutate_state(|s| process_event(s, event.into_event_type()));
     }
-    if read_state(State::has_events_to_mint) {
-        ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(mint()));
+    if read_state(|s| s.has_events_to_mint() || s.has_events_to_release()) {
+        ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(mint_and_release()));
     }
     for error in errors {
-        if let ReceivedDepositEventError::InvalidEventSource { source, error } = &error {
+        if let ReceivedContractEventError::InvalidEventSource { source, error } = &error {
             mutate_state(|s| {
                 process_event(
                     s,
-                    EventType::InvalidDeposit {
+                    EventType::InvalidEvent {
                         event_source: *source,
                         reason: error.to_string(),
                     },

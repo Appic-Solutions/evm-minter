@@ -32,7 +32,8 @@ use crate::{
     logs::DEBUG,
     map::DedupMultiKeyMap,
     numeric::{
-        BlockNumber, IcrcValue, LedgerBurnIndex, LedgerMintIndex, TransactionNonce, Wei, WeiPerGas,
+        BlockNumber, IcrcValue, LedgerBurnIndex, LedgerMintIndex, LedgerReleaseIndex,
+        TransactionNonce, Wei, WeiPerGas,
     },
     rpc_declarations::{BlockTag, Hash, TransactionReceipt, TransactionStatus},
     tx::gas_fees::GasFeeEstimate,
@@ -99,9 +100,9 @@ pub struct MintedEvent {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReleasedEvent {
     pub event: ReceivedContractEvent,
-    pub transfer_block_index: LedgerMintIndex,
+    pub transfer_block_index: LedgerReleaseIndex,
     pub transfer_fee: IcrcValue,
-    pub icp_ledger_principal: Principal,
+    pub icrc_ledger: Principal,
     pub erc20_contract_address: Address,
 }
 
@@ -141,6 +142,10 @@ pub struct State {
     pub minted_events: BTreeMap<EventSource, MintedEvent>,
     pub released_events: BTreeMap<EventSource, ReleasedEvent>,
     pub invalid_events: BTreeMap<EventSource, InvalidEventReason>,
+
+    // received release event was correct, but there was a problem with releasing,
+    // e.g. canister out of cycles or unknown transfer fee.
+    pub quarantined_releases: BTreeMap<EventSource, ReceivedContractEvent>,
 
     pub withdrawal_transactions: WithdrawalTransactions,
     pub skipped_blocks: BTreeSet<BlockNumber>,
@@ -282,6 +287,11 @@ impl State {
         }
     }
 
+    fn record_quarantined_release(&mut self, source: EventSource, event: ReceivedContractEvent) {
+        self.events_to_release.remove(&source);
+        self.quarantined_releases.insert(source, event);
+    }
+
     fn record_contract_events(&mut self, event: &ReceivedContractEvent) {
         let event_source = event.source();
         assert!(
@@ -405,9 +415,9 @@ impl State {
         &mut self,
         source: EventSource,
         transfer_fee: IcrcValue,
-        transfer_block_index: LedgerMintIndex,
+        transfer_block_index: LedgerReleaseIndex,
         erc20_contract_address: Address,
-        icp_ledger_principal: Principal,
+        icrc_ledger: Principal,
     ) {
         assert!(
             !self.invalid_events.contains_key(&source),
@@ -415,7 +425,7 @@ impl State {
         );
         let event = match self.events_to_release.remove(&source) {
             Some(event) => event,
-            None => panic!("attempted to mint Twin tokens for an unknown event {source:?}"),
+            None => panic!("attempted to release icrc tokens for an unknown event {source:?}"),
         };
 
         assert_eq!(
@@ -426,7 +436,7 @@ impl State {
                     erc20_contract_address,
                     transfer_block_index,
                     transfer_fee,
-                    icp_ledger_principal
+                    icrc_ledger
                 },
             ),
             None,
@@ -501,7 +511,7 @@ impl State {
         match event {
             ReceivedContractEvent::WrappedIcrcBurn(received_burn_event) => {
                 self.icrc_balances.icrc_sub(
-                    received_burn_event.icp_token_principal,
+                    received_burn_event.icrc_token_principal,
                     received_burn_event.value,
                 );
             }

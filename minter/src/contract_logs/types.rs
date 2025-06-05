@@ -76,7 +76,7 @@ pub struct ReceivedBurnEvent {
     #[n(6)]
     pub wrapped_erc20_contract_address: Address,
     #[cbor(n(7), with = "crate::cbor::principal")]
-    pub icp_token_principal: Principal,
+    pub icrc_token_principal: Principal,
     #[n(8)]
     pub subaccount: Option<LedgerSubaccount>,
 }
