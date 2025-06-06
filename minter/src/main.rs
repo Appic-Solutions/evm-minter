@@ -309,15 +309,18 @@ async fn withdraw_native_token(
         }
     })?;
 
-    // If withdrawal_native_fee is some, the total transaction value should be as follow
-    // amount - withdrawal_native_fee
-    let withdrawal_native_fee = read_state(|s| s.withdrawal_native_fee);
-
-    let native_transfer_fee = read_state(|s| s.native_ledger_transfer_fee);
-
     let mut amount = Wei::try_from(amount).expect("failed to convert Nat to u256");
 
-    let minimum_withdrawal_amount = read_state(|s| s.native_minimum_withdrawal_amount);
+    // If withdrawal_native_fee is some, the total transaction value should be as follow
+    // amount - withdrawal_native_fee
+    let (withdrawal_native_fee, minimum_withdrawal_amount, native_transfer_fee) = read_state(|s| {
+        (
+            s.withdrawal_native_fee,
+            s.native_minimum_withdrawal_amount,
+            s.native_ledger_transfer_fee,
+        )
+    });
+
     if amount < minimum_withdrawal_amount {
         return Err(WithdrawalError::AmountTooLow {
             min_withdrawal_amount: minimum_withdrawal_amount.into(),
@@ -337,45 +340,6 @@ async fn withdraw_native_token(
         _ => None,
     };
 
-    // Fee transfer and calculation
-    // The amount of transferred fee is as follow
-    // withdrawal_native_fee - native_transfer_fee
-    // Fee transfer will only be triggered if
-    // withdrawal_native_fee is Some(Wei)
-    let _fee_transfer_result = match withdrawal_native_fee {
-        Some(withdrawal_fee) => {
-            let client = read_state(LedgerClient::native_ledger_from_state);
-            let transfer_amount = withdrawal_fee
-                .checked_sub(native_transfer_fee)
-                .expect("Failed to calculate withdrawal fee");
-            log!(
-                INFO,
-                "[withdraw]: Transferring Withdrawal fee - ledger transfer fee {:?}",
-                transfer_amount
-            );
-            match client
-                .transfer_withdrawal_fee(caller.into(), transfer_amount)
-                .await
-            {
-                Ok(block_index) => {
-                    log!(
-                        INFO,
-                        "Transferred Withdrawal fee to minter with block {}",
-                        block_index
-                    );
-
-                    // Deducting withdrawal_fee from withdrawal amount
-                    amount = amount
-                        .checked_sub(withdrawal_fee)
-                        .expect("Failed calculating withdrawal amount");
-                    Ok(())
-                }
-                Err(err) => Err(WithdrawalError::from(err)),
-            }
-        }
-        None => Ok(()),
-    }?;
-
     let client = read_state(LedgerClient::native_ledger_from_state);
     let now = ic_cdk::api::time();
     log!(INFO, "[withdraw]: burning {:?}", amount);
@@ -390,6 +354,14 @@ async fn withdraw_native_token(
         .await
     {
         Ok(ledger_burn_index) => {
+            // Deducting withdrawal_native_fee(fee to cover signing cost) from withdrawal_amount
+            amount = match withdrawal_native_fee {
+                Some(fee) => amount
+                    .checked_sub(fee)
+                    .expect("Bug: Amount should always cover withdrawal_native_fee"),
+                None => amount,
+            };
+
             let withdrawal_request = NativeWithdrawalRequest {
                 withdrawal_amount: amount,
                 destination,
@@ -411,6 +383,15 @@ async fn withdraw_native_token(
                     s,
                     EventType::AcceptedNativeWithdrawalRequest(withdrawal_request.clone()),
                 );
+                if let Some(withdrawal_native_fee) = withdrawal_native_fee {
+                    process_event(
+                        s,
+                        EventType::WithdrawalNativeFeeCollected {
+                            withdrawal_id: ledger_burn_index.into(),
+                            withdrawal_native_fee_paid: withdrawal_native_fee,
+                        },
+                    );
+                }
             });
 
             ic_cdk_timers::set_timer(Duration::from_secs(0), || {
@@ -419,28 +400,7 @@ async fn withdraw_native_token(
 
             Ok(RetrieveNativeRequest::from(withdrawal_request))
         }
-        Err(e) => {
-            // If by any chance the transaction fails and the withdraw fees are already deducted,
-            // Refunding withdrawal fee process will start
-            match withdrawal_native_fee {
-                Some(withdrawal_fee) => {
-                    // Amount= Withdrawal_fee - (ledger_transfer_fee * 2)
-                    let refund_amount = withdrawal_fee
-                        .checked_sub(
-                            native_transfer_fee
-                                .checked_mul(2_u8)
-                                .unwrap_or(withdrawal_fee),
-                        )
-                        .unwrap_or(Wei::ZERO);
-                    let _refund_result = client
-                        .refund_withdrawal_fee(caller.into(), refund_amount)
-                        .await;
-                }
-                None => {}
-            };
-
-            Err(WithdrawalError::from(e))
-        }
+        Err(e) => Err(WithdrawalError::from(e)),
     }
 }
 
@@ -515,6 +475,7 @@ async fn withdraw_erc20(
             WithdrawErc20Error::InvalidDestination("Invalid destination entered".to_string())
         }
     })?;
+
     let erc20_withdrawal_amount =
         Erc20Value::try_from(amount).expect("ERROR: failed to convert Nat to u256");
 
@@ -529,8 +490,15 @@ async fn withdraw_erc20(
                 supported_tokens: Vec::from_iter(supported_erc20_tokens),
             }
         })?;
-    let native_transfer_fee = read_state(|s| s.native_ledger_transfer_fee);
-    let native_ledger = read_state(LedgerClient::native_ledger_from_state);
+
+    let (withdrawal_native_fee, native_ledger, native_transfer_fee) = read_state(|s| {
+        (
+            s.withdrawal_native_fee,
+            LedgerClient::native_ledger_from_state(s),
+            s.native_ledger_transfer_fee,
+        )
+    });
+
     let erc20_tx_fee = estimate_erc20_transaction_fee().await.ok_or_else(|| {
         WithdrawErc20Error::TemporarilyUnavailable("Failed to retrieve current gas fee".to_string())
     })?;
@@ -548,53 +516,22 @@ async fn withdraw_erc20(
         _ => None,
     };
 
-    // withdrawal fee deducted in native token
-    let withdrawal_native_fee = read_state(|s| s.withdrawal_native_fee);
-
-    // Fee transfer and calculation
-    // The amount of transferred fee is as follow:
-    // withdrawal_native_fee - native_transfer_fee
-    let _fee_transfer_result = match withdrawal_native_fee {
-        Some(withdrawal_fee) => {
-            let transfer_amount = withdrawal_fee
-                .checked_sub(native_transfer_fee)
-                .expect("Failed to calculate withdrawal fee");
-            log!(
-                INFO,
-                "[withdraw]: Transferring Withdrawal fee {:?}",
-                withdrawal_fee
-            );
-            match native_ledger
-                .transfer_withdrawal_fee(caller.into(), transfer_amount)
-                .await
-            {
-                Ok(block_index) => {
-                    log!(
-                        INFO,
-                        "Transferred Withdrawal fee to minter with block {}",
-                        block_index
-                    );
-
-                    Ok(())
-                }
-                Err(err) => Err(WithdrawErc20Error::NativeFeeTransferError {
-                    error: FeeError::from(err),
-                }),
-            }
-        }
-        None => Ok(()),
-    }?;
-
     let now = ic_cdk::api::time();
     let max_transaction_fee = erc20_tx_fee
         .checked_add(l1_fee.unwrap_or(Wei::ZERO))
         .unwrap_or(Wei::MAX);
 
+    // amount that will be burnt to cover transaction_fees plus transaction_signing
+    // cost(native_withdrawal_fee)
+    let native_burn_amount = max_transaction_fee
+        .checked_add(native_transfer_fee)
+        .unwrap_or(U256::MAX);
+
     log!(INFO, "[withdraw_erc20]: burning {:?} native", erc20_tx_fee);
     match native_ledger
         .burn_from(
             caller.into(),
-            max_transaction_fee,
+            native_burn_amount,
             BurnMemo::Erc20GasFee {
                 erc20_token_symbol: erc20_token.erc20_token_symbol.clone(),
                 erc20_withdrawal_amount,
@@ -645,6 +582,15 @@ async fn withdraw_erc20(
                             s,
                             EventType::AcceptedErc20WithdrawalRequest(withdrawal_request.clone()),
                         );
+                        if let Some(withdrawal_native_fee) = withdrawal_native_fee {
+                            process_event(
+                                s,
+                                EventType::WithdrawalNativeFeeCollected {
+                                    withdrawal_id: ledger_burn_index.into(),
+                                    withdrawal_native_fee_paid: withdrawal_native_fee,
+                                },
+                            );
+                        }
                     });
 
                     ic_cdk_timers::set_timer(Duration::from_secs(0), || {
@@ -655,10 +601,10 @@ async fn withdraw_erc20(
                 }
                 Err(erc20_burn_error) => {
                     let reimbursed_amount = match &erc20_burn_error {
-                        LedgerBurnError::TemporarilyUnavailable { .. } => max_transaction_fee, //don't penalize user in case of an error outside of their control
+                        LedgerBurnError::TemporarilyUnavailable { .. } => native_burn_amount, //don't penalize user in case of an error outside of their control
                         LedgerBurnError::InsufficientFunds { .. }
                         | LedgerBurnError::AmountTooLow { .. }
-                        | LedgerBurnError::InsufficientAllowance { .. } => max_transaction_fee
+                        | LedgerBurnError::InsufficientAllowance { .. } => native_burn_amount
                             .checked_sub(native_transfer_fee)
                             .unwrap_or(Wei::ZERO),
                     };
@@ -679,25 +625,6 @@ async fn withdraw_erc20(
                         });
                     }
 
-                    // If by any chance the transaction fails and the withdraw fees are already deducted,
-                    // Refunding withdrawal fee process will start
-                    match withdrawal_native_fee {
-                        Some(withdrawal_fee) => {
-                            // Amount= Withdrawal_fee - (ledger_transfer_fee * 2)
-                            let refund_amount = withdrawal_fee
-                                .checked_sub(
-                                    native_transfer_fee
-                                        .checked_mul(2_u8)
-                                        .unwrap_or(withdrawal_fee),
-                                )
-                                .unwrap_or(Wei::ZERO);
-                            let _refund_result = native_ledger
-                                .refund_withdrawal_fee(caller.into(), refund_amount)
-                                .await;
-                        }
-                        None => {}
-                    };
-
                     Err(WithdrawErc20Error::Erc20LedgerError {
                         native_block_index: Nat::from(native_ledger_burn_index.get()),
                         error: erc20_burn_error.into(),
@@ -705,30 +632,9 @@ async fn withdraw_erc20(
                 }
             }
         }
-        Err(native_burn_error) => {
-            // If by any chance the transaction fails and the withdraw fees are already deducted,
-            // Refunding withdrawal fee process will start
-            match withdrawal_native_fee {
-                Some(withdrawal_fee) => {
-                    // Amount= Withdrawal_fee - (ledger_transfer_fee * 2)
-                    let refund_amount = withdrawal_fee
-                        .checked_sub(
-                            native_transfer_fee
-                                .checked_mul(2_u8)
-                                .unwrap_or(withdrawal_fee),
-                        )
-                        .unwrap_or(Wei::ZERO);
-                    let _refund_result = native_ledger
-                        .refund_withdrawal_fee(caller.into(), refund_amount)
-                        .await;
-                }
-                None => {}
-            };
-
-            Err(WithdrawErc20Error::NativeLedgerError {
-                error: native_burn_error.into(),
-            })
-        }
+        Err(native_burn_error) => Err(WithdrawErc20Error::NativeLedgerError {
+            error: native_burn_error.into(),
+        }),
     }
 }
 

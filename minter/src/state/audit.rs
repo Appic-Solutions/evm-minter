@@ -187,6 +187,12 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
                 *released_icrc_token,
             );
         }
+        EventType::WithdrawalNativeFeeCollected {
+            withdrawal_id: _,
+            withdrawal_native_fee_paid,
+        } => {
+            state.record_collected_native_operation_fee(*withdrawal_native_fee_paid);
+        }
     }
 }
 

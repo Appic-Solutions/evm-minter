@@ -12,7 +12,7 @@ use crate::{
     erc20::ERC20Token,
     eth_types::Address,
     lifecycle::{InitArg, UpgradeArg},
-    numeric::{BlockNumber, IcrcValue, LedgerBurnIndex, LedgerMintIndex, LedgerReleaseIndex},
+    numeric::{BlockNumber, IcrcValue, LedgerBurnIndex, LedgerMintIndex, LedgerReleaseIndex, Wei},
     rpc_declarations::TransactionReceipt,
     tx::{Eip1559TransactionRequest, SignedEip1559TransactionRequest},
 };
@@ -206,6 +206,14 @@ pub enum EventType {
         wrapped_erc20_contract_address: Address,
         #[n(4)]
         transfer_fee: IcrcValue,
+    },
+    #[n(29)]
+    WithdrawalNativeFeeCollected {
+        #[cbor(n(0), with = "crate::cbor::id")]
+        withdrawal_id: LedgerBurnIndex,
+        #[n(1)]
+        withdrawal_native_fee_paid: Wei,
+
     },
 }
 

@@ -8,7 +8,6 @@ use scopeguard::ScopeGuard;
 
 use crate::contract_logs::parser::{LogParser, ReceivedEventsLogParser};
 use crate::contract_logs::scraping::{LogScraping, ReceivedEventsLogScraping};
-use crate::contract_logs::types::ReceivedBurnEvent;
 use crate::contract_logs::{
     report_transaction_error, ReceivedContractEvent, ReceivedContractEventError,
 };
@@ -17,9 +16,7 @@ use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
 use crate::guard::TimerGuard;
 use crate::logs::{DEBUG, INFO};
-use crate::numeric::{
-    BlockNumber, BlockRangeInclusive, IcrcValue, LedgerMintIndex, LedgerReleaseIndex,
-};
+use crate::numeric::{BlockNumber, BlockRangeInclusive, IcrcValue, LedgerMintIndex};
 use crate::rpc_client::providers::Provider;
 use crate::rpc_client::{is_response_too_large, MultiCallError, RpcClient};
 use crate::rpc_declarations::LogEntry;

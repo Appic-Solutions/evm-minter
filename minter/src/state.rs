@@ -173,7 +173,9 @@ pub struct State {
     /// can be none in case there is no need to charge any withdrawal fees.
     pub withdrawal_native_fee: Option<Wei>,
 
-    pub total_withdraw_fee_collected: Wei,
+    // fee collected to cover signing cost, for withdraw and lock(mint on evm) operations.
+    // after each operation withdrawal_native_fee should be added to total collected fee
+    pub total_collected_operation_native_fee: Wei,
 
     // Canister ID of the ledger suite manager that
     // can add new ERC-20 token to the minter
@@ -504,6 +506,12 @@ impl State {
 
             _ => panic!("Bug: Invalid event, it should have already been filtered out"),
         };
+    }
+
+    fn record_collected_native_operation_fee(&mut self, amount: Wei) {
+        self.total_collected_operation_native_fee
+            .checked_add(amount)
+            .unwrap_or(Wei::MAX);
     }
 
     // update balance upopn releaseing locked icrc tokens
