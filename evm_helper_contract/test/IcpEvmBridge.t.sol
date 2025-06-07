@@ -11,6 +11,8 @@ contract IcpEvmBridgeTest is Test {
     address minter = address(0xBEEF);
     address owner = address(this);
     address user = address(0xCAFE);
+  
+    address user2= address(0xFFFF);
 
     function setUp() public {
         bridge = new IcpEvmBridge(minter);
@@ -111,5 +113,32 @@ contract IcpEvmBridgeTest is Test {
                 subaccount: bytes32(0)
             })
         );
+    }
+
+    function testWrappedTokenMintAndSimpleTransfer() public{
+        bytes32 baseToken = bytes32("token1");
+        address wrapped = bridge.deployERC20(
+            "Wrapped Gold",
+            "wGOLD",
+            18,
+            baseToken
+        );
+
+        uint256 amount = 100 ether;
+        vm.prank(minter);
+        WrappedToken(wrapped).transfer(user, amount);
+    
+        uint256 userBalance = IERC20(wrapped).balanceOf(user);
+
+        assertEq(userBalance, amount);
+
+        vm.prank(user);
+
+        WrappedToken(wrapped).transfer(user2,amount);
+
+        uint256 userBalance2 = IERC20(wrapped).balanceOf(user2);
+
+        assertEq(userBalance2, amount);
+
     }
 }

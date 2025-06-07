@@ -21,6 +21,10 @@ pub struct NativeBalance {
     /// Total amount of fees that were charged to the user during the withdrawal
     /// but not consumed by the finalized transaction icNative -> Native. conversion of twin native token to token on the home chain.
     total_unspent_tx_fees: Wei,
+
+    // fee collected to cover signing cost, for withdraw and lock(mint on evm) operations.
+    // after each operation withdrawal_native_fee should be added to total collected fee
+    pub total_collected_operation_native_fee: Wei,
 }
 
 impl Default for NativeBalance {
@@ -29,6 +33,7 @@ impl Default for NativeBalance {
             native_balance: Wei::ZERO,
             total_effective_tx_fees: Wei::ZERO,
             total_unspent_tx_fees: Wei::ZERO,
+            total_collected_operation_native_fee: Wei::ZERO,
         }
     }
 }

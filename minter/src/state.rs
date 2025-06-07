@@ -23,8 +23,8 @@ use transactions::{
 
 use crate::{
     address::ecdsa_public_key_to_address,
+    candid_types::DepositStatus,
     contract_logs::{EventSource, ReceivedContractEvent},
-    endpoints::DepositStatus,
     erc20::{ERC20Token, ERC20TokenSymbol},
     eth_types::Address,
     evm_config::EvmNetwork,
@@ -172,10 +172,6 @@ pub struct State {
     /// fees charged for withdraw and mint_wrapped icp tokens operations in order to cover signing cost,
     /// can be none in case there is no need to charge any withdrawal fees.
     pub withdrawal_native_fee: Option<Wei>,
-
-    // fee collected to cover signing cost, for withdraw and lock(mint on evm) operations.
-    // after each operation withdrawal_native_fee should be added to total collected fee
-    pub total_collected_operation_native_fee: Wei,
 
     // Canister ID of the ledger suite manager that
     // can add new ERC-20 token to the minter
@@ -509,7 +505,9 @@ impl State {
     }
 
     fn record_collected_native_operation_fee(&mut self, amount: Wei) {
-        self.total_collected_operation_native_fee
+        self.native_balance.total_collected_operation_native_fee = self
+            .native_balance
+            .total_collected_operation_native_fee
             .checked_add(amount)
             .unwrap_or(Wei::MAX);
     }
@@ -527,6 +525,10 @@ impl State {
         };
     }
 
+    fn update_balance_upon_icrc_lock(&mut self, locked_icrc_token: Principal, amount: IcrcValue) {
+        self.icrc_balances.icrc_add(locked_icrc_token, amount);
+    }
+
     fn update_balance_upon_withdrawal(
         &mut self,
         withdrawal_id: &LedgerBurnIndex,
@@ -541,13 +543,18 @@ impl State {
             .withdrawal_transactions
             .get_processed_withdrawal_request(withdrawal_id)
             .expect("BUG: missing withdrawal request");
-        let charged_tx_fee = match withdrawal_request {
-            WithdrawalRequest::Native(req) => req
-                .withdrawal_amount
-                .checked_sub(tx.transaction().amount)
-                .expect("BUG: withdrawal amount MUST always be at least the transaction amount"),
-            WithdrawalRequest::Erc20(req) => req.max_transaction_fee,
+        let (charged_tx_fee, is_wrapped_mint) = match withdrawal_request {
+            WithdrawalRequest::Native(req) => (
+                req.withdrawal_amount
+                    .checked_sub(tx.transaction().amount)
+                    .expect(
+                        "BUG: withdrawal amount MUST always be at least the transaction amount",
+                    ),
+                false,
+            ),
+            WithdrawalRequest::Erc20(req) => (req.max_transaction_fee, req.is_wrapped_mint),
         };
+
         let unspent_tx_fee = charged_tx_fee.checked_sub(tx_fee).expect(
             "BUG: charged transaction fee MUST always be at least the effective transaction fee",
         );
@@ -564,7 +571,12 @@ impl State {
         self.native_balance
             .total_unspent_tx_fees_add(unspent_tx_fee);
 
-        if receipt.status == TransactionStatus::Success && !tx.transaction_data().is_empty() {
+        // update erc20 balances only if request is erc20 and tx is not a wrapped_mint for icrc
+        // tokens
+        if receipt.status == TransactionStatus::Success
+            && !tx.transaction_data().is_empty()
+            && is_wrapped_mint == false
+        {
             let TransactionCallData::Erc20Transfer { to: _, value } = TransactionCallData::decode(
                 tx.transaction_data(),
             )
@@ -590,7 +602,7 @@ impl State {
     ) -> Option<Principal> {
         self.wrapped_icrc_tokens
             .get_entry_alt(wrapped_erc20_address)
-            .map(|(ledger_id, symbol)| ledger_id.clone())
+            .map(|(ledger_id, _symbol)| ledger_id.clone())
     }
 
     pub fn supported_erc20_tokens(&self) -> impl Iterator<Item = ERC20Token> + '_ {

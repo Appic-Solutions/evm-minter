@@ -6,12 +6,12 @@ use ic_canister_log::log;
 use icrc_ledger_types::icrc1::account::Account;
 use scopeguard::ScopeGuard;
 
+use crate::candid_types::RequestScrapingError;
 use crate::contract_logs::parser::{LogParser, ReceivedEventsLogParser};
 use crate::contract_logs::scraping::{LogScraping, ReceivedEventsLogScraping};
 use crate::contract_logs::{
     report_transaction_error, ReceivedContractEvent, ReceivedContractEventError,
 };
-use crate::endpoints::RequestScrapingError;
 use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
 use crate::guard::TimerGuard;

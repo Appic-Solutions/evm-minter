@@ -31,7 +31,10 @@ const TRANSACTIONS_TO_SEND_BATCH_SIZE: usize = 5;
 // 21000 is fixed for native tokens, however 65000 is idle for ERC20s but some ERC20 contracts have
 // more complicated logic that requires maximum of 100000 Gas.
 pub const NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(21_000);
-pub const ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(65_000);
+pub const ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(66_000);
+
+// used for mining wrapped icrc transactions
+pub const ERC20_MINT_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(75_000);
 
 pub async fn process_reimbursement() {
     let _guard = match TimerGuard::new(TaskType::Reimbursement) {
@@ -113,6 +116,7 @@ pub async fn process_reimbursement() {
             reimbursed_in_block: LedgerMintIndex::new(block_index),
             reimbursed_amount: reimbursement_request.reimbursed_amount,
             transaction_hash: reimbursement_request.transaction_hash,
+            transfer_fee: todo!(),
         };
         let event = match index {
             ReimbursementIndex::Native {
@@ -464,6 +468,12 @@ async fn finalized_transaction_count() -> Result<TransactionCount, MultiCallErro
 pub fn estimate_gas_limit(withdrawal_request: &WithdrawalRequest) -> GasAmount {
     match withdrawal_request {
         WithdrawalRequest::Native(_) => NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
-        WithdrawalRequest::Erc20(_) => ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
+        WithdrawalRequest::Erc20(request) => {
+            if request.is_wrapped_mint {
+                ERC20_MINT_TRANSACTION_GAS_LIMIT
+            } else {
+                ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT
+            }
+        }
     }
 }

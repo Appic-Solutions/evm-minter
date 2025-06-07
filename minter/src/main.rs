@@ -638,6 +638,11 @@ async fn withdraw_erc20(
     }
 }
 
+//// mints wrapped tokens on the evm side corresponding to the locked tokens on the icp side
+//async fn mint_wrapped_icrc()->Result<>{
+//
+//}
+
 async fn estimate_erc20_transaction_fee() -> Option<Wei> {
     lazy_refresh_gas_fee_estimate()
         .await

@@ -6,8 +6,7 @@ use minicbor::{Decode, Encode};
 //use new_contract::{ReceivedBurnEvent, ReceivedWrappedIcpTokenDeployedEvent};
 use thiserror::Error;
 use types::{
-    ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent,
-    ReceivedWrappedIcpErc20DeployedEvent,
+    ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent, ReceivedWrappedIcrcDeployedEvent,
 };
 
 use crate::{
@@ -54,7 +53,7 @@ pub enum ReceivedContractEvent {
     Erc20Deposit(ReceivedErc20Event),
     // new contract events
     WrappedIcrcBurn(ReceivedBurnEvent),
-    WrappedIcrcDeployed(ReceivedWrappedIcpErc20DeployedEvent),
+    WrappedIcrcDeployed(ReceivedWrappedIcrcDeployedEvent),
 }
 
 impl ReceivedContractEvent {

@@ -63,7 +63,7 @@ pub struct NativeWithdrawalRequest {
     pub l1_fee: Option<Wei>,
 }
 
-/// ERC-20 withdrawal request issued by the user.
+/// ERC-20(both unlocking erc20 tokens, and minting wrappped icrc tokens) withdrawal request issued by the user.
 #[derive(Clone, Eq, PartialEq, Encode, Decode)]
 pub struct Erc20WithdrawalRequest {
     /// Amount of burn Native token that can be used to pay for the EVM transaction fees.
@@ -100,6 +100,11 @@ pub struct Erc20WithdrawalRequest {
     /// Fee consumed for batch l1 submission, only applicable to some l2s like Op, and Base
     #[n(10)]
     pub l1_fee: Option<Wei>,
+
+    /// if the transaction mint new wrapped erc20 tokens on the evm side after icrc tokens got
+    /// locked on the icp side     
+    #[n(11)]
+    pub is_wrapped_mint: bool,
 }
 
 struct DebugPrincipal<'a>(&'a Principal);
@@ -147,6 +152,7 @@ impl fmt::Debug for Erc20WithdrawalRequest {
             from_subaccount,
             created_at,
             l1_fee,
+            is_wrapped_mint,
         } = self;
         f.debug_struct("Erc20WithdrawalRequest")
             .field("max_transaction_fee", max_transaction_fee)
@@ -160,6 +166,7 @@ impl fmt::Debug for Erc20WithdrawalRequest {
             .field("from_subaccount", from_subaccount)
             .field("created_at", created_at)
             .field("l1_fee", l1_fee)
+            .field("is_wrapped_mint", is_wrapped_mint)
             .finish()
     }
 }
@@ -343,15 +350,20 @@ pub struct Reimbursed {
     pub reimbursed_amount: Erc20TokenAmount,
     #[n(3)]
     pub transaction_hash: Option<Hash>,
+    #[n(4)]
+    /// In case reimbursement_request is for releaseing(locked) icrc tokens, transfer_fee should be
+    /// calculated, since minintg and burning does not have transfer fee but a simple
+    /// transfer(locking, unlocking) contains transfer fee.
+    pub transfer_fee: Option<Erc20TokenAmount>,
 }
 
 pub type ReimbursedResult = Result<Reimbursed, ReimbursedError>;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ReimbursedError {
-    /// Whether reimbursement was minted or not is unknown,
+    /// Whether reimbursement was (minted, released) or not is unknown,
     /// most likely because there was an unexpected panic in the callback.
-    /// The reimbursement request is quarantined to avoid any double minting and
+    /// The reimbursement request is quarantined to avoid any double (minting, releaseing) and
     /// will not be further processed without manual intervention.
     Quarantined,
 }
@@ -1170,6 +1182,7 @@ pub fn create_transaction(
                 .unwrap_or(Wei::ZERO)
                 .into_wei_per_gas(gas_limit)
                 .expect("BUG: gas_limit should be non-zero");
+
             let actual_min_max_fee_per_gas = gas_fee_estimate.min_max_fee_per_gas();
             if actual_min_max_fee_per_gas > request_max_fee_per_gas {
                 return Err(CreateTransactionError::InsufficientTransactionFee {

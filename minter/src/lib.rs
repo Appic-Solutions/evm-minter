@@ -1,11 +1,11 @@
 use std::time::Duration;
 
 pub mod address;
+pub mod candid_types;
 mod cbor;
 pub mod checked_amount;
 pub mod contract_logs;
 pub mod deposit;
-pub mod endpoints;
 pub mod erc20;
 pub mod eth_types;
 pub mod evm_config;

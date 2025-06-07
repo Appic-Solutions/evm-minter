@@ -144,7 +144,7 @@ impl LogParser for ReceivedEventsLogParser {
                         subaccount,
                     }))
                 } else {
-                    if let Some(twin_erc20) = read_state(|s| s.erc20_tokens.get_alt(&burnt_erc20)) {
+                    if read_state(|s| s.erc20_tokens.get_alt(&burnt_erc20).is_some()) {
                         Ok(ReceivedContractEvent::Erc20Deposit(ReceivedErc20Event {
                             transaction_hash,
                             block_number,
@@ -155,7 +155,7 @@ impl LogParser for ReceivedEventsLogParser {
                             erc20_contract_address: burnt_erc20,
                             subaccount,
                         }))
-                    } else if let Some(icp_token_principal) = read_state(|s| {
+                    } else if let Some(icrc_token_principal) = read_state(|s| {
                         s.find_icp_token_ledger_id_by_wrapped_erc20_address(&burnt_erc20)
                     }) {
                         Ok(ReceivedContractEvent::WrappedIcrcBurn(ReceivedBurnEvent {
@@ -167,7 +167,7 @@ impl LogParser for ReceivedEventsLogParser {
                             principal,
                             wrapped_erc20_contract_address: burnt_erc20,
                             subaccount,
-                            icp_token_principal,
+                            icrc_token_principal,
                         }))
                     } else {
                         Err(ReceivedContractEventError::InvalidEventSource {

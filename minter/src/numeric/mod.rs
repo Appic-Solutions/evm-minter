@@ -68,6 +68,9 @@ pub type LedgerMintIndex = Id<MintIndexTag, u64>;
 pub enum ReleaseIndexTag {}
 pub type LedgerReleaseIndex = Id<ReleaseIndexTag, u64>;
 
+pub enum LockIndexTag {}
+pub type LedgerLockIndex = Id<LockIndexTag, u64>;
+
 impl WeiPerGas {
     pub fn transaction_cost(self, gas: GasAmount) -> Option<Wei> {
         self.checked_mul(gas.into_inner())
