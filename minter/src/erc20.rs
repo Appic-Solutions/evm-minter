@@ -1,4 +1,4 @@
-use crate::endpoints::AddErc20Token;
+use crate::candid_types::AddErc20Token;
 use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
 
@@ -24,7 +24,7 @@ pub struct ERC20Token {
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Encode, Decode)]
 #[cbor(transparent)]
-pub struct ERC20TokenSymbol(#[n(0)] String);
+pub struct ERC20TokenSymbol(#[n(0)] pub String);
 
 impl ERC20TokenSymbol {
     pub fn new(symbol: String) -> Self {

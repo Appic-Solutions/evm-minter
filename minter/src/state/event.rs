@@ -213,8 +213,9 @@ pub enum EventType {
         withdrawal_id: LedgerBurnIndex,
         #[n(1)]
         withdrawal_native_fee_paid: Wei,
-
     },
+    #[n(30)]
+    FailedIcrcLockRequest(#[n(0)] ReimbursementRequest),
 }
 
 impl ReceivedContractEvent {

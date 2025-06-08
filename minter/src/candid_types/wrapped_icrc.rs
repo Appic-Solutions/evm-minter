@@ -1,31 +1,37 @@
 use super::*;
 
 #[derive(CandidType, Deserialize)]
-pub struct WithdrawErc20Arg {
+pub struct WrapIcrcArg {
     pub amount: Nat,
-    pub erc20_ledger_id: Principal,
+    pub icrc_ledger_id: Principal,
     pub recipient: String,
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug, PartialEq)]
-pub struct RetrieveErc20Request {
+pub struct RetrieveWrapIcrcRequest {
     pub native_block_index: Nat,
-    pub erc20_block_index: Nat,
+    pub icrc_block_index: Nat,
 }
 
-impl From<Erc20WithdrawalRequest> for RetrieveErc20Request {
+impl From<Erc20WithdrawalRequest> for RetrieveWrapIcrcRequest {
     fn from(value: Erc20WithdrawalRequest) -> Self {
         Self {
             native_block_index: candid::Nat::from(value.native_ledger_burn_index.get()),
-            erc20_block_index: candid::Nat::from(value.erc20_ledger_burn_index.get()),
+            icrc_block_index: candid::Nat::from(value.erc20_ledger_burn_index.get()),
         }
     }
 }
 
+#[derive(CandidType, Deserialize, Clone, Debug, Ord, PartialOrd, PartialEq, Eq)]
+pub struct WrappedIcrcToken {
+    pub base_token: Principal,
+    pub deployed_wrapped_erc20: String,
+}
+
 #[derive(CandidType, Deserialize, Clone, Debug, PartialEq)]
-pub enum WithdrawErc20Error {
+pub enum WrapIcrcError {
     TokenNotSupported {
-        supported_tokens: Vec<Erc20Token>,
+        supported_tokens: Vec<WrappedIcrcToken>,
     },
 
     NativeLedgerError {
@@ -35,12 +41,14 @@ pub enum WithdrawErc20Error {
     NativeFeeTransferError {
         error: FeeError,
     },
-    Erc20LedgerError {
+    IcrcLedgerError {
         native_block_index: Nat,
         error: LedgerError,
     },
+    AmountTooLow,
     TemporarilyUnavailable(String),
     InvalidDestination(String),
+    TransferFeeUnknow(String),
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug, PartialEq)]

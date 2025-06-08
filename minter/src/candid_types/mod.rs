@@ -1,5 +1,5 @@
 use crate::eth_types::Address;
-use crate::ledger_client::{FeeTransferError, LedgerBurnError};
+use crate::ledger_client::LedgerBurnError;
 // // use crate::rpc_client::responses::TransactionReceipt;
 // // use crate::ledger_client::LedgerBurnError;
 use crate::numeric::LedgerBurnIndex;
@@ -18,6 +18,7 @@ use std::str::FromStr;
 pub mod events;
 pub mod withdraw_erc20;
 pub mod withdraw_native;
+pub mod wrapped_icrc;
 
 // For wallet connection
 #[derive(Clone, Debug, CandidType, Deserialize)]

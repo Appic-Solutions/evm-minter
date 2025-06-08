@@ -30,7 +30,7 @@ const DEFAULT_ERC20_CONTRACT_ADDRESS: &str = "0xa0b86991c6218b36c1d19d4a2e9eb0ce
 const DEFAULT_ERC20_LEDGER_ID: &str = "sa4so-piaaa-aaaar-qacnq-cai";
 
 mod withdrawal_transactions {
-    use crate::endpoints::{RetrieveWithdrawalStatus, Transaction};
+    use crate::candid_types::{withdraw_native::RetrieveWithdrawalStatus, Transaction};
     use crate::numeric::{LedgerBurnIndex, TransactionNonce};
     use crate::state::transactions::tests::{
         create_and_record_transaction, gas_fee_estimate, native_withdrawal_request_with_index,
@@ -1847,7 +1847,7 @@ mod withdrawal_transactions {
     }
 
     mod transaction_status {
-        use crate::endpoints::{RetrieveWithdrawalStatus, TxFinalizedStatus};
+        use crate::candid_types::{RetrieveWithdrawalStatus, TxFinalizedStatus};
         use crate::numeric::{LedgerBurnIndex, LedgerMintIndex, TransactionNonce};
         use crate::state::transactions::tests::{
             create_twin_withdrawal_requests, erc20_withdrawal_request_with_index,

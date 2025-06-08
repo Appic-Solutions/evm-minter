@@ -1,5 +1,6 @@
 use crate::cbor::tests::check_roundtrip;
-use crate::contract_logs::{ReceivedDepositEvent, ReceivedNativeEvent};
+use crate::contract_logs::types::ReceivedNativeEvent;
+use crate::contract_logs::ReceivedContractEvent;
 use crate::memo::BurnMemo;
 use crate::memo::{Address, MintMemo};
 use crate::numeric::{BlockNumber, Erc20TokenAmount, LedgerBurnIndex, LogIndex, Wei};
@@ -67,7 +68,7 @@ fn encode_mint_convert_memo_is_stable() {
         principal: Principal::from_str("2chl6-4hpzw-vqaaa-aaaaa-c").unwrap(),
         subaccount: None,
     };
-    let memo: Memo = (&ReceivedDepositEvent::from(event)).into();
+    let memo: Memo = (&ReceivedContractEvent::from(event)).into();
 
     assert_eq!(
         memo.0,

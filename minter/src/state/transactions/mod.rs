@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::endpoints::{
-    RetrieveWithdrawalStatus, Transaction, TxFinalizedStatus, WithdrawalStatus,
+use crate::candid_types::{
+    withdraw_native::WithdrawalStatus, RetrieveWithdrawalStatus, Transaction, TxFinalizedStatus,
 };
 use crate::evm_config::EvmNetwork;
 use crate::map::MultiKeyMap;
@@ -818,6 +818,7 @@ impl WithdrawalTransactions {
                     reimbursed_in_block,
                     reimbursed_amount: reimbursement_request.reimbursed_amount,
                     transaction_hash: reimbursement_request.transaction_hash,
+                    transfer_fee: todo!()
                 }),
             ),
             None

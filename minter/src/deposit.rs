@@ -58,38 +58,35 @@ async fn mint_and_release() {
                 )
             });
         });
-        let (token_symbol, ledger_canister_id, is_native_deposit, amount, recepient, subaccount) =
-            match &event {
-                ReceivedContractEvent::NativeDeposit(event) => (
-                    "Native".to_string(),
-                    native_ledger_canister_id,
-                    true,
-                    Nat::from(event.value),
-                    event.principal,
-                    event.subaccount,
-                ),
-                ReceivedContractEvent::Erc20Deposit(event) => {
-                    if let Some(result) = read_state(|s| {
-                        s.erc20_tokens
-                            .get_entry_alt(&event.erc20_contract_address)
-                            .map(|(principal, symbol)| {
-                                (
-                                    symbol.to_string(),
-                                    *principal,
-                                    false,
-                                    Nat::from(event.value),
-                                    event.principal,
-                                    event.subaccount,
-                                )
-                            })
-                    }) {
-                        result
-                    } else {
-                        panic!("Failed to mint ERC20: {event:?} Unsupported ERC20 contract address. (This should have already been filtered out by process_event)");
-                    }
+        let (token_symbol, ledger_canister_id, amount, recepient, subaccount) = match &event {
+            ReceivedContractEvent::NativeDeposit(event) => (
+                "Native".to_string(),
+                native_ledger_canister_id,
+                Nat::from(event.value),
+                event.principal,
+                event.subaccount.clone(),
+            ),
+            ReceivedContractEvent::Erc20Deposit(event) => {
+                if let Some(result) = read_state(|s| {
+                    s.erc20_tokens
+                        .get_entry_alt(&event.erc20_contract_address)
+                        .map(|(principal, symbol)| {
+                            (
+                                symbol.to_string(),
+                                *principal,
+                                Nat::from(event.value),
+                                event.principal,
+                                event.subaccount.clone(),
+                            )
+                        })
+                }) {
+                    result
+                } else {
+                    panic!("Failed to mint ERC20: {event:?} Unsupported ERC20 contract address. (This should have already been filtered out by process_event)");
                 }
-                _ => panic!("BUG: Only deposit events should be in the minting list"),
-            };
+            }
+            _ => panic!("BUG: Only deposit events should be in the minting list"),
+        };
 
         let client = ICRC1Client {
             runtime: CdkRuntime,
@@ -107,7 +104,7 @@ async fn mint_and_release() {
                 fee: None,
                 created_at_time: None,
                 memo: Some((&event).into()),
-                amount,
+                amount: amount.clone(),
             })
             .await
         {
@@ -196,7 +193,7 @@ async fn mint_and_release() {
         };
 
         // sub transfer fee from amount
-        let transfer_fee = IcrcValue::try_from(fee).unwrap_or(IcrcValue::MAX);
+        let transfer_fee = IcrcValue::try_from(fee.clone()).unwrap_or(IcrcValue::MAX);
 
         let amount = received_burn_event
             .value
@@ -215,6 +212,7 @@ async fn mint_and_release() {
                         owner: received_burn_event.principal,
                         subaccount: received_burn_event
                             .subaccount
+                            .clone()
                             .map(|subaccount| subaccount.to_bytes()),
                     },
                     fee: Some(fee),
@@ -477,7 +475,7 @@ async fn scrape_block_range(
         let request = GetLogsParam {
             from_block: BlockSpec::from(from_block),
             to_block: BlockSpec::from(to_block),
-            address: contract_addresses,
+            address: contract_addresses.clone(),
             topics: topics.clone(),
         };
 
@@ -536,7 +534,7 @@ pub fn register_deposit_events(
     errors: Vec<ReceivedContractEventError>,
 ) {
     for event in transaction_events {
-        match event {
+        match &event {
             ReceivedContractEvent::NativeDeposit(received_native_event) => {
                 log!(
                     INFO,
@@ -562,7 +560,12 @@ pub fn register_deposit_events(
                 );
             }
             ReceivedContractEvent::WrappedIcrcDeployed(wrapped_icrc_deployed) => {
-                log!(INFO, "Received event {event:?}",);
+                log!(
+                    INFO,
+                    "Received event {event:?}, erc20 token {}, was deployed for icrc token {}",
+                    wrapped_icrc_deployed.deployed_wrapped_erc20,
+                    wrapped_icrc_deployed.base_token.to_text()
+                );
             }
         }
 

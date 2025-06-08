@@ -1,4 +1,4 @@
-use crate::endpoints::CandidBlockTag;
+use crate::candid_types::CandidBlockTag;
 use crate::erc20::ERC20TokenSymbol;
 use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
@@ -165,8 +165,12 @@ impl TryFrom<InitArg> for State {
             evm_canister_id: Principal::from_text("sosge-5iaaa-aaaag-alcla-cai").unwrap(),
             min_max_priority_fee_per_gas,
             swap_canister_id: None,
-            deposit_native_fee,
             withdrawal_native_fee,
+            events_to_release: Default::default(),
+            released_events: Default::default(),
+            quarantined_releases: Default::default(),
+            icrc_balances: Default::default(),
+            wrapped_icrc_tokens: Default::default(),
         };
         state.validate_config()?;
         Ok(state)

@@ -471,12 +471,23 @@ impl State {
     }
 
     pub fn record_erc20_withdrawal_request(&mut self, request: Erc20WithdrawalRequest) {
-        assert!(
-            self.erc20_tokens
-                .contains_alt(&request.erc20_contract_address),
-            "BUG: unsupported ERC-20 token {}",
-            request.erc20_contract_address
-        );
+        if request.is_wrapped_mint {
+            assert!(self
+                .wrapped_icrc_tokens
+                .contains_alt(&request.erc20_contract_address));
+            // balance update since icrc tokens were locked
+            self.icrc_balances.icrc_add(
+                request.erc20_ledger_id,
+                request.withdrawal_amount.change_units(),
+            );
+        } else {
+            assert!(
+                self.erc20_tokens
+                    .contains_alt(&request.erc20_contract_address),
+                "BUG: unsupported ERC-20 token {}",
+                request.erc20_contract_address
+            );
+        }
         self.withdrawal_transactions
             .record_withdrawal_request(request);
     }
@@ -603,6 +614,21 @@ impl State {
         self.wrapped_icrc_tokens
             .get_entry_alt(wrapped_erc20_address)
             .map(|(ledger_id, _symbol)| ledger_id.clone())
+    }
+
+    pub fn find_wrapped_erc20_token_by_icrc_ledger_id(
+        &self,
+        ledger_id: &Principal,
+    ) -> Option<Address> {
+        self.wrapped_icrc_tokens
+            .get_entry(ledger_id)
+            .map(|(address, _transfer_fee)| *address)
+    }
+
+    pub fn supported_wrapped_icrc_tokens(&self) -> impl Iterator<Item = (Principal, Address)> + '_ {
+        self.wrapped_icrc_tokens
+            .iter()
+            .map(|(ledger_id, address, _transfer_fee)| (*ledger_id, *address))
     }
 
     pub fn supported_erc20_tokens(&self) -> impl Iterator<Item = ERC20Token> + '_ {

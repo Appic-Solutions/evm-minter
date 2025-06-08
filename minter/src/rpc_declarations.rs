@@ -1,4 +1,4 @@
-use crate::endpoints::CandidBlockTag;
+use crate::candid_types::CandidBlockTag;
 use crate::eth_types::serde_data;
 use crate::eth_types::Address;
 use crate::numeric::TransactionNonce;

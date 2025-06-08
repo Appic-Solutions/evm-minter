@@ -38,29 +38,6 @@ impl From<LedgerBurnError> for WithdrawalError {
     }
 }
 
-impl From<FeeTransferError> for WithdrawalError {
-    fn from(error: FeeTransferError) -> Self {
-        match error {
-            FeeTransferError::TemporarilyUnavailable { message, .. } => {
-                Self::TemporarilyUnavailable(message)
-            }
-            FeeTransferError::InsufficientFunds { balance, .. } => {
-                Self::InsufficientFunds { balance }
-            }
-            FeeTransferError::InsufficientAllowance { allowance, .. } => {
-                Self::InsufficientAllowance { allowance }
-            }
-            FeeTransferError::AmountTooLow {
-                minimum_transfer_amount,
-                failed_transfer_amount,
-                ledger,
-            } => {
-                panic!("BUG: withdrawal amount {failed_transfer_amount} on the Native ledger {ledger:?} should always be higher than the ledger transaction fee {minimum_transfer_amount}")
-            }
-        }
-    }
-}
-
 #[derive(CandidType, Deserialize, Clone, Eq, PartialEq, Debug)]
 pub enum WithdrawalSearchParameter {
     ByWithdrawalId(u64),

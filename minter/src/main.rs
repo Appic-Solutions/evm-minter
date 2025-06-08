@@ -1,21 +1,29 @@
 use candid::Nat;
 use evm_minter::address::{validate_address_as_destination, AddressValidationError};
-use evm_minter::contract_logs::{EventSource, ReceivedErc20Event, ReceivedNativeEvent};
-use evm_minter::deposit::{scrape_logs, validate_log_scraping_request};
-use evm_minter::endpoints::events::{
+use evm_minter::candid_types::events::{
     Event as CandidEvent, EventSource as CandidEventSource, GetEventsArg, GetEventsResult,
 };
+use evm_minter::candid_types::wrapped_icrc::{
+    RetrieveWrapIcrcRequest, WrapIcrcArg, WrapIcrcError, WrappedIcrcToken,
+};
+use evm_minter::contract_logs::{
+    types::ReceivedErc20Event, types::ReceivedNativeEvent, EventSource,
+};
+use evm_minter::deposit::{scrape_logs, validate_log_scraping_request};
 
-use evm_minter::endpoints::{
-    self, AddErc20Token, DepositStatus, FeeError, Icrc28TrustedOriginsResponse,
-    RequestScrapingError,
+use evm_minter::candid_types::{
+    self, AddErc20Token, DepositStatus, Icrc28TrustedOriginsResponse, RequestScrapingError,
 };
-use evm_minter::endpoints::{
+use evm_minter::candid_types::{
+    withdraw_erc20::RetrieveErc20Request, withdraw_erc20::WithdrawErc20Arg,
+    withdraw_erc20::WithdrawErc20Error,
+};
+use evm_minter::candid_types::{
+    withdraw_native::WithdrawalArg, withdraw_native::WithdrawalDetail,
+    withdraw_native::WithdrawalError, withdraw_native::WithdrawalSearchParameter,
     Eip1559TransactionPrice, Eip1559TransactionPriceArg, Erc20Balance, GasFeeEstimate, MinterInfo,
-    RetrieveNativeRequest, RetrieveWithdrawalStatus, WithdrawalArg, WithdrawalDetail,
-    WithdrawalError, WithdrawalSearchParameter,
+    RetrieveNativeRequest, RetrieveWithdrawalStatus,
 };
-use evm_minter::endpoints::{RetrieveErc20Request, WithdrawErc20Arg, WithdrawErc20Error};
 use evm_minter::erc20::ERC20Token;
 use evm_minter::evm_config::EvmNetwork;
 use evm_minter::guard::retrieve_withdraw_guard;
@@ -24,7 +32,7 @@ use evm_minter::lifecycle::MinterArg;
 use evm_minter::logs::INFO;
 use evm_minter::lsm_client::lazy_add_native_ls_to_lsm_canister;
 use evm_minter::memo::BurnMemo;
-use evm_minter::numeric::{Erc20Value, LedgerBurnIndex, Wei};
+use evm_minter::numeric::{Erc20Value, IcrcValue, LedgerBurnIndex, Wei};
 use evm_minter::rpc_client::providers::Provider;
 use evm_minter::rpc_declarations::Hash;
 use evm_minter::state::audit::{process_event, Event, EventType};
@@ -42,8 +50,8 @@ use evm_minter::withdraw::{
     ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT, NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
 };
 use evm_minter::{
-    state, storage, SCRAPING_contract_logs_INTERVAL, PROCESS_REIMBURSEMENT,
-    PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL,
+    state, storage, PROCESS_REIMBURSEMENT, PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL,
+    SCRAPING_CONTRACT_LOGS_INTERVAL,
 };
 use ic_canister_log::log;
 use ic_cdk::{init, post_upgrade, pre_upgrade, query, update};
@@ -83,7 +91,7 @@ fn setup_timers() {
 
     // Start scraping logs immediately after the install, then repeat with the interval.
     ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(scrape_logs()));
-    ic_cdk_timers::set_timer_interval(SCRAPING_contract_logs_INTERVAL, || {
+    ic_cdk_timers::set_timer_interval(SCRAPING_CONTRACT_LOGS_INTERVAL, || {
         ic_cdk::spawn(scrape_logs())
     });
     ic_cdk_timers::set_timer_interval(PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL, || {
@@ -233,7 +241,7 @@ async fn get_minter_info() -> MinterInfo {
         );
         let supported_erc20_tokens = Some(
             s.supported_erc20_tokens()
-                .map(|token| endpoints::Erc20Token::from(token))
+                .map(|token| candid_types::Erc20Token::from(token))
                 .collect(),
         );
 
@@ -242,7 +250,7 @@ async fn get_minter_info() -> MinterInfo {
             helper_smart_contract_address: s.helper_contract_address.map(|a| a.to_string()),
             supported_erc20_tokens,
             minimum_withdrawal_amount: Some(s.native_minimum_withdrawal_amount.into()),
-            deposit_native_fee: s.deposit_native_fee.map(|fee| fee.into()),
+            deposit_native_fee: None,
             withdrawal_native_fee: s.withdrawal_native_fee.map(|fee| fee.into()),
             block_height: Some(s.block_height.into()),
             last_observed_block_number: s.last_observed_block_number.map(|n| n.into()),
@@ -350,6 +358,7 @@ async fn withdraw_native_token(
             BurnMemo::Convert {
                 to_address: destination,
             },
+            None,
         )
         .await
     {
@@ -525,7 +534,7 @@ async fn withdraw_erc20(
     // cost(native_withdrawal_fee)
     let native_burn_amount = max_transaction_fee
         .checked_add(native_transfer_fee)
-        .unwrap_or(U256::MAX);
+        .unwrap_or(Wei::MAX);
 
     log!(INFO, "[withdraw_erc20]: burning {:?} native", erc20_tx_fee);
     match native_ledger
@@ -537,6 +546,7 @@ async fn withdraw_erc20(
                 erc20_withdrawal_amount,
                 to_address: destination,
             },
+            None,
         )
         .await
     {
@@ -555,6 +565,7 @@ async fn withdraw_erc20(
                         erc20_withdrawal_id: native_ledger_burn_index.get(),
                         to_address: destination,
                     },
+                    None,
                 )
                 .await
             {
@@ -571,6 +582,7 @@ async fn withdraw_erc20(
                         from_subaccount: None,
                         created_at: now,
                         l1_fee,
+                        is_wrapped_mint: false,
                     };
                     log!(
                         INFO,
@@ -586,7 +598,7 @@ async fn withdraw_erc20(
                             process_event(
                                 s,
                                 EventType::WithdrawalNativeFeeCollected {
-                                    withdrawal_id: ledger_burn_index.into(),
+                                    withdrawal_id: erc20_ledger_burn_index.into(),
                                     withdrawal_native_fee_paid: withdrawal_native_fee,
                                 },
                             );
@@ -638,10 +650,191 @@ async fn withdraw_erc20(
     }
 }
 
-//// mints wrapped tokens on the evm side corresponding to the locked tokens on the icp side
-//async fn mint_wrapped_icrc()->Result<>{
-//
-//}
+// mints wrapped tokens on the evm side corresponding to the locked tokens on the icp side
+#[update]
+async fn wrap_icrc(
+    WrapIcrcArg {
+        amount,
+        icrc_ledger_id,
+        recipient,
+    }: WrapIcrcArg,
+) -> Result<RetrieveWrapIcrcRequest, WrapIcrcError> {
+    let caller = validate_caller_not_anonymous();
+    let _guard = retrieve_withdraw_guard(caller).unwrap_or_else(|e| {
+        ic_cdk::trap(&format!(
+            "Failed retrieving guard for principal {}: {:?}",
+            caller, e
+        ))
+    });
+
+    let destination = validate_address_as_destination(&recipient).map_err(|e| match e {
+        AddressValidationError::Invalid { .. } | AddressValidationError::NotSupported(_) => {
+            WrapIcrcError::InvalidDestination("Invalid destination entered".to_string())
+        }
+    })?;
+
+    let lock_amount = Erc20Value::try_from(amount).expect("ERROR: failed to convert Nat to u256");
+
+    let erc20_token = read_state(|s| s.find_wrapped_erc20_token_by_icrc_ledger_id(&icrc_ledger_id))
+        .ok_or_else(|| {
+            let supported_wrapped_icrc_tokens: BTreeSet<_> = read_state(|s| {
+                s.supported_wrapped_icrc_tokens()
+                    .map(|(ledger_id, address)| WrappedIcrcToken {
+                        base_token: ledger_id,
+                        deployed_wrapped_erc20: address.to_string(),
+                    })
+                    .collect()
+            });
+            WrapIcrcError::TokenNotSupported {
+                supported_tokens: Vec::from_iter(supported_wrapped_icrc_tokens),
+            }
+        })?;
+
+    let (withdrawal_native_fee, native_ledger, native_transfer_fee) = read_state(|s| {
+        (
+            s.withdrawal_native_fee,
+            LedgerClient::native_ledger_from_state(s),
+            s.native_ledger_transfer_fee,
+        )
+    });
+
+    let erc20_tx_fee = estimate_erc20_transaction_fee().await.ok_or_else(|| {
+        WrapIcrcError::TemporarilyUnavailable("Failed to retrieve current gas fee".to_string())
+    })?;
+
+    // Check if l1_fee is required for this network
+    let l1_fee = match read_state(|s| s.evm_network) {
+        EvmNetwork::Base | EvmNetwork::Optimism => match lazy_fetch_l1_fee_estimate().await {
+            Some(fee) => Some(fee),
+            None => {
+                return Err(WrapIcrcError::TemporarilyUnavailable(
+                    "Failed to retrieve current l1 fee".to_string(),
+                ));
+            }
+        },
+        _ => None,
+    };
+
+    let now = ic_cdk::api::time();
+    let max_transaction_fee = erc20_tx_fee
+        .checked_add(l1_fee.unwrap_or(Wei::ZERO))
+        .unwrap_or(Wei::MAX);
+
+    // amount that will be burnt to cover transaction_fees plus transaction_signing
+    // cost(native_withdrawal_fee)
+    let native_burn_amount = max_transaction_fee
+        .checked_add(native_transfer_fee)
+        .unwrap_or(Wei::MAX);
+
+    let icrc_ledger_client = LedgerClient::icrc_ledger(icrc_ledger_id);
+
+    log!(INFO, "[wrap_icrc]: burning {:?} native", erc20_tx_fee);
+    match native_ledger
+        .burn_from(
+            caller.into(),
+            native_burn_amount,
+            BurnMemo::WrapIcrcGasFee {
+                wrapped_icrc_base: icrc_ledger_id,
+                wrap_amount: lock_amount,
+                to_address: destination,
+            },
+            None,
+        )
+        .await
+    {
+        Ok(native_ledger_burn_index) => {
+            log!(INFO, "[wrap_icrc]: locking {}", icrc_ledger_id,);
+            match icrc_ledger_client
+                .burn_from(
+                    caller.into(),
+                    lock_amount,
+                    BurnMemo::IcrcLocked {
+                        to_address: destination,
+                    },
+                    None,
+                )
+                .await
+            {
+                Ok(erc20_ledger_burn_index) => {
+                    let withdrawal_request = Erc20WithdrawalRequest {
+                        max_transaction_fee,
+                        withdrawal_amount: lock_amount,
+                        destination,
+                        native_ledger_burn_index,
+                        erc20_ledger_id: icrc_ledger_id,
+                        erc20_ledger_burn_index,
+                        erc20_contract_address: erc20_token,
+                        from: caller,
+                        from_subaccount: None,
+                        created_at: now,
+                        l1_fee,
+                        is_wrapped_mint: true,
+                    };
+                    log!(
+                        INFO,
+                        "[wrap_icrc]: queuing withdrawal request {:?}",
+                        withdrawal_request
+                    );
+                    mutate_state(|s| {
+                        process_event(
+                            s,
+                            EventType::AcceptedErc20WithdrawalRequest(withdrawal_request.clone()),
+                        );
+                        if let Some(withdrawal_native_fee) = withdrawal_native_fee {
+                            process_event(
+                                s,
+                                EventType::WithdrawalNativeFeeCollected {
+                                    withdrawal_id: erc20_ledger_burn_index.into(),
+                                    withdrawal_native_fee_paid: withdrawal_native_fee,
+                                },
+                            );
+                        }
+                    });
+
+                    ic_cdk_timers::set_timer(Duration::from_secs(0), || {
+                        ic_cdk::spawn(process_retrieve_tokens_requests())
+                    });
+
+                    Ok(RetrieveWrapIcrcRequest::from(withdrawal_request))
+                }
+                Err(icrc_lock_error) => {
+                    let reimbursed_amount = match &icrc_lock_error {
+                        LedgerBurnError::TemporarilyUnavailable { .. } => native_burn_amount, //don't penalize user in case of an error outside of their control
+                        LedgerBurnError::InsufficientFunds { .. }
+                        | LedgerBurnError::AmountTooLow { .. }
+                        | LedgerBurnError::InsufficientAllowance { .. } => native_burn_amount
+                            .checked_sub(native_transfer_fee)
+                            .unwrap_or(Wei::ZERO),
+                    };
+
+                    if reimbursed_amount > Wei::ZERO {
+                        let reimbursement_request = ReimbursementRequest {
+                            ledger_burn_index: native_ledger_burn_index,
+                            reimbursed_amount: reimbursed_amount.change_units(),
+                            to: caller,
+                            to_subaccount: None,
+                            transaction_hash: None,
+                        };
+                        mutate_state(|s| {
+                            process_event(
+                                s,
+                                EventType::FailedIcrcLockRequest(reimbursement_request),
+                            );
+                        });
+                    }
+
+                    Err(WrapIcrcError::IcrcLedgerError {
+                        native_block_index: Nat::from(native_ledger_burn_index.get()),
+                        error: icrc_lock_error.into(),
+                    })
+                }
+            }
+        }
+        Err(native_burn_error) => Err(WrapIcrcError::NativeLedgerError {
+            error: native_burn_error.into(),
+        }),
+    }
+}
 
 async fn estimate_erc20_transaction_fee() -> Option<Wei> {
     lazy_refresh_gas_fee_estimate()
@@ -694,297 +887,297 @@ async fn check_new_deposits() {
     scrape_logs().await;
 }
 
-#[query]
-fn get_events(arg: GetEventsArg) -> GetEventsResult {
-    use evm_minter::endpoints::events::{
-        AccessListItem, ReimbursementIndex as CandidReimbursementIndex,
-        TransactionReceipt as CandidTransactionReceipt,
-        TransactionStatus as CandidTransactionStatus, UnsignedTransaction,
-    };
-    use evm_minter::rpc_declarations::TransactionReceipt;
-    use evm_minter::tx::Eip1559TransactionRequest;
-    use serde_bytes::ByteBuf;
-
-    const MAX_EVENTS_PER_RESPONSE: u64 = 100;
-
-    fn map_event_source(
-        EventSource {
-            transaction_hash,
-            log_index,
-        }: EventSource,
-    ) -> CandidEventSource {
-        CandidEventSource {
-            transaction_hash: transaction_hash.to_string(),
-            log_index: log_index.into(),
-        }
-    }
-
-    fn map_reimbursement_index(index: ReimbursementIndex) -> CandidReimbursementIndex {
-        match index {
-            ReimbursementIndex::Native { ledger_burn_index } => CandidReimbursementIndex::Native {
-                ledger_burn_index: ledger_burn_index.get().into(),
-            },
-            ReimbursementIndex::Erc20 {
-                native_ledger_burn_index,
-                ledger_id,
-                erc20_ledger_burn_index,
-            } => CandidReimbursementIndex::Erc20 {
-                native_ledger_burn_index: native_ledger_burn_index.get().into(),
-                ledger_id,
-                erc20_ledger_burn_index: erc20_ledger_burn_index.get().into(),
-            },
-        }
-    }
-
-    fn map_unsigned_transaction(tx: Eip1559TransactionRequest) -> UnsignedTransaction {
-        UnsignedTransaction {
-            chain_id: tx.chain_id.into(),
-            nonce: tx.nonce.into(),
-            max_priority_fee_per_gas: tx.max_priority_fee_per_gas.into(),
-            max_fee_per_gas: tx.max_fee_per_gas.into(),
-            gas_limit: tx.gas_limit.into(),
-            destination: tx.destination.to_string(),
-            value: tx.amount.into(),
-            data: ByteBuf::from(tx.data),
-            access_list: tx
-                .access_list
-                .0
-                .iter()
-                .map(|item| AccessListItem {
-                    address: item.address.to_string(),
-                    storage_keys: item
-                        .storage_keys
-                        .iter()
-                        .map(|key| ByteBuf::from(key.0.to_vec()))
-                        .collect(),
-                })
-                .collect(),
-        }
-    }
-
-    fn map_transaction_receipt(receipt: TransactionReceipt) -> CandidTransactionReceipt {
-        use evm_minter::rpc_declarations::TransactionStatus;
-        CandidTransactionReceipt {
-            block_hash: receipt.block_hash.to_string(),
-            block_number: receipt.block_number.into(),
-            effective_gas_price: receipt.effective_gas_price.into(),
-            gas_used: receipt.gas_used.into(),
-            status: match receipt.status {
-                TransactionStatus::Success => CandidTransactionStatus::Success,
-                TransactionStatus::Failure => CandidTransactionStatus::Failure,
-            },
-            transaction_hash: receipt.transaction_hash.to_string(),
-        }
-    }
-
-    fn map_event(Event { timestamp, payload }: Event) -> CandidEvent {
-        use evm_minter::endpoints::events::EventPayload as EP;
-        CandidEvent {
-            timestamp,
-            payload: match payload {
-                EventType::Init(args) => EP::Init(args),
-                EventType::Upgrade(args) => EP::Upgrade(args),
-                EventType::AcceptedDeposit(ReceivedNativeEvent {
-                    transaction_hash,
-                    block_number,
-                    log_index,
-                    from_address,
-                    value,
-                    principal,
-                    subaccount,
-                }) => EP::AcceptedDeposit {
-                    transaction_hash: transaction_hash.to_string(),
-                    block_number: block_number.into(),
-                    log_index: log_index.into(),
-                    from_address: from_address.to_string(),
-                    value: value.into(),
-                    principal,
-                    subaccount: subaccount.map(|s| s.to_bytes()),
-                },
-                EventType::AcceptedErc20Deposit(ReceivedErc20Event {
-                    transaction_hash,
-                    block_number,
-                    log_index,
-                    from_address,
-                    value,
-                    principal,
-                    erc20_contract_address,
-                    subaccount,
-                }) => EP::AcceptedErc20Deposit {
-                    transaction_hash: transaction_hash.to_string(),
-                    block_number: block_number.into(),
-                    log_index: log_index.into(),
-                    from_address: from_address.to_string(),
-                    value: value.into(),
-                    principal,
-                    erc20_contract_address: erc20_contract_address.to_string(),
-                    subaccount: subaccount.map(|s| s.to_bytes()),
-                },
-                EventType::InvalidDeposit {
-                    event_source,
-                    reason,
-                } => EP::InvalidDeposit {
-                    event_source: map_event_source(event_source),
-                    reason,
-                },
-                EventType::MintedNative {
-                    event_source,
-                    mint_block_index,
-                } => EP::MintedNative {
-                    event_source: map_event_source(event_source),
-                    mint_block_index: mint_block_index.get().into(),
-                },
-                EventType::SyncedToBlock { block_number } => EP::SyncedToBlock {
-                    block_number: block_number.into(),
-                },
-
-                EventType::AcceptedNativeWithdrawalRequest(NativeWithdrawalRequest {
-                    withdrawal_amount,
-                    destination,
-                    ledger_burn_index,
-                    from,
-                    from_subaccount,
-                    created_at,
-                    l1_fee,
-                }) => EP::AcceptedNativeWithdrawalRequest {
-                    withdrawal_amount: withdrawal_amount.into(),
-                    destination: destination.to_string(),
-                    ledger_burn_index: ledger_burn_index.get().into(),
-                    from,
-                    from_subaccount: from_subaccount.map(|s| s.0),
-                    created_at,
-                    l1_fee: l1_fee.map(|fee| fee.into()),
-                },
-                EventType::CreatedTransaction {
-                    withdrawal_id,
-                    transaction,
-                } => EP::CreatedTransaction {
-                    withdrawal_id: withdrawal_id.get().into(),
-                    transaction: map_unsigned_transaction(transaction),
-                },
-                EventType::SignedTransaction {
-                    withdrawal_id,
-                    transaction,
-                } => EP::SignedTransaction {
-                    withdrawal_id: withdrawal_id.get().into(),
-                    raw_transaction: transaction.raw_transaction_hex(),
-                },
-                EventType::ReplacedTransaction {
-                    withdrawal_id,
-                    transaction,
-                } => EP::ReplacedTransaction {
-                    withdrawal_id: withdrawal_id.get().into(),
-                    transaction: map_unsigned_transaction(transaction),
-                },
-                EventType::FinalizedTransaction {
-                    withdrawal_id,
-                    transaction_receipt,
-                } => EP::FinalizedTransaction {
-                    withdrawal_id: withdrawal_id.get().into(),
-                    transaction_receipt: map_transaction_receipt(transaction_receipt),
-                },
-                EventType::ReimbursedNativeWithdrawal(Reimbursed {
-                    burn_in_block: withdrawal_id,
-                    reimbursed_in_block,
-                    reimbursed_amount,
-                    transaction_hash,
-                }) => EP::ReimbursedNativeWithdrawal {
-                    withdrawal_id: withdrawal_id.get().into(),
-                    reimbursed_in_block: reimbursed_in_block.get().into(),
-                    reimbursed_amount: reimbursed_amount.into(),
-                    transaction_hash: transaction_hash.map(|h| h.to_string()),
-                },
-                EventType::ReimbursedErc20Withdrawal {
-                    native_ledger_burn_index,
-                    erc20_ledger_id,
-                    reimbursed,
-                } => EP::ReimbursedErc20Withdrawal {
-                    withdrawal_id: native_ledger_burn_index.get().into(),
-                    burn_in_block: reimbursed.burn_in_block.get().into(),
-                    ledger_id: erc20_ledger_id,
-                    reimbursed_in_block: reimbursed.reimbursed_in_block.get().into(),
-                    reimbursed_amount: reimbursed.reimbursed_amount.into(),
-                    transaction_hash: reimbursed.transaction_hash.map(|h| h.to_string()),
-                },
-                EventType::SkippedBlock { block_number } => EP::SkippedBlock {
-                    block_number: block_number.into(),
-                },
-                EventType::AddedErc20Token(token) => EP::AddedErc20Token {
-                    chain_id: token.chain_id.chain_id().into(),
-                    address: token.erc20_contract_address.to_string(),
-                    erc20_token_symbol: token.erc20_token_symbol.to_string(),
-                    erc20_ledger_id: token.erc20_ledger_id,
-                },
-                EventType::AcceptedErc20WithdrawalRequest(Erc20WithdrawalRequest {
-                    max_transaction_fee,
-                    withdrawal_amount,
-                    destination,
-                    native_ledger_burn_index,
-                    erc20_contract_address,
-                    erc20_ledger_id,
-                    erc20_ledger_burn_index,
-                    from,
-                    from_subaccount,
-                    created_at,
-                    l1_fee,
-                }) => EP::AcceptedErc20WithdrawalRequest {
-                    max_transaction_fee: max_transaction_fee.into(),
-                    withdrawal_amount: withdrawal_amount.into(),
-                    erc20_contract_address: erc20_contract_address.to_string(),
-                    destination: destination.to_string(),
-                    native_ledger_burn_index: native_ledger_burn_index.get().into(),
-                    erc20_ledger_id,
-                    erc20_ledger_burn_index: erc20_ledger_burn_index.get().into(),
-                    from,
-                    from_subaccount: from_subaccount.map(|s| s.0),
-                    created_at,
-                    l1_fee: l1_fee.map(|fee| fee.into()),
-                },
-                EventType::MintedErc20 {
-                    event_source,
-                    mint_block_index,
-                    erc20_token_symbol,
-                    erc20_contract_address,
-                } => EP::MintedErc20 {
-                    event_source: map_event_source(event_source),
-                    mint_block_index: mint_block_index.get().into(),
-                    erc20_token_symbol,
-                    erc20_contract_address: erc20_contract_address.to_string(),
-                },
-                EventType::FailedErc20WithdrawalRequest(ReimbursementRequest {
-                    ledger_burn_index,
-                    reimbursed_amount,
-                    to,
-                    to_subaccount,
-                    transaction_hash: _,
-                }) => EP::FailedErc20WithdrawalRequest {
-                    withdrawal_id: ledger_burn_index.get().into(),
-                    reimbursed_amount: reimbursed_amount.into(),
-                    to,
-                    to_subaccount: to_subaccount.map(|s| s.0),
-                },
-                EventType::QuarantinedDeposit { event_source } => EP::QuarantinedDeposit {
-                    event_source: map_event_source(event_source),
-                },
-                EventType::QuarantinedReimbursement { index } => EP::QuarantinedReimbursement {
-                    index: map_reimbursement_index(index),
-                },
-            },
-        }
-    }
-
-    let events = storage::with_event_iter(|it| {
-        it.skip(arg.start as usize)
-            .take(arg.length.min(MAX_EVENTS_PER_RESPONSE) as usize)
-            .map(map_event)
-            .collect()
-    });
-
-    GetEventsResult {
-        events,
-        total_event_count: storage::total_event_count(),
-    }
-}
+//#[query]
+//fn get_events(arg: GetEventsArg) -> GetEventsResult {
+//    use evm_minter::candid_types::events::{
+//        AccessListItem, ReimbursementIndex as CandidReimbursementIndex,
+//        TransactionReceipt as CandidTransactionReceipt,
+//        TransactionStatus as CandidTransactionStatus, UnsignedTransaction,
+//    };
+//    use evm_minter::rpc_declarations::TransactionReceipt;
+//    use evm_minter::tx::Eip1559TransactionRequest;
+//    use serde_bytes::ByteBuf;
+//
+//    const MAX_EVENTS_PER_RESPONSE: u64 = 100;
+//
+//    fn map_event_source(
+//        EventSource {
+//            transaction_hash,
+//            log_index,
+//        }: EventSource,
+//    ) -> CandidEventSource {
+//        CandidEventSource {
+//            transaction_hash: transaction_hash.to_string(),
+//            log_index: log_index.into(),
+//        }
+//    }
+//
+//    fn map_reimbursement_index(index: ReimbursementIndex) -> CandidReimbursementIndex {
+//        match index {
+//            ReimbursementIndex::Native { ledger_burn_index } => CandidReimbursementIndex::Native {
+//                ledger_burn_index: ledger_burn_index.get().into(),
+//            },
+//            ReimbursementIndex::Erc20 {
+//                native_ledger_burn_index,
+//                ledger_id,
+//                erc20_ledger_burn_index,
+//            } => CandidReimbursementIndex::Erc20 {
+//                native_ledger_burn_index: native_ledger_burn_index.get().into(),
+//                ledger_id,
+//                erc20_ledger_burn_index: erc20_ledger_burn_index.get().into(),
+//            },
+//        }
+//    }
+//
+//    fn map_unsigned_transaction(tx: Eip1559TransactionRequest) -> UnsignedTransaction {
+//        UnsignedTransaction {
+//            chain_id: tx.chain_id.into(),
+//            nonce: tx.nonce.into(),
+//            max_priority_fee_per_gas: tx.max_priority_fee_per_gas.into(),
+//            max_fee_per_gas: tx.max_fee_per_gas.into(),
+//            gas_limit: tx.gas_limit.into(),
+//            destination: tx.destination.to_string(),
+//            value: tx.amount.into(),
+//            data: ByteBuf::from(tx.data),
+//            access_list: tx
+//                .access_list
+//                .0
+//                .iter()
+//                .map(|item| AccessListItem {
+//                    address: item.address.to_string(),
+//                    storage_keys: item
+//                        .storage_keys
+//                        .iter()
+//                        .map(|key| ByteBuf::from(key.0.to_vec()))
+//                        .collect(),
+//                })
+//                .collect(),
+//        }
+//    }
+//
+//    fn map_transaction_receipt(receipt: TransactionReceipt) -> CandidTransactionReceipt {
+//        use evm_minter::rpc_declarations::TransactionStatus;
+//        CandidTransactionReceipt {
+//            block_hash: receipt.block_hash.to_string(),
+//            block_number: receipt.block_number.into(),
+//            effective_gas_price: receipt.effective_gas_price.into(),
+//            gas_used: receipt.gas_used.into(),
+//            status: match receipt.status {
+//                TransactionStatus::Success => CandidTransactionStatus::Success,
+//                TransactionStatus::Failure => CandidTransactionStatus::Failure,
+//            },
+//            transaction_hash: receipt.transaction_hash.to_string(),
+//        }
+//    }
+//
+//    fn map_event(Event { timestamp, payload }: Event) -> CandidEvent {
+//        use evm_minter::candid_types::events::EventPayload as EP;
+//        CandidEvent {
+//            timestamp,
+//            payload: match payload {
+//                EventType::Init(args) => EP::Init(args),
+//                EventType::Upgrade(args) => EP::Upgrade(args),
+//                EventType::AcceptedDeposit(ReceivedNativeEvent {
+//                    transaction_hash,
+//                    block_number,
+//                    log_index,
+//                    from_address,
+//                    value,
+//                    principal,
+//                    subaccount,
+//                }) => EP::AcceptedDeposit {
+//                    transaction_hash: transaction_hash.to_string(),
+//                    block_number: block_number.into(),
+//                    log_index: log_index.into(),
+//                    from_address: from_address.to_string(),
+//                    value: value.into(),
+//                    principal,
+//                    subaccount: subaccount.map(|s| s.to_bytes()),
+//                },
+//                EventType::AcceptedErc20Deposit(ReceivedErc20Event {
+//                    transaction_hash,
+//                    block_number,
+//                    log_index,
+//                    from_address,
+//                    value,
+//                    principal,
+//                    erc20_contract_address,
+//                    subaccount,
+//                }) => EP::AcceptedErc20Deposit {
+//                    transaction_hash: transaction_hash.to_string(),
+//                    block_number: block_number.into(),
+//                    log_index: log_index.into(),
+//                    from_address: from_address.to_string(),
+//                    value: value.into(),
+//                    principal,
+//                    erc20_contract_address: erc20_contract_address.to_string(),
+//                    subaccount: subaccount.map(|s| s.to_bytes()),
+//                },
+//                EventType::InvalidDeposit {
+//                    event_source,
+//                    reason,
+//                } => EP::InvalidDeposit {
+//                    event_source: map_event_source(event_source),
+//                    reason,
+//                },
+//                EventType::MintedNative {
+//                    event_source,
+//                    mint_block_index,
+//                } => EP::MintedNative {
+//                    event_source: map_event_source(event_source),
+//                    mint_block_index: mint_block_index.get().into(),
+//                },
+//                EventType::SyncedToBlock { block_number } => EP::SyncedToBlock {
+//                    block_number: block_number.into(),
+//                },
+//
+//                EventType::AcceptedNativeWithdrawalRequest(NativeWithdrawalRequest {
+//                    withdrawal_amount,
+//                    destination,
+//                    ledger_burn_index,
+//                    from,
+//                    from_subaccount,
+//                    created_at,
+//                    l1_fee,
+//                }) => EP::AcceptedNativeWithdrawalRequest {
+//                    withdrawal_amount: withdrawal_amount.into(),
+//                    destination: destination.to_string(),
+//                    ledger_burn_index: ledger_burn_index.get().into(),
+//                    from,
+//                    from_subaccount: from_subaccount.map(|s| s.0),
+//                    created_at,
+//                    l1_fee: l1_fee.map(|fee| fee.into()),
+//                },
+//                EventType::CreatedTransaction {
+//                    withdrawal_id,
+//                    transaction,
+//                } => EP::CreatedTransaction {
+//                    withdrawal_id: withdrawal_id.get().into(),
+//                    transaction: map_unsigned_transaction(transaction),
+//                },
+//                EventType::SignedTransaction {
+//                    withdrawal_id,
+//                    transaction,
+//                } => EP::SignedTransaction {
+//                    withdrawal_id: withdrawal_id.get().into(),
+//                    raw_transaction: transaction.raw_transaction_hex(),
+//                },
+//                EventType::ReplacedTransaction {
+//                    withdrawal_id,
+//                    transaction,
+//                } => EP::ReplacedTransaction {
+//                    withdrawal_id: withdrawal_id.get().into(),
+//                    transaction: map_unsigned_transaction(transaction),
+//                },
+//                EventType::FinalizedTransaction {
+//                    withdrawal_id,
+//                    transaction_receipt,
+//                } => EP::FinalizedTransaction {
+//                    withdrawal_id: withdrawal_id.get().into(),
+//                    transaction_receipt: map_transaction_receipt(transaction_receipt),
+//                },
+//                EventType::ReimbursedNativeWithdrawal(Reimbursed {
+//                    burn_in_block: withdrawal_id,
+//                    reimbursed_in_block,
+//                    reimbursed_amount,
+//                    transaction_hash,
+//                }) => EP::ReimbursedNativeWithdrawal {
+//                    withdrawal_id: withdrawal_id.get().into(),
+//                    reimbursed_in_block: reimbursed_in_block.get().into(),
+//                    reimbursed_amount: reimbursed_amount.into(),
+//                    transaction_hash: transaction_hash.map(|h| h.to_string()),
+//                },
+//                EventType::ReimbursedErc20Withdrawal {
+//                    native_ledger_burn_index,
+//                    erc20_ledger_id,
+//                    reimbursed,
+//                } => EP::ReimbursedErc20Withdrawal {
+//                    withdrawal_id: native_ledger_burn_index.get().into(),
+//                    burn_in_block: reimbursed.burn_in_block.get().into(),
+//                    ledger_id: erc20_ledger_id,
+//                    reimbursed_in_block: reimbursed.reimbursed_in_block.get().into(),
+//                    reimbursed_amount: reimbursed.reimbursed_amount.into(),
+//                    transaction_hash: reimbursed.transaction_hash.map(|h| h.to_string()),
+//                },
+//                EventType::SkippedBlock { block_number } => EP::SkippedBlock {
+//                    block_number: block_number.into(),
+//                },
+//                EventType::AddedErc20Token(token) => EP::AddedErc20Token {
+//                    chain_id: token.chain_id.chain_id().into(),
+//                    address: token.erc20_contract_address.to_string(),
+//                    erc20_token_symbol: token.erc20_token_symbol.to_string(),
+//                    erc20_ledger_id: token.erc20_ledger_id,
+//                },
+//                EventType::AcceptedErc20WithdrawalRequest(Erc20WithdrawalRequest {
+//                    max_transaction_fee,
+//                    withdrawal_amount,
+//                    destination,
+//                    native_ledger_burn_index,
+//                    erc20_contract_address,
+//                    erc20_ledger_id,
+//                    erc20_ledger_burn_index,
+//                    from,
+//                    from_subaccount,
+//                    created_at,
+//                    l1_fee,
+//                }) => EP::AcceptedErc20WithdrawalRequest {
+//                    max_transaction_fee: max_transaction_fee.into(),
+//                    withdrawal_amount: withdrawal_amount.into(),
+//                    erc20_contract_address: erc20_contract_address.to_string(),
+//                    destination: destination.to_string(),
+//                    native_ledger_burn_index: native_ledger_burn_index.get().into(),
+//                    erc20_ledger_id,
+//                    erc20_ledger_burn_index: erc20_ledger_burn_index.get().into(),
+//                    from,
+//                    from_subaccount: from_subaccount.map(|s| s.0),
+//                    created_at,
+//                    l1_fee: l1_fee.map(|fee| fee.into()),
+//                },
+//                EventType::MintedErc20 {
+//                    event_source,
+//                    mint_block_index,
+//                    erc20_token_symbol,
+//                    erc20_contract_address,
+//                } => EP::MintedErc20 {
+//                    event_source: map_event_source(event_source),
+//                    mint_block_index: mint_block_index.get().into(),
+//                    erc20_token_symbol,
+//                    erc20_contract_address: erc20_contract_address.to_string(),
+//                },
+//                EventType::FailedErc20WithdrawalRequest(ReimbursementRequest {
+//                    ledger_burn_index,
+//                    reimbursed_amount,
+//                    to,
+//                    to_subaccount,
+//                    transaction_hash: _,
+//                }) => EP::FailedErc20WithdrawalRequest {
+//                    withdrawal_id: ledger_burn_index.get().into(),
+//                    reimbursed_amount: reimbursed_amount.into(),
+//                    to,
+//                    to_subaccount: to_subaccount.map(|s| s.0),
+//                },
+//                EventType::QuarantinedDeposit { event_source } => EP::QuarantinedDeposit {
+//                    event_source: map_event_source(event_source),
+//                },
+//                EventType::QuarantinedReimbursement { index } => EP::QuarantinedReimbursement {
+//                    index: map_reimbursement_index(index),
+//                },
+//            },
+//        }
+//    }
+//
+//    let events = storage::with_event_iter(|it| {
+//        it.skip(arg.start as usize)
+//            .take(arg.length.min(MAX_EVENTS_PER_RESPONSE) as usize)
+//            .map(map_event)
+//            .collect()
+//    });
+//
+//    GetEventsResult {
+//        events,
+//        total_event_count: storage::total_event_count(),
+//    }
+//}
 
 /// Returns the amount of heap memory in bytes that has been allocated.
 #[cfg(target_arch = "wasm32")]

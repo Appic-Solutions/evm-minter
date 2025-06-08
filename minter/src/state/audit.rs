@@ -100,6 +100,7 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
             reimbursed_in_block,
             reimbursed_amount: _,
             transaction_hash: _,
+            transfer_fee: _,
         }) => {
             state
                 .withdrawal_transactions
@@ -192,6 +193,14 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
             withdrawal_native_fee_paid,
         } => {
             state.record_collected_native_operation_fee(*withdrawal_native_fee_paid);
+        }
+        EventType::FailedIcrcLockRequest(native_reimbursement_request) => {
+            state.withdrawal_transactions.record_reimbursement_request(
+                ReimbursementIndex::Native {
+                    ledger_burn_index: native_reimbursement_request.ledger_burn_index,
+                },
+                native_reimbursement_request.clone(),
+            )
         }
     }
 }
