@@ -1,7 +1,7 @@
 use crate::evm_config::EvmNetwork;
 use crate::guard::TimerGuard;
 use crate::logs::{DEBUG, INFO};
-use crate::numeric::{GasAmount, LedgerBurnIndex, LedgerMintIndex};
+use crate::numeric::{Erc20TokenAmount, GasAmount, LedgerBurnIndex, LedgerMintIndex};
 use crate::rpc_client::{MultiCallError, RpcClient};
 use crate::rpc_declarations::{SendRawTransactionResult, TransactionReceipt};
 use crate::state::audit::{process_event, EventType};
@@ -63,14 +63,47 @@ pub async fn process_reimbursement() {
         let prevent_double_minting_guard = scopeguard::guard(index.clone(), |index| {
             mutate_state(|s| process_event(s, EventType::QuarantinedReimbursement { index }));
         });
-        let ledger_canister_id = match index {
-            ReimbursementIndex::Native { .. } => read_state(|s| s.native_ledger_id),
-            ReimbursementIndex::Erc20 { ledger_id, .. } => ledger_id,
+        let (ledger_canister_id, should_transfer_fetch_fee) = match index {
+            ReimbursementIndex::Native { .. } => read_state(|s| (s.native_ledger_id, false)),
+            ReimbursementIndex::Erc20 { ledger_id, .. } => (ledger_id, false),
+            ReimbursementIndex::IcrcWrap {
+                native_ledger_burn_index,
+                icrc_token,
+                icrc_ledger_lock_index,
+            } => (icrc_token, true),
         };
         let client = ICRC1Client {
             runtime: CdkRuntime,
             ledger_canister_id,
         };
+        let transfer_fee = if should_transfer_fetch_fee {
+            match client.fee().await {
+                Ok(fee) => Some(Erc20TokenAmount::try_from(fee).unwrap_or(Erc20TokenAmount::MAX)),
+                Err(err) => {
+                    log!(
+                    INFO,
+                    "[process_reimbursement] Failed send a message to the ledger ({ledger_canister_id}): {err:?}"
+                );
+                    error_count += 1;
+                    // minting failed, defuse guard
+                    ScopeGuard::into_inner(prevent_double_minting_guard);
+                    continue;
+                }
+            }
+        } else {
+            None
+        };
+
+        let amount = match transfer_fee {
+            Some(fee) => Nat::from(
+                reimbursement_request
+                    .reimbursed_amount
+                    .checked_sub(fee)
+                    .unwrap_or(Erc20TokenAmount::ZERO),
+            ),
+            None => Nat::from(reimbursement_request.reimbursed_amount),
+        };
+
         let args = TransferArg {
             from_subaccount: None,
             to: Account {
@@ -80,43 +113,47 @@ pub async fn process_reimbursement() {
                     .as_ref()
                     .map(|subaccount| subaccount.0),
             },
-            fee: None,
+            fee: transfer_fee.map(|fee| Nat::from(fee)),
             created_at_time: None,
             memo: Some(reimbursement_request.clone().into()),
-            amount: Nat::from(reimbursement_request.reimbursed_amount),
+            amount: amount.clone(),
         };
-        let block_index = match client.transfer(args).await {
-            Ok(Ok(block_index)) => block_index
-                .0
-                .to_u64()
-                .expect("block index should fit into u64"),
-            Ok(Err(err)) => {
-                log!(
-                    INFO,
-                    "[process_reimbursement] Failed to mint native token {err}"
-                );
-                error_count += 1;
-                // minting failed, defuse guard
-                ScopeGuard::into_inner(prevent_double_minting_guard);
-                continue;
-            }
-            Err(err) => {
-                log!(
+        let block_index = if amount != Nat::from(Erc20TokenAmount::ZERO) {
+            match client.transfer(args).await {
+                Ok(Ok(block_index)) => block_index
+                    .0
+                    .to_u64()
+                    .expect("block index should fit into u64"),
+                Ok(Err(err)) => {
+                    log!(
+                        INFO,
+                        "[process_reimbursement] Failed to mint native token {err}"
+                    );
+                    error_count += 1;
+                    // minting failed, defuse guard
+                    ScopeGuard::into_inner(prevent_double_minting_guard);
+                    continue;
+                }
+                Err(err) => {
+                    log!(
                     INFO,
                     "[process_reimbursement] Failed to send a message to the ledger ({ledger_canister_id}): {err:?}"
                 );
-                error_count += 1;
-                // minting failed, defuse guard
-                ScopeGuard::into_inner(prevent_double_minting_guard);
-                continue;
+                    error_count += 1;
+                    // minting failed, defuse guard
+                    ScopeGuard::into_inner(prevent_double_minting_guard);
+                    continue;
+                }
             }
+        } else {
+            0_u64
         };
         let reimbursed = Reimbursed {
             burn_in_block: reimbursement_request.ledger_burn_index,
             reimbursed_in_block: LedgerMintIndex::new(block_index),
             reimbursed_amount: reimbursement_request.reimbursed_amount,
             transaction_hash: reimbursement_request.transaction_hash,
-            transfer_fee: todo!(),
+            transfer_fee,
         };
         let event = match index {
             ReimbursementIndex::Native {
@@ -129,6 +166,15 @@ pub async fn process_reimbursement() {
             } => EventType::ReimbursedErc20Withdrawal {
                 native_ledger_burn_index,
                 erc20_ledger_id: ledger_id,
+                reimbursed,
+            },
+            ReimbursementIndex::IcrcWrap {
+                native_ledger_burn_index,
+                icrc_token,
+                icrc_ledger_lock_index: _,
+            } => EventType::ReimbursedIcrcWrap {
+                native_ledger_burn_index,
+                reimbursed_icrc_token: icrc_token,
                 reimbursed,
             },
         };

@@ -25,12 +25,12 @@ const DEFAULT_CREATED_AT: u64 = 1699527697000000000;
 
 const DEFAULT_MAX_TRANSACTION_FEE: u128 = 30_000_000_000_000_000;
 const DEFAULT_ERC20_MAX_FEE_PER_GAS: WeiPerGas =
-    WeiPerGas::new(DEFAULT_MAX_TRANSACTION_FEE / 65_000_u128);
+    WeiPerGas::new(DEFAULT_MAX_TRANSACTION_FEE / 66_000_u128);
 const DEFAULT_ERC20_CONTRACT_ADDRESS: &str = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
 const DEFAULT_ERC20_LEDGER_ID: &str = "sa4so-piaaa-aaaar-qacnq-cai";
 
 mod withdrawal_transactions {
-    use crate::candid_types::{withdraw_native::RetrieveWithdrawalStatus, Transaction};
+    use crate::candid_types::{RetrieveWithdrawalStatus, Transaction};
     use crate::numeric::{LedgerBurnIndex, TransactionNonce};
     use crate::state::transactions::tests::{
         create_and_record_transaction, gas_fee_estimate, native_withdrawal_request_with_index,
@@ -1026,7 +1026,7 @@ mod withdrawal_transactions {
                     ledger_burn_index: 93_u64.into(),
                     transaction_nonce: 30_u8.into(),
                     allowed_max_transaction_fee: DEFAULT_MAX_TRANSACTION_FEE.into(),
-                    max_transaction_fee: 30_000_000_000_165_000_u128.into(),
+                    max_transaction_fee: 30_000_000_000_168_000_u128.into(),
                 })]
             );
         }
@@ -1615,7 +1615,7 @@ mod withdrawal_transactions {
             let native_ledger_burn_index = LedgerBurnIndex::new(7);
             let erc20_ledger_burn_index = LedgerBurnIndex::new(7);
             let withdrawal_request = Erc20WithdrawalRequest {
-                max_transaction_fee: Wei::from(32_500_000_000_000_000_u128),
+                max_transaction_fee: Wei::from(33_000_000_000_000_000_u128),
                 ..erc20_withdrawal_request_with_index(
                     native_ledger_burn_index,
                     erc20_ledger_burn_index,
@@ -1632,7 +1632,7 @@ mod withdrawal_transactions {
             );
             let signed_tx = create_and_record_signed_transaction(&mut transactions, created_tx);
             let receipt = TransactionReceipt {
-                gas_used: GasAmount::from(65_000_u32),
+                gas_used: GasAmount::from(66_000_u32),
                 effective_gas_price: WeiPerGas::from(500_000_000_000_u128),
                 ..transaction_receipt(&signed_tx, TransactionStatus::Success)
             };
@@ -1960,6 +1960,7 @@ mod withdrawal_transactions {
             transactions.record_finalized_reimbursement(
                 native_reimbursement_index,
                 LedgerMintIndex::new(16),
+                None,
             );
 
             let finalized_transaction = transactions
@@ -2020,6 +2021,7 @@ mod withdrawal_transactions {
             transactions.record_finalized_reimbursement(
                 erc20_reimbursement_index,
                 LedgerMintIndex::new(16),
+                None,
             );
 
             let reimbursed = TxFinalizedStatus::Reimbursed {
@@ -2234,7 +2236,7 @@ mod native_withdrawal_request {
     #[test]
     fn should_have_readable_debug_representation() {
         let request = native_withdrawal_request_with_index(LedgerBurnIndex::new(131));
-        let expected_debug = "NativeWithdrawalRequest { withdrawal_amount: 1_100_000_000_000_000, destination: 0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34, ledger_burn_index: 131, from: k2t6j-2nvnp-4zjm3-25dtz-6xhaa-c7boj-5gayf-oj3xs-i43lp-teztq-6ae, from_subaccount: Some(1111111111111111111111111111111111111111111111111111111111111111), created_at: Some(1699527697000000000), l1_fee: None }";
+        let expected_debug = "NativeWithdrawalRequest { withdrawal_amount: 1_100_000_000_000_000, destination: 0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34, ledger_burn_index: 131, from: k2t6j-2nvnp-4zjm3-25dtz-6xhaa-c7boj-5gayf-oj3xs-i43lp-teztq-6ae, from_subaccount: Some(1111111111111111111111111111111111111111111111111111111111111111), created_at: Some(1699527697000000000), l1_fee: None, withdrawal_fee: None }";
         assert_eq!(format!("{:?}", request), expected_debug);
     }
 }
@@ -2247,7 +2249,7 @@ mod erc_20_withdrawal_request {
     fn should_have_readable_debug_representation() {
         let request =
             erc20_withdrawal_request_with_index(LedgerBurnIndex::new(131), LedgerBurnIndex::new(2));
-        let expected_debug = "Erc20WithdrawalRequest { max_transaction_fee: 30_000_000_000_000_000, withdrawal_amount: 1_100_000_000_000_000, erc20_contract_address: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, destination: 0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34, native_ledger_burn_index: 131, erc20_ledger_id: sa4so-piaaa-aaaar-qacnq-cai, erc20_ledger_burn_index: 2, from: k2t6j-2nvnp-4zjm3-25dtz-6xhaa-c7boj-5gayf-oj3xs-i43lp-teztq-6ae, from_subaccount: Some(1111111111111111111111111111111111111111111111111111111111111111), created_at: 1699527697000000000, l1_fee: None }";
+        let expected_debug = "Erc20WithdrawalRequest { max_transaction_fee: 30_000_000_000_000_000, withdrawal_amount: 1_100_000_000_000_000, erc20_contract_address: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, destination: 0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34, native_ledger_burn_index: 131, erc20_ledger_id: sa4so-piaaa-aaaar-qacnq-cai, erc20_ledger_burn_index: 2, from: k2t6j-2nvnp-4zjm3-25dtz-6xhaa-c7boj-5gayf-oj3xs-i43lp-teztq-6ae, from_subaccount: Some(1111111111111111111111111111111111111111111111111111111111111111), created_at: 1699527697000000000, l1_fee: None, withdrawal_fee: None, is_wrapped_mint: false }";
         assert_eq!(format!("{:?}", request), expected_debug);
     }
 }
@@ -2514,9 +2516,13 @@ pub mod arbitrary {
         uniform32(any::<u8>()).prop_map(CheckedAmountOf::from_be_bytes)
     }
 
-    pub fn arb_l1_fee<Unit>() -> impl Strategy<Value = CheckedAmountOf<Unit>> {
-        uniform32(any::<u8>()).prop_map(CheckedAmountOf::from_be_bytes)
-    }
+    //pub fn arb_l1_fee<Unit>() -> impl Strategy<Value = CheckedAmountOf<Unit>> {
+    //    uniform32(any::<u8>()).prop_map(CheckedAmountOf::from_be_bytes)
+    //}
+    //
+    //pub fn arb_withdrawal_fee<Unit>() -> impl Strategy<Value = CheckedAmountOf<Unit>> {
+    //    uniform32(any::<u8>()).prop_map(CheckedAmountOf::from_be_bytes)
+    //}
 
     fn arb_u64_id<Entity>() -> impl Strategy<Value = Id<Entity, u64>> {
         any::<u64>().prop_map(Id::from)
@@ -2554,7 +2560,6 @@ pub mod arbitrary {
             arb_principal(),
             proptest::option::of(arb_subaccount()),
             proptest::option::of(any::<u64>()),
-            proptest::option::of(arb_l1_fee()),
         )
             .prop_map(
                 |(
@@ -2564,7 +2569,6 @@ pub mod arbitrary {
                     from,
                     from_subaccount,
                     created_at,
-                    l1_fee,
                 )| {
                     NativeWithdrawalRequest {
                         withdrawal_amount,
@@ -2573,7 +2577,8 @@ pub mod arbitrary {
                         from,
                         from_subaccount,
                         created_at,
-                        l1_fee,
+                        l1_fee: None,
+                        withdrawal_fee: None,
                     }
                 },
             )
@@ -2617,6 +2622,8 @@ pub mod arbitrary {
                         from_subaccount,
                         created_at,
                         l1_fee: None,
+                        is_wrapped_mint: false,
+                        withdrawal_fee: None,
                     }
                 },
             )
@@ -2718,6 +2725,7 @@ fn native_withdrawal_request_with_index(
         from_subaccount: Some(Subaccount(DEFAULT_SUBACCOUNT)),
         created_at: Some(DEFAULT_CREATED_AT),
         l1_fee: None,
+        withdrawal_fee: None,
     }
 }
 
@@ -2738,6 +2746,8 @@ fn erc20_withdrawal_request_with_index(
         from_subaccount: Some(Subaccount(DEFAULT_SUBACCOUNT)),
         created_at: DEFAULT_CREATED_AT,
         l1_fee: None,
+        is_wrapped_mint: false,
+        withdrawal_fee: None,
     }
 }
 

@@ -33,12 +33,11 @@ fn deserialize_block_spec() {
     );
 }
 mod get_contract_logs {
-    use crate::contract_logs::{
-        LedgerSubaccount, LogParser, ReceivedDepositLogParser, ReceivedErc20Event,
-        ReceivedNativeEvent,
-    };
+    use crate::candid_types::RequestScrapingError;
+    use crate::contract_logs::parser::{LogParser, ReceivedEventsLogParser};
+    use crate::contract_logs::types::{ReceivedErc20Event, ReceivedNativeEvent};
+    use crate::contract_logs::LedgerSubaccount;
     use crate::deposit::validate_log_scraping_request;
-    use crate::endpoints::RequestScrapingError;
     use crate::eth_types::Address;
     use crate::numeric::{BlockNumber, Erc20Value, LogIndex, Wei};
     use crate::rpc_declarations::LogEntry;
@@ -88,13 +87,13 @@ mod get_contract_logs {
 
     #[test]
     fn should_have_correct_topic() {
-        use crate::contract_logs::RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC;
+        use crate::contract_logs::types::RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT;
 
         //must match event signature in minter.sol
         let event_signature = "DepositLog(address,address,uint256,bytes32,bytes32)";
 
         let topic = Keccak256::hash(event_signature);
-        assert_eq!(topic, RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC)
+        assert_eq!(topic, RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT)
     }
 
     #[test]
@@ -116,7 +115,7 @@ mod get_contract_logs {
             "removed": false
         }"#;
         let parsed_event =
-            ReceivedDepositLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap())
+            ReceivedEventsLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap())
                 .unwrap();
         let expected_event = ReceivedNativeEvent {
             transaction_hash: "0x705f826861c802b407843e99af986cfde8749b669e5e0a5a150f4350bcaa9bc3"
@@ -155,7 +154,7 @@ mod get_contract_logs {
             "removed": false
         }"#;
         let parsed_event =
-            ReceivedDepositLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap())
+            ReceivedEventsLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap())
                 .unwrap();
         let expected_event = ReceivedNativeEvent {
             transaction_hash: "0x037305b461a7c69bf65d4e143262fc038b39d5e46da79de1539e3a90e91b9b37"
@@ -193,7 +192,7 @@ mod get_contract_logs {
             "removed": false
         }"#;
         let parsed_event =
-            ReceivedDepositLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap())
+            ReceivedEventsLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap())
                 .unwrap();
         let expected_event = ReceivedErc20Event {
             transaction_hash: "0x44d8e93a8f4bbc89ad35fc4fbbdb12cb597b4832da09c0b2300777be180fde87"
@@ -238,7 +237,7 @@ mod get_contract_logs {
             "removed": false
         }"#;
         let parsed_event =
-            ReceivedDepositLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap())
+            ReceivedEventsLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap())
                 .unwrap();
         let expected_event = ReceivedErc20Event {
             transaction_hash: "0xf353e17cbcfea236a8b03d2d800205074e1f5014a3ce0f6dedcf128addb6bea4"
@@ -263,7 +262,7 @@ mod get_contract_logs {
 
     #[test]
     fn should_not_parse_removed_event() {
-        use crate::contract_logs::{EventSource, EventSourceError, ReceivedDepositEventError};
+        use crate::contract_logs::{EventSource, EventSourceError, ReceivedContractEventError};
         let event = r#"{
             "address": "0xb44b5e756a894775fc32eddf3314bb1b1944dc34",
             "topics": [
@@ -282,8 +281,8 @@ mod get_contract_logs {
         }"#;
 
         let parsed_event =
-            ReceivedDepositLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap());
-        let expected_error = Err(ReceivedDepositEventError::InvalidEventSource {
+            ReceivedEventsLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap());
+        let expected_error = Err(ReceivedContractEventError::InvalidEventSource {
             source: EventSource {
                 transaction_hash:
                     "0x705f826861c802b407843e99af986cfde8749b669e5e0a5a150f4350bcaa9bc3"
@@ -303,7 +302,10 @@ mod get_contract_logs {
         let validation_result_observed_block = validate_log_scraping_request(
             1_732_638_362_000_000_000_u64,
             2_845_738_362_000_000_000_u64,
-        );
+        )
+        .is_ok();
+
+        assert!(validation_result_observed_block);
 
         let validation_result_not_enough_gap_between_two_requests = validate_log_scraping_request(
             1_732_638_362_000_000_000_u64,
@@ -359,7 +361,7 @@ mod rlp_encoding {
     };
     use ethnum::u256;
     use rlp::Encodable;
-    use secp256k1::{ecdsa, Message, PublicKey};
+    use secp256k1::PublicKey;
     use std::str::FromStr;
 
     const SEPOLIA_TEST_CHAIN_ID: u64 = 11155111;

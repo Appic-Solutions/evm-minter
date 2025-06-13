@@ -80,6 +80,7 @@ mod retrieve_eth_guard {
                         from_subaccount: None,
                         created_at: None,
                         l1_fee: None,
+                        withdrawal_fee: None,
                     }))
             })
         }

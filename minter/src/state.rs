@@ -36,6 +36,7 @@ use crate::{
         TransactionNonce, Wei, WeiPerGas,
     },
     rpc_declarations::{BlockTag, Hash, TransactionReceipt, TransactionStatus},
+    state::transactions::NativeWithdrawalRequest,
     tx::gas_fees::GasFeeEstimate,
 };
 use strum_macros::EnumIter;
@@ -430,7 +431,7 @@ impl State {
             self.released_events.insert(
                 source,
                 ReleasedEvent {
-                    event,
+                    event: event.clone(),
                     erc20_contract_address,
                     transfer_block_index,
                     transfer_fee,
@@ -440,6 +441,8 @@ impl State {
             None,
             "attempted to mint native twice for the same event {source:?}"
         );
+
+        self.update_balance_upon_release(&event);
     }
 
     pub fn get_deposit_status(&self, tx_hash: Hash) -> Option<DepositStatus> {
@@ -470,13 +473,18 @@ impl State {
         None
     }
 
+    pub fn record_native_withdrawal_request(&mut self, request: NativeWithdrawalRequest) {
+        self.withdrawal_transactions
+            .record_withdrawal_request(request);
+    }
+
     pub fn record_erc20_withdrawal_request(&mut self, request: Erc20WithdrawalRequest) {
         if request.is_wrapped_mint {
             assert!(self
                 .wrapped_icrc_tokens
                 .contains_alt(&request.erc20_contract_address));
             // balance update since icrc tokens were locked
-            self.icrc_balances.icrc_add(
+            self.update_balance_upon_icrc_lock(
                 request.erc20_ledger_id,
                 request.withdrawal_amount.change_units(),
             );
@@ -488,6 +496,7 @@ impl State {
                 request.erc20_contract_address
             );
         }
+
         self.withdrawal_transactions
             .record_withdrawal_request(request);
     }
@@ -515,14 +524,6 @@ impl State {
         };
     }
 
-    fn record_collected_native_operation_fee(&mut self, amount: Wei) {
-        self.native_balance.total_collected_operation_native_fee = self
-            .native_balance
-            .total_collected_operation_native_fee
-            .checked_add(amount)
-            .unwrap_or(Wei::MAX);
-    }
-
     // update balance upopn releaseing locked icrc tokens
     fn update_balance_upon_release(&mut self, event: &ReceivedContractEvent) {
         match event {
@@ -545,7 +546,6 @@ impl State {
         withdrawal_id: &LedgerBurnIndex,
         receipt: &TransactionReceipt,
     ) {
-        let tx_fee = receipt.effective_transaction_fee();
         let tx = self
             .withdrawal_transactions
             .get_finalized_transaction(withdrawal_id)
@@ -554,33 +554,66 @@ impl State {
             .withdrawal_transactions
             .get_processed_withdrawal_request(withdrawal_id)
             .expect("BUG: missing withdrawal request");
+
+        let l1_fee = withdrawal_request.l1_fee().unwrap_or(Wei::ZERO);
+
+        println!("l1_fee: {:?}", l1_fee);
+
+        let withdrawal_fee = withdrawal_request.withdrawal_fee().unwrap_or(Wei::ZERO);
+
+        let tx_fee = receipt.effective_transaction_fee();
+
+        // charged_tx_fee is only the fee paid to cover transaction fee excluding any other fee
         let (charged_tx_fee, is_wrapped_mint) = match withdrawal_request {
-            WithdrawalRequest::Native(req) => (
-                req.withdrawal_amount
-                    .checked_sub(tx.transaction().amount)
+            WithdrawalRequest::Native(req) => {
+                let total_charged_fees = req
+                    .withdrawal_amount
+                    .checked_sub(*tx.transaction_amount())
                     .expect(
-                        "BUG: withdrawal amount MUST always be at least the transaction amount",
-                    ),
-                false,
-            ),
+                        "Bug: withdrawal_amount should always be higher than transaction amount",
+                    );
+
+                let charged_tx_fee=total_charged_fees.checked_sub(l1_fee)
+                    .expect("total_charged_fees should be higher than l1_fee")
+                    .checked_sub(withdrawal_fee).expect("Bug: total_charged_fees should be higer than l1_fee and withdrawal_fee combined");
+
+                (charged_tx_fee, false)
+            }
             WithdrawalRequest::Erc20(req) => (req.max_transaction_fee, req.is_wrapped_mint),
         };
 
         let unspent_tx_fee = charged_tx_fee.checked_sub(tx_fee).expect(
             "BUG: charged transaction fee MUST always be at least the effective transaction fee",
         );
+
+        // we dont add the withdrawal_fee to debited amount, since its already added to total_collected_operation_native_fee
         let debited_amount = match receipt.status {
             TransactionStatus::Success => tx
                 .transaction()
                 .amount
                 .checked_add(tx_fee)
+                .expect("BUG: debited amount always fits into U256")
+                .checked_add(l1_fee)
                 .expect("BUG: debited amount always fits into U256"),
-            TransactionStatus::Failure => tx_fee,
+
+            TransactionStatus::Failure => tx_fee
+                .checked_add(l1_fee)
+                .expect("BUG: debited amount always fits into U256"),
         };
+
+        println!(
+            "debited amount: {debited_amount}, transaction amuont: {:?}, tx_fee: {tx_fee}",
+            tx.transaction_amount()
+        );
+
         self.native_balance.eth_balance_sub(debited_amount);
         self.native_balance.total_effective_tx_fees_add(tx_fee);
         self.native_balance
             .total_unspent_tx_fees_add(unspent_tx_fee);
+
+        // whether if transactions fails or not the minter paid for the signing cost
+        self.native_balance
+            .total_collected_operation_native_fee_add(withdrawal_fee);
 
         // update erc20 balances only if request is erc20 and tx is not a wrapped_mint for icrc
         // tokens

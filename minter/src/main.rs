@@ -46,7 +46,7 @@ use evm_minter::state::{
 use evm_minter::storage::set_rpc_api_key;
 use evm_minter::tx::gas_fees::{lazy_fetch_l1_fee_estimate, lazy_refresh_gas_fee_estimate};
 use evm_minter::withdraw::{
-    process_reimbursement, process_retrieve_tokens_requests,
+    process_reimbursement, process_retrieve_tokens_requests, ERC20_MINT_TRANSACTION_GAS_LIMIT,
     ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT, NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
 };
 use evm_minter::{
@@ -317,17 +317,12 @@ async fn withdraw_native_token(
         }
     })?;
 
-    let mut amount = Wei::try_from(amount).expect("failed to convert Nat to u256");
+    let amount = Wei::try_from(amount).expect("failed to convert Nat to u256");
 
     // If withdrawal_native_fee is some, the total transaction value should be as follow
     // amount - withdrawal_native_fee
-    let (withdrawal_native_fee, minimum_withdrawal_amount, native_transfer_fee) = read_state(|s| {
-        (
-            s.withdrawal_native_fee,
-            s.native_minimum_withdrawal_amount,
-            s.native_ledger_transfer_fee,
-        )
-    });
+    let (withdrawal_native_fee, minimum_withdrawal_amount) =
+        read_state(|s| (s.withdrawal_native_fee, s.native_minimum_withdrawal_amount));
 
     if amount < minimum_withdrawal_amount {
         return Err(WithdrawalError::AmountTooLow {
@@ -363,14 +358,6 @@ async fn withdraw_native_token(
         .await
     {
         Ok(ledger_burn_index) => {
-            // Deducting withdrawal_native_fee(fee to cover signing cost) from withdrawal_amount
-            amount = match withdrawal_native_fee {
-                Some(fee) => amount
-                    .checked_sub(fee)
-                    .expect("Bug: Amount should always cover withdrawal_native_fee"),
-                None => amount,
-            };
-
             let withdrawal_request = NativeWithdrawalRequest {
                 withdrawal_amount: amount,
                 destination,
@@ -379,6 +366,7 @@ async fn withdraw_native_token(
                 from_subaccount: None,
                 created_at: Some(now),
                 l1_fee,
+                withdrawal_fee: withdrawal_native_fee,
             };
 
             log!(
@@ -392,15 +380,6 @@ async fn withdraw_native_token(
                     s,
                     EventType::AcceptedNativeWithdrawalRequest(withdrawal_request.clone()),
                 );
-                if let Some(withdrawal_native_fee) = withdrawal_native_fee {
-                    process_event(
-                        s,
-                        EventType::WithdrawalNativeFeeCollected {
-                            withdrawal_id: ledger_burn_index.into(),
-                            withdrawal_native_fee_paid: withdrawal_native_fee,
-                        },
-                    );
-                }
             });
 
             ic_cdk_timers::set_timer(Duration::from_secs(0), || {
@@ -526,14 +505,13 @@ async fn withdraw_erc20(
     };
 
     let now = ic_cdk::api::time();
-    let max_transaction_fee = erc20_tx_fee
-        .checked_add(l1_fee.unwrap_or(Wei::ZERO))
-        .unwrap_or(Wei::MAX);
 
     // amount that will be burnt to cover transaction_fees plus transaction_signing
     // cost(native_withdrawal_fee)
-    let native_burn_amount = max_transaction_fee
-        .checked_add(native_transfer_fee)
+    let native_burn_amount = erc20_tx_fee
+        .checked_add(l1_fee.unwrap_or(Wei::ZERO))
+        .expect("Bug: Tx_fee plus l1_fee should fit in u256")
+        .checked_add(withdrawal_native_fee.unwrap_or(Wei::ZERO))
         .unwrap_or(Wei::MAX);
 
     log!(INFO, "[withdraw_erc20]: burning {:?} native", erc20_tx_fee);
@@ -571,7 +549,7 @@ async fn withdraw_erc20(
             {
                 Ok(erc20_ledger_burn_index) => {
                     let withdrawal_request = Erc20WithdrawalRequest {
-                        max_transaction_fee,
+                        max_transaction_fee: erc20_tx_fee,
                         withdrawal_amount: erc20_withdrawal_amount,
                         destination,
                         native_ledger_burn_index,
@@ -583,6 +561,7 @@ async fn withdraw_erc20(
                         created_at: now,
                         l1_fee,
                         is_wrapped_mint: false,
+                        withdrawal_fee: withdrawal_native_fee,
                     };
                     log!(
                         INFO,
@@ -594,15 +573,6 @@ async fn withdraw_erc20(
                             s,
                             EventType::AcceptedErc20WithdrawalRequest(withdrawal_request.clone()),
                         );
-                        if let Some(withdrawal_native_fee) = withdrawal_native_fee {
-                            process_event(
-                                s,
-                                EventType::WithdrawalNativeFeeCollected {
-                                    withdrawal_id: erc20_ledger_burn_index.into(),
-                                    withdrawal_native_fee_paid: withdrawal_native_fee,
-                                },
-                            );
-                        }
                     });
 
                     ic_cdk_timers::set_timer(Duration::from_secs(0), || {
@@ -698,7 +668,7 @@ async fn wrap_icrc(
         )
     });
 
-    let erc20_tx_fee = estimate_erc20_transaction_fee().await.ok_or_else(|| {
+    let erc20_tx_fee = estimate_icrc_wrap_transaction_fee().await.ok_or_else(|| {
         WrapIcrcError::TemporarilyUnavailable("Failed to retrieve current gas fee".to_string())
     })?;
 
@@ -716,14 +686,13 @@ async fn wrap_icrc(
     };
 
     let now = ic_cdk::api::time();
-    let max_transaction_fee = erc20_tx_fee
-        .checked_add(l1_fee.unwrap_or(Wei::ZERO))
-        .unwrap_or(Wei::MAX);
 
     // amount that will be burnt to cover transaction_fees plus transaction_signing
     // cost(native_withdrawal_fee)
-    let native_burn_amount = max_transaction_fee
-        .checked_add(native_transfer_fee)
+    let native_burn_amount = erc20_tx_fee
+        .checked_add(l1_fee.unwrap_or(Wei::ZERO))
+        .expect("Bug: Tx_fee plus l1_fee should fit in u256")
+        .checked_add(withdrawal_native_fee.unwrap_or(Wei::ZERO))
         .unwrap_or(Wei::MAX);
 
     let icrc_ledger_client = LedgerClient::icrc_ledger(icrc_ledger_id);
@@ -757,7 +726,7 @@ async fn wrap_icrc(
             {
                 Ok(erc20_ledger_burn_index) => {
                     let withdrawal_request = Erc20WithdrawalRequest {
-                        max_transaction_fee,
+                        max_transaction_fee: erc20_tx_fee,
                         withdrawal_amount: lock_amount,
                         destination,
                         native_ledger_burn_index,
@@ -769,6 +738,7 @@ async fn wrap_icrc(
                         created_at: now,
                         l1_fee,
                         is_wrapped_mint: true,
+                        withdrawal_fee: withdrawal_native_fee,
                     };
                     log!(
                         INFO,
@@ -780,15 +750,6 @@ async fn wrap_icrc(
                             s,
                             EventType::AcceptedErc20WithdrawalRequest(withdrawal_request.clone()),
                         );
-                        if let Some(withdrawal_native_fee) = withdrawal_native_fee {
-                            process_event(
-                                s,
-                                EventType::WithdrawalNativeFeeCollected {
-                                    withdrawal_id: erc20_ledger_burn_index.into(),
-                                    withdrawal_native_fee_paid: withdrawal_native_fee,
-                                },
-                            );
-                        }
                     });
 
                     ic_cdk_timers::set_timer(Duration::from_secs(0), || {
@@ -842,6 +803,16 @@ async fn estimate_erc20_transaction_fee() -> Option<Wei> {
         .map(|gas_fee_estimate| {
             gas_fee_estimate
                 .to_price(ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT)
+                .max_transaction_fee()
+        })
+}
+
+async fn estimate_icrc_wrap_transaction_fee() -> Option<Wei> {
+    lazy_refresh_gas_fee_estimate()
+        .await
+        .map(|gas_fee_estimate| {
+            gas_fee_estimate
+                .to_price(ERC20_MINT_TRANSACTION_GAS_LIMIT)
                 .max_transaction_fee()
         })
 }

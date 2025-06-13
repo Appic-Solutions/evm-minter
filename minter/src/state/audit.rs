@@ -61,9 +61,7 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
             state.last_scraped_block_number = *block_number;
         }
         EventType::AcceptedNativeWithdrawalRequest(request) => {
-            state
-                .withdrawal_transactions
-                .record_withdrawal_request(request.clone());
+            state.record_native_withdrawal_request(request.clone());
         }
         EventType::CreatedTransaction {
             withdrawal_id,
@@ -109,6 +107,7 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
                         ledger_burn_index: *withdrawal_id,
                     },
                     *reimbursed_in_block,
+                    None,
                 );
         }
         EventType::SkippedBlock { block_number } => {
@@ -134,6 +133,7 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
                         erc20_ledger_burn_index: reimbursed.burn_in_block,
                     },
                     reimbursed.reimbursed_in_block,
+                    None,
                 );
         }
         EventType::FailedErc20WithdrawalRequest(native_reimbursement_request) => {
@@ -188,12 +188,6 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
                 *released_icrc_token,
             );
         }
-        EventType::WithdrawalNativeFeeCollected {
-            withdrawal_id: _,
-            withdrawal_native_fee_paid,
-        } => {
-            state.record_collected_native_operation_fee(*withdrawal_native_fee_paid);
-        }
         EventType::FailedIcrcLockRequest(native_reimbursement_request) => {
             state.withdrawal_transactions.record_reimbursement_request(
                 ReimbursementIndex::Native {
@@ -201,6 +195,23 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
                 },
                 native_reimbursement_request.clone(),
             )
+        }
+        EventType::ReimbursedIcrcWrap {
+            native_ledger_burn_index,
+            reimbursed_icrc_token,
+            reimbursed,
+        } => {
+            state
+                .withdrawal_transactions
+                .record_finalized_reimbursement(
+                    ReimbursementIndex::IcrcWrap {
+                        native_ledger_burn_index: *native_ledger_burn_index,
+                        icrc_token: *reimbursed_icrc_token,
+                        icrc_ledger_lock_index: reimbursed.burn_in_block,
+                    },
+                    reimbursed.reimbursed_in_block,
+                    reimbursed.transfer_fee,
+                );
         }
     }
 }

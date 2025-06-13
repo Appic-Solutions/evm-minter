@@ -208,14 +208,16 @@ pub enum EventType {
         transfer_fee: IcrcValue,
     },
     #[n(29)]
-    WithdrawalNativeFeeCollected {
-        #[cbor(n(0), with = "crate::cbor::id")]
-        withdrawal_id: LedgerBurnIndex,
-        #[n(1)]
-        withdrawal_native_fee_paid: Wei,
-    },
-    #[n(30)]
     FailedIcrcLockRequest(#[n(0)] ReimbursementRequest),
+    #[n(30)]
+    ReimbursedIcrcWrap {
+        #[cbor(n(0), with = "crate::cbor::id")]
+        native_ledger_burn_index: LedgerBurnIndex,
+        #[cbor(n(1), with = "crate::cbor::principal")]
+        reimbursed_icrc_token: Principal,
+        #[n(2)]
+        reimbursed: Reimbursed,
+    },
 }
 
 impl ReceivedContractEvent {

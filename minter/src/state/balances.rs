@@ -15,12 +15,12 @@ pub struct NativeBalance {
     /// or retrieved by the JSON-RPC call `eth_getBalance`.
     /// Also, some transactions may have gone directly to the minter's address
     /// without going via the helper smart contract.
-    native_balance: Wei,
+    pub native_balance: Wei,
     /// Total amount of fees across all finalized transactions icNative -> Native. conversion of twin native token to token on the home chain.
-    total_effective_tx_fees: Wei,
+    pub total_effective_tx_fees: Wei,
     /// Total amount of fees that were charged to the user during the withdrawal
     /// but not consumed by the finalized transaction icNative -> Native. conversion of twin native token to token on the home chain.
-    total_unspent_tx_fees: Wei,
+    pub total_unspent_tx_fees: Wei,
 
     // fee collected to cover signing cost, for withdraw and lock(mint on evm) operations.
     // after each operation withdrawal_native_fee should be added to total collected fee
@@ -69,6 +69,18 @@ impl NativeBalance {
             })
     }
 
+    pub fn total_collected_operation_native_fee_add(&mut self, value: Wei) {
+        self.total_collected_operation_native_fee = self
+            .total_collected_operation_native_fee
+            .checked_add(value)
+            .unwrap_or_else(|| {
+                panic!(
+                    "BUG: overflow when adding {} to {}",
+                    value, self.total_effective_tx_fees
+                )
+            })
+    }
+
     pub fn total_unspent_tx_fees_add(&mut self, value: Wei) {
         self.total_unspent_tx_fees = self
             .total_unspent_tx_fees
@@ -97,7 +109,7 @@ impl NativeBalance {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 
 pub struct Erc20Balances {
-    balance_by_erc20_contract: BTreeMap<Address, Erc20Value>,
+    pub balance_by_erc20_contract: BTreeMap<Address, Erc20Value>,
 }
 
 impl Erc20Balances {

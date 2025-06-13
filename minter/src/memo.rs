@@ -131,12 +131,28 @@ impl From<BurnMemo> for Memo {
 
 impl From<&ReceivedContractEvent> for Memo {
     fn from(event: &ReceivedContractEvent) -> Self {
-        todo!()
-        //Memo::from(MintMemo::Convert {
-        //    from_address: event.from_address(),
-        //    tx_hash: event.transaction_hash(),
-        //    log_index: event.log_index(),
-        //})
+        //todo!()
+        match event {
+            ReceivedContractEvent::NativeDeposit(received_native_event) => MintMemo::Convert {
+                from_address: received_native_event.from_address,
+                tx_hash: received_native_event.transaction_hash,
+                log_index: received_native_event.log_index,
+            },
+            ReceivedContractEvent::Erc20Deposit(received_erc20_event) => MintMemo::Convert {
+                from_address: received_erc20_event.from_address,
+                tx_hash: received_erc20_event.transaction_hash,
+                log_index: received_erc20_event.log_index,
+            },
+            ReceivedContractEvent::WrappedIcrcBurn(received_burn_event) => MintMemo::Convert {
+                from_address: received_burn_event.from_address,
+                tx_hash: received_burn_event.transaction_hash,
+                log_index: received_burn_event.log_index,
+            },
+            ReceivedContractEvent::WrappedIcrcDeployed(_received_wrapped_icrc_deployed_event) => {
+                panic!("Bug: this event is not mintable")
+            }
+        }
+        .into()
     }
 }
 
