@@ -147,6 +147,7 @@ impl fmt::Debug for ReceivedBurnEvent {
                 "wrapped_erc20_contract_address",
                 &self.wrapped_erc20_contract_address,
             )
+            .field("icrc_token_principal", &self.icrc_token_principal)
             .field("subaccount", &self.subaccount)
             .finish()
     }

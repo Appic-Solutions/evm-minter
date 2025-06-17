@@ -30,7 +30,7 @@ use proptest::collection::vec as pvec;
 use proptest::prelude::*;
 use std::collections::BTreeMap;
 
-fn initial_state() -> State {
+pub fn initial_state() -> State {
     State::try_from(InitArg {
         evm_network: Default::default(),
         ecdsa_key_name: "test_key_1".to_string(),
@@ -767,7 +767,7 @@ proptest! {
 }
 
 #[test]
-fn state_equivalence() {
+pub fn state_equivalence() {
     use crate::map::MultiKeyMap;
     use crate::rpc_declarations::{TransactionReceipt, TransactionStatus};
     use crate::state::transactions::{
@@ -780,7 +780,7 @@ fn state_equivalence() {
     use ic_cdk::api::management_canister::ecdsa::EcdsaPublicKeyResponse;
     use maplit::{btreemap, btreeset};
 
-    fn source(txhash: &str, index: u64) -> EventSource {
+    pub fn source(txhash: &str, index: u64) -> EventSource {
         EventSource {
             transaction_hash: txhash.parse().unwrap(),
             log_index: LogIndex::from(index),

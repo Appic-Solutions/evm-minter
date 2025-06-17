@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod tests;
+pub mod tests;
 
 pub mod audit;
 pub mod balances;

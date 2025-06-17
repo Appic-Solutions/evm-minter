@@ -3,10 +3,9 @@ use std::time::Duration;
 use candid::{Nat, Principal};
 
 use crate::{
-    endpoints::{
-        DepositStatus, Eip1559TransactionPrice, RequestScrapingError, RetrieveErc20Request,
-        RetrieveNativeRequest, RetrieveWithdrawalStatus, TxFinalizedStatus, WithdrawErc20Arg,
-        WithdrawErc20Error, WithdrawalArg, WithdrawalError,
+    candid_types::{
+        DepositStatus, Eip1559TransactionPrice, RequestScrapingError, RetrieveNativeRequest,
+        RetrieveWithdrawalStatus, TxFinalizedStatus,
     },
     evm_config::EvmNetwork,
     tests::{
@@ -15,7 +14,7 @@ use crate::{
             five_ticks, icp_principal, lsm_principal, native_ledger_principal, update_call,
         },
     },
-    PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL, SCRAPING_contract_logs_INTERVAL,
+    PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL, SCRAPING_CONTRACT_LOGS_INTERVAL,
 };
 
 use icrc_ledger_types::icrc1::account::Account;

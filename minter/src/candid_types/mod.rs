@@ -1,3 +1,4 @@
+use crate::candid_types::wrapped_icrc::WrappedIcrcToken;
 use crate::eth_types::Address;
 use crate::ledger_client::LedgerBurnError;
 // // use crate::rpc_client::responses::TransactionReceipt;
@@ -75,6 +76,12 @@ pub struct Erc20Balance {
     pub balance: Nat,
 }
 
+#[derive(CandidType, Deserialize, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct IcrcBalance {
+    pub icrc_token: Principal,
+    pub balance: Nat,
+}
+
 #[derive(CandidType, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct MinterInfo {
     pub minter_address: Option<String>,
@@ -86,12 +93,15 @@ pub struct MinterInfo {
     pub block_height: Option<CandidBlockTag>,
     pub last_observed_block_number: Option<Nat>,
     pub native_balance: Option<Nat>,
+    pub total_collected_operation_fee: Option<Nat>,
     pub last_gas_fee_estimate: Option<GasFeeEstimate>,
     pub erc20_balances: Option<Vec<Erc20Balance>>,
+    pub icrc_balances: Option<Vec<IcrcBalance>>,
     pub last_scraped_block_number: Option<Nat>,
     pub native_twin_token_ledger_id: Option<Principal>,
     pub swap_canister_id: Option<Principal>,
     pub ledger_suite_manager_id: Option<Principal>,
+    pub wrapped_icrc_tokens: Option<Vec<WrappedIcrcToken>>,
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug, Eq, PartialEq)]

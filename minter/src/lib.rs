@@ -28,9 +28,9 @@ pub mod withdraw;
 #[cfg(test)]
 pub mod test_fixtures;
 
-//#[cfg(test)]
-//mod tests;
-//
+#[cfg(test)]
+mod tests;
+
 // Log scraping can also be requested manually
 pub const SCRAPING_CONTRACT_LOGS_INTERVAL: Duration = Duration::from_secs(20 * 60);
 pub const PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL: Duration = Duration::from_secs(1 * 60);

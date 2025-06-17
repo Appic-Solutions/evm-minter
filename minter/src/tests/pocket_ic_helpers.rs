@@ -39,7 +39,7 @@ use super::{
 };
 
 use crate::{
-    endpoints::{CandidBlockTag, Erc20Token, MinterInfo},
+    candid_types::{CandidBlockTag, Erc20Token, MinterInfo},
     evm_config::EvmNetwork,
     lifecycle::{InitArg, MinterArg, UpgradeArg},
     lsm_client::WasmHash,

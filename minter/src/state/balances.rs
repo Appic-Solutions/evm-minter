@@ -159,7 +159,7 @@ impl Erc20Balances {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct IcrcBalances {
-    balance_by_icrc_ledger: BTreeMap<Principal, IcrcValue>,
+    pub balance_by_icrc_ledger: BTreeMap<Principal, IcrcValue>,
 }
 
 impl IcrcBalances {

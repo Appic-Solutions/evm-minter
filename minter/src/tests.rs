@@ -1,13 +1,26 @@
-#[cfg(test)]
-pub mod appic_helper_types;
-#[cfg(test)]
-pub mod lsm_types;
-#[cfg(test)]
-mod minter_flow_tets;
-#[cfg(test)]
-pub mod pocket_ic_helpers;
+//#[cfg(test)]
+//pub mod appic_helper_types;
+//#[cfg(test)]
+//pub mod lsm_types;
+//#[cfg(test)]
+//mod minter_flow_tets;
+//#[cfg(test)]
+//pub mod pocket_ic_helpers;
 
-use crate::address::ecdsa_public_key_to_address;
+use ic_cdk::api::management_canister::ecdsa::EcdsaPublicKeyResponse;
+use maplit::btreemap;
+
+use crate::{
+    address::ecdsa_public_key_to_address,
+    contract_logs::types::ReceivedNativeEvent,
+    contract_logs::EventSource,
+    erc20::ERC20TokenSymbol,
+    evm_config::EvmNetwork,
+    map::DedupMultiKeyMap,
+    numeric::{BlockNumber, LedgerMintIndex, LogIndex, Wei, WeiPerGas},
+    rpc_declarations::BlockTag,
+    state::{transactions::WithdrawalTransactions, InvalidEventReason, MintedEvent, State},
+};
 
 #[test]
 fn deserialize_block_spec() {
@@ -35,12 +48,14 @@ fn deserialize_block_spec() {
 mod get_contract_logs {
     use crate::candid_types::RequestScrapingError;
     use crate::contract_logs::parser::{LogParser, ReceivedEventsLogParser};
-    use crate::contract_logs::types::{ReceivedErc20Event, ReceivedNativeEvent};
+    use crate::contract_logs::types::{ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent};
     use crate::contract_logs::LedgerSubaccount;
     use crate::deposit::validate_log_scraping_request;
     use crate::eth_types::Address;
     use crate::numeric::{BlockNumber, Erc20Value, LogIndex, Wei};
     use crate::rpc_declarations::LogEntry;
+    use crate::state::STATE;
+    use crate::tests::test_state;
     use candid::Principal;
     use ic_sha3::Keccak256;
     use std::str::FromStr;
@@ -97,7 +112,57 @@ mod get_contract_logs {
     }
 
     #[test]
+    fn shoulf_parse_received_icrc_wrapp_event() {
+        let state = test_state();
+        STATE.with(|cell| *cell.borrow_mut() = Some(state));
+
+        let event = r#"{    
+    "address": "0x7e41257f7b5c3dd3313ef02b1f4c864fe95bec2b",
+    "topics": [
+      "0x37199deebd336af9013dbddaaf9a68e337707bb4ed64cb45ed12841af85e0377",
+      "0x0000000000000000000000001234567890abcdef1234567890abcdef12345678",
+      "0x09efcdab00000000000100000000000000000000000000000000000000000000",
+      "0x0000000000000000000000009876543210fedcba9876543210fedcba98765432"
+    ],
+    "data": "0x0000000000000000000000000000000000000000000000000de0b6b3a76400000000000000000000000000000000000000000000000000000000000000000000",
+    "blockNumber": "0x3aa4f4",
+    "transactionHash": "0x5618f72c485bd98a3df58d900eabe9e24bfaa972a6fe5227e02233fad2db1154",
+    "transactionIndex": "0x6",
+    "blockHash": "0x908e6b84d26d71421bfaa08e7966e0afcef3883a28a53a0a7a31104caf1e94c2",
+    "logIndex": "0x8",
+    "removed": false
+
+        }"#;
+
+        let parsed_event =
+            ReceivedEventsLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap());
+        println!("{:?}", parsed_event);
+        let burn_event = ReceivedBurnEvent {
+            transaction_hash: "0x5618f72c485bd98a3df58d900eabe9e24bfaa972a6fe5227e02233fad2db1154"
+                .parse()
+                .unwrap(),
+            block_number: 3_843_316_u32.into(),
+            log_index: 8_u32.into(),
+            from_address: "0x1234567890AbcdEF1234567890aBcdef12345678"
+                .parse()
+                .unwrap(),
+            value: 1_000_000_000_000_000_000_u64.into(),
+            principal: "2chl6-4hpzw-vqaaa-aaaaa-c".parse().unwrap(),
+            wrapped_erc20_contract_address: "0x9876543210FeDcba9876543210FEdCba98765432"
+                .parse()
+                .unwrap(),
+            icrc_token_principal: "ryjl3-tyaaa-aaaaa-aaaba-cai".parse().unwrap(),
+            subaccount: None,
+        }
+        .into();
+        assert_eq!(parsed_event.unwrap(), burn_event);
+    }
+
+    #[test]
     fn should_parse_received_eth_event() {
+        let state = test_state();
+        STATE.with(|cell| *cell.borrow_mut() = Some(state));
+
         let event = r#"{
             "address": "0xF199c1779706fE7Fe636B9897043F51235295E96",
             "topics": [
@@ -137,6 +202,9 @@ mod get_contract_logs {
 
     #[test]
     fn should_parse_received_native_event_with_subaccount() {
+        let state = test_state();
+        STATE.with(|cell| *cell.borrow_mut() = Some(state));
+
         let event = r#"{
             "address": "0x11d7c426eedc044b21066d2be9480d4b99e7cc1a",
             "topics": [
@@ -175,6 +243,9 @@ mod get_contract_logs {
 
     #[test]
     fn should_parse_received_erc20_event() {
+        let state = test_state();
+        STATE.with(|cell| *cell.borrow_mut() = Some(state));
+
         let event = r#"{
             "address": "0xF199c1779706fE7Fe636B9897043F51235295E96",
             "topics": [
@@ -220,6 +291,9 @@ mod get_contract_logs {
 
     #[test]
     fn should_parse_received_erc20_event_with_subaccount() {
+        let state = test_state();
+        STATE.with(|cell| *cell.borrow_mut() = Some(state));
+
         let event = r#"{
             "address": "0x11d7c426eedc044b21066d2be9480d4b99e7cc1a",
             "topics": [
@@ -262,6 +336,9 @@ mod get_contract_logs {
 
     #[test]
     fn should_not_parse_removed_event() {
+        let state = test_state();
+        STATE.with(|cell| *cell.borrow_mut() = Some(state));
+
         use crate::contract_logs::{EventSource, EventSourceError, ReceivedContractEventError};
         let event = r#"{
             "address": "0xb44b5e756a894775fc32eddf3314bb1b1944dc34",
@@ -968,5 +1045,109 @@ mod eth_fee_history {
                 ],
             }
         )
+    }
+}
+
+fn test_state() -> State {
+    let mut erc20_tokens = DedupMultiKeyMap::default();
+    erc20_tokens
+        .try_insert(
+            "mxzaz-hqaaa-aaaar-qaada-cai".parse().unwrap(),
+            "0x779877A7B0D9E8603169DdbD7836e478b4624789"
+                .parse()
+                .unwrap(),
+            "ckUSDC".parse().unwrap(),
+        )
+        .unwrap();
+
+    let mut wrapped_icrc_tokens = DedupMultiKeyMap::default();
+
+    wrapped_icrc_tokens
+        .try_insert(
+            "ryjl3-tyaaa-aaaaa-aaaba-cai".parse().unwrap(),
+            "0x9876543210fedcba9876543210fedcba98765432"
+                .parse()
+                .unwrap(),
+            None,
+        )
+        .unwrap();
+
+    State {
+        evm_network: EvmNetwork::Sepolia,
+        ecdsa_key_name: "test_key".to_string(),
+        native_ledger_id: "apia6-jaaaa-aaaar-qabma-cai".parse().unwrap(),
+        native_index_id: "eysav-tyaaa-aaaap-akqfq-cai".parse().unwrap(),
+        helper_contract_address: Some(
+            "0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34"
+                .parse()
+                .unwrap(),
+        ),
+        ecdsa_public_key: Some(EcdsaPublicKeyResponse {
+            public_key: vec![1; 32],
+            chain_code: vec![2; 32],
+        }),
+        native_minimum_withdrawal_amount: Wei::new(1_000_000_000_000_000),
+        block_height: BlockTag::Finalized,
+        first_scraped_block_number: BlockNumber::new(1_000_001),
+        last_scraped_block_number: BlockNumber::new(1_000_000),
+        last_observed_block_number: Some(BlockNumber::new(2_000_000)),
+        events_to_mint: btreemap! {
+            source("0xac493fb20c93bd3519a4a5d90ce72d69455c41c5b7e229dafee44344242ba467", 100) => ReceivedNativeEvent {
+                transaction_hash: "0xac493fb20c93bd3519a4a5d90ce72d69455c41c5b7e229dafee44344242ba467".parse().unwrap(),
+                block_number: BlockNumber::new(500_000),
+                log_index: LogIndex::new(100),
+                from_address: "0x9d68bd6F351bE62ed6dBEaE99d830BECD356Ed25".parse().unwrap(),
+                value: Wei::new(500_000_000_000_000_000),
+                principal: "lsywz-sl5vm-m6tct-7fhwt-6gdrw-4uzsg-ibknl-44d6d-a2oyt-c2cxu-7ae".parse().unwrap(),
+                subaccount:None
+            }.into()
+        },
+        minted_events: btreemap! {
+            source("0x705f826861c802b407843e99af986cfde8749b669e5e0a5a150f4350bcaa9bc3", 1) => MintedEvent {
+            event: ReceivedNativeEvent {
+                    transaction_hash: "0x705f826861c802b407843e99af986cfde8749b669e5e0a5a150f4350bcaa9bc3".parse().unwrap(),
+                    block_number: BlockNumber::new(450_000),
+                    log_index: LogIndex::new(1),
+                    from_address: "0x9d68bd6F351bE62ed6dBEaE99d830BECD356Ed25".parse().unwrap(),
+                    value: Wei::new(10_000_000_000_000_000),
+                    principal: "2chl6-4hpzw-vqaaa-aaaaa-c".parse().unwrap(),
+                    subaccount:None
+                }.into(),
+                mint_block_index: LedgerMintIndex::new(1),
+                erc20_contract_address: None,
+                token_symbol: "icUSDT".to_string(),
+            }
+        },
+        invalid_events: btreemap! {
+            source("0x05c6ec45699c9a6a4b1a4ea2058b0cee852ea2f19b18fb8313c04bf8156efde4", 11) => InvalidEventReason::InvalidEvent("failed to decode principal from bytes 0x00333c125dc9f41abaf2b8b85d49fdc7ff75b2a4000000000000000000000000".to_string()),
+        },
+        withdrawal_transactions: WithdrawalTransactions::new(0_u64.into()),
+        pending_withdrawal_principals: Default::default(),
+        active_tasks: Default::default(),
+        native_balance: Default::default(),
+        erc20_balances: Default::default(),
+        skipped_blocks: Default::default(),
+        last_transaction_price_estimate: None,
+        evm_canister_id: "sosge-5iaaa-aaaag-alcla-cai".parse().unwrap(),
+        erc20_tokens,
+        native_symbol: ERC20TokenSymbol::new("icSepoliaETH".to_string()),
+        native_ledger_transfer_fee: Wei::new(2_000_000_000_000_000),
+        min_max_priority_fee_per_gas: WeiPerGas::new(1000),
+        ledger_suite_manager_id: None,
+        swap_canister_id: None,
+        last_observed_block_time: None,
+        withdrawal_native_fee: None,
+        events_to_release: Default::default(),
+        released_events: Default::default(),
+        quarantined_releases: Default::default(),
+        icrc_balances: Default::default(),
+        wrapped_icrc_tokens,
+    }
+}
+
+pub fn source(txhash: &str, index: u64) -> EventSource {
+    EventSource {
+        transaction_hash: txhash.parse().unwrap(),
+        log_index: LogIndex::from(index),
     }
 }

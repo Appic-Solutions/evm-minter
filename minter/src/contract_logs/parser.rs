@@ -68,15 +68,6 @@ impl LogParser for ReceivedEventsLogParser {
 
                 let token_contract_address = parse_address(&entry.topics[1], event_source)?;
 
-                if read_state(|s| s.erc20_tokens.get_alt(&token_contract_address).is_none()) {
-                    return Err(ReceivedContractEventError::InvalidEventSource {
-                        source: event_source,
-                        error: EventSourceError::InvalidEvent(
-                            "Deposited Erc20 token is not supported by the minter".to_string(),
-                        ),
-                    });
-                }
-
                 let principal = parse_principal(&entry.topics[3], event_source)?;
 
                 let value = &entry.topics[2];
@@ -86,8 +77,8 @@ impl LogParser for ReceivedEventsLogParser {
                     log_index,
                 } = event_source;
 
-                match token_contract_address.is_native_token() {
-                    true => Ok(ReceivedContractEvent::NativeDeposit(ReceivedNativeEvent {
+                if token_contract_address.is_native_token() {
+                    return Ok(ReceivedContractEvent::NativeDeposit(ReceivedNativeEvent {
                         transaction_hash,
                         block_number,
                         log_index,
@@ -95,8 +86,18 @@ impl LogParser for ReceivedEventsLogParser {
                         value: Wei::from_be_bytes(value.0),
                         principal,
                         subaccount,
-                    })),
-                    false => Ok(ReceivedContractEvent::Erc20Deposit(ReceivedErc20Event {
+                    }));
+                } else {
+                    if read_state(|s| s.erc20_tokens.get_alt(&token_contract_address).is_none()) {
+                        return Err(ReceivedContractEventError::InvalidEventSource {
+                            source: event_source,
+                            error: EventSourceError::InvalidEvent(
+                                "Deposited Erc20 token is not supported by the minter".to_string(),
+                            ),
+                        });
+                    }
+
+                    return Ok(ReceivedContractEvent::Erc20Deposit(ReceivedErc20Event {
                         transaction_hash,
                         block_number,
                         log_index,
@@ -105,7 +106,7 @@ impl LogParser for ReceivedEventsLogParser {
                         principal,
                         erc20_contract_address: token_contract_address,
                         subaccount,
-                    })),
+                    }));
                 }
             }
             Some(&FixedSizeData(RECEIVED_DEPOSITED_AND_BURNT_TOKENS_EVENT_TOPIC_NEW_CONTRACT)) => {
@@ -262,22 +263,22 @@ fn ensure_not_removed(
     Ok(())
 }
 
-fn ensure_topics<P>(
-    entry: &LogEntry,
-    predicate: P,
-    event_source: EventSource,
-) -> Result<(), ReceivedContractEventError>
-where
-    P: FnOnce(&[FixedSizeData]) -> bool,
-{
-    if !predicate(&entry.topics) {
-        return Err(ReceivedContractEventError::InvalidEventSource {
-            source: event_source,
-            error: EventSourceError::InvalidEvent("Invalid topics".to_string()),
-        });
-    }
-    Ok(())
-}
+//fn ensure_topics<P>(
+//    entry: &LogEntry,
+//    predicate: P,
+//    event_source: EventSource,
+//) -> Result<(), ReceivedContractEventError>
+//where
+//    P: FnOnce(&[FixedSizeData]) -> bool,
+//{
+//    if !predicate(&entry.topics) {
+//        return Err(ReceivedContractEventError::InvalidEventSource {
+//            source: event_source,
+//            error: EventSourceError::InvalidEvent("Invalid topics".to_string()),
+//        });
+//    }
+//    Ok(())
+//}
 
 fn parse_address(
     address: &FixedSizeData,

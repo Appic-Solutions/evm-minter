@@ -39,6 +39,11 @@ pub enum ReimbursementIndex {
         ledger_id: Principal,
         erc20_ledger_burn_index: Nat,
     },
+    IcrcWrap {
+        native_ledger_burn_index: Nat,
+        icrc_token: Principal,
+        icrc_ledger_lock_index: Nat,
+    },
 }
 
 #[derive(CandidType, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -119,6 +124,7 @@ pub enum EventPayload {
         from_subaccount: Option<[u8; 32]>,
         created_at: Option<u64>,
         l1_fee: Option<Nat>,
+        withdrawal_fee: Option<Nat>,
     },
     CreatedTransaction {
         withdrawal_id: Nat,
@@ -171,6 +177,8 @@ pub enum EventPayload {
         from_subaccount: Option<[u8; 32]>,
         created_at: u64,
         l1_fee: Option<Nat>,
+        withdrawal_fee: Option<Nat>,
+        is_wrapped_mint: bool,
     },
     FailedErc20WithdrawalRequest {
         withdrawal_id: Nat,
@@ -189,5 +197,53 @@ pub enum EventPayload {
     },
     QuarantinedReimbursement {
         index: ReimbursementIndex,
+    },
+
+    AcceptedWrappedIcrcBurn {
+        transaction_hash: String,
+        block_number: Nat,
+        log_index: Nat,
+        from_address: String,
+        value: Nat,
+        principal: Principal,
+        wrapped_erc20_contract_address: String,
+        icrc_token_principal: Principal,
+        subaccount: Option<[u8; 32]>,
+    },
+    InvalidEvent {
+        event_source: EventSource,
+        reason: String,
+    },
+    DeployedWrappedIcrcToken {
+        transaction_hash: String,
+        block_number: Nat,
+        log_index: Nat,
+        base_token: Principal,
+        deployed_wrapped_erc20: String,
+    },
+    // The release event was quarantined due to transfer errors, will retry later
+    QuarantinedRelease {
+        event_source: EventSource,
+    },
+
+    ReleasedIcrcToken {
+        event_source: EventSource,
+        release_block_index: Nat,
+        transfer_fee: Nat,
+    },
+    FailedIcrcLockRequest {
+        withdrawal_id: Nat,
+        reimbursed_amount: Nat,
+        to: Principal,
+        to_subaccount: Option<[u8; 32]>,
+    },
+    ReimbursedIcrcWrap {
+        native_ledger_burn_index: Nat,
+        lock_in_block: Nat,
+        reimbursed_in_block: Nat,
+        reimbursed_icrc_token: Principal,
+        reimbursed_amount: Nat,
+        transaction_hash: Option<String>,
+        transfer_fee: Option<Nat>,
     },
 }
