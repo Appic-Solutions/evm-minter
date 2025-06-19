@@ -1,12 +1,11 @@
-//#[cfg(test)]
-//pub mod appic_helper_types;
-//#[cfg(test)]
-//pub mod lsm_types;
-//#[cfg(test)]
-//mod minter_flow_tets;
-//#[cfg(test)]
-//pub mod pocket_ic_helpers;
-
+#[cfg(test)]
+pub mod appic_helper_types;
+#[cfg(test)]
+pub mod lsm_types;
+#[cfg(test)]
+mod minter_flow_tets;
+#[cfg(test)]
+pub mod pocket_ic_helpers;
 use ic_cdk::api::management_canister::ecdsa::EcdsaPublicKeyResponse;
 use maplit::btreemap;
 

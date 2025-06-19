@@ -1,5 +1,6 @@
-use candid::Nat;
+use candid::{Nat, Principal};
 use evm_minter::address::{validate_address_as_destination, AddressValidationError};
+use evm_minter::candid_types::chain_data::ChainData;
 use evm_minter::candid_types::events::{
     Event as CandidEvent, EventSource as CandidEventSource, GetEventsArg, GetEventsResult,
 };
@@ -26,7 +27,9 @@ use evm_minter::candid_types::{
     Eip1559TransactionPrice, Eip1559TransactionPriceArg, Erc20Balance, GasFeeEstimate, MinterInfo,
     RetrieveNativeRequest, RetrieveWithdrawalStatus,
 };
+
 use evm_minter::erc20::ERC20Token;
+use evm_minter::eth_types::fee_hisotry_parser::parse_fee_history;
 use evm_minter::evm_config::EvmNetwork;
 use evm_minter::guard::retrieve_withdraw_guard;
 use evm_minter::ledger_client::{LedgerBurnError, LedgerClient};
@@ -34,7 +37,7 @@ use evm_minter::lifecycle::MinterArg;
 use evm_minter::logs::INFO;
 use evm_minter::lsm_client::lazy_add_native_ls_to_lsm_canister;
 use evm_minter::memo::BurnMemo;
-use evm_minter::numeric::{Erc20Value, LedgerBurnIndex, Wei};
+use evm_minter::numeric::{BlockNumber, Erc20Value, LedgerBurnIndex, Wei};
 use evm_minter::rpc_client::providers::Provider;
 use evm_minter::rpc_declarations::Hash;
 use evm_minter::state::audit::{process_event, EventType};
@@ -47,14 +50,16 @@ use evm_minter::state::{
     lazy_call_ecdsa_public_key, mutate_state, read_state, transactions, State, STATE,
 };
 use evm_minter::storage::set_rpc_api_key;
-use evm_minter::tx::gas_fees::{lazy_fetch_l1_fee_estimate, lazy_refresh_gas_fee_estimate};
+use evm_minter::tx::gas_fees::{
+    estimate_transaction_fee, lazy_fetch_l1_fee_estimate, lazy_refresh_gas_fee_estimate,
+};
 use evm_minter::withdraw::{
     process_reimbursement, process_retrieve_tokens_requests, ERC20_MINT_TRANSACTION_GAS_LIMIT,
     ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT, NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
 };
 use evm_minter::{
     state, storage, PROCESS_REIMBURSEMENT, PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL,
-    SCRAPING_CONTRACT_LOGS_INTERVAL,
+    RPC_HELPER_PRINCIPAL, SCRAPING_CONTRACT_LOGS_INTERVAL,
 };
 use ic_canister_log::log;
 use ic_cdk::{init, post_upgrade, pre_upgrade, query, update};
@@ -1228,8 +1233,8 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                 EventType::ReleasedIcrcToken {
                     event_source,
                     release_block_index,
-                    released_icrc_token,
-                    wrapped_erc20_contract_address,
+                    released_icrc_token: _,
+                    wrapped_erc20_contract_address: _,
                     transfer_fee,
                 } => EP::ReleasedIcrcToken {
                     event_source: map_event_source(event_source),
@@ -1241,7 +1246,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     reimbursed_amount,
                     to,
                     to_subaccount,
-                    transaction_hash,
+                    transaction_hash: _,
                 }) => EP::FailedIcrcLockRequest {
                     withdrawal_id: ledger_burn_index.get().into(),
                     reimbursed_amount: reimbursed_amount.into(),
@@ -1276,6 +1281,39 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
         events,
         total_event_count: storage::total_event_count(),
     }
+}
+
+#[update]
+pub async fn update_chain_data(chain_data: ChainData) {
+    let caller = ic_cdk::caller();
+    let rpc_helper_identity = Principal::from_text(RPC_HELPER_PRINCIPAL).unwrap();
+
+    if caller != rpc_helper_identity {
+        panic!("Access Denied");
+    }
+
+    let now = ic_cdk::api::time();
+
+    let latest_block_number = BlockNumber::try_from(chain_data.latest_block_number)
+        .expect("Failed to parse block number");
+    let fee_history =
+        parse_fee_history(chain_data.fee_history).expect("Failed to parse fee hisotry");
+
+    match estimate_transaction_fee(&fee_history) {
+        Ok(estimate) => {
+            mutate_state(|s| {
+                s.last_transaction_price_estimate = Some((now, estimate.clone()));
+                s.last_observed_block_number = Some(latest_block_number);
+                s.last_observed_block_time = Some(now);
+            });
+        }
+        Err(e) => {
+            log!(
+                INFO,
+                "[refresh_gas_fee_estimate]: Failed estimating gas fee: {e:?}",
+            );
+        }
+    };
 }
 
 /// Returns the amount of heap memory in bytes that has been allocated.

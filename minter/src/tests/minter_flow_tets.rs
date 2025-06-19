@@ -4,6 +4,8 @@ use candid::{Nat, Principal};
 
 use crate::{
     candid_types::{
+        withdraw_erc20::{RetrieveErc20Request, WithdrawErc20Arg, WithdrawErc20Error},
+        withdraw_native::{WithdrawalArg, WithdrawalError},
         DepositStatus, Eip1559TransactionPrice, RequestScrapingError, RetrieveNativeRequest,
         RetrieveWithdrawalStatus, TxFinalizedStatus,
     },
@@ -14,7 +16,7 @@ use crate::{
             five_ticks, icp_principal, lsm_principal, native_ledger_principal, update_call,
         },
     },
-    PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL, SCRAPING_CONTRACT_LOGS_INTERVAL,
+    SCRAPING_CONTRACT_LOGS_INTERVAL,
 };
 
 use icrc_ledger_types::icrc1::account::Account;
@@ -717,7 +719,7 @@ fn should_deposit_and_withdrawal_erc20() {
         };
 
     pic.advance_time(
-        SCRAPING_contract_logs_INTERVAL
+        SCRAPING_CONTRACT_LOGS_INTERVAL
             .checked_sub(Duration::from_secs(1 * 60))
             .unwrap(),
     );

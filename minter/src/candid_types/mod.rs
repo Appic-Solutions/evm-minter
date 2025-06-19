@@ -16,6 +16,7 @@ use serde::Serialize;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
+pub mod chain_data;
 pub mod events;
 pub mod withdraw_erc20;
 pub mod withdraw_native;

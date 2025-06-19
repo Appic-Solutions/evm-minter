@@ -334,76 +334,34 @@ pub async fn scrape_logs() {
 pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
     let block_height = read_state(State::block_height);
     let network = read_state(|state| state.evm_network);
+    let now_ns = ic_cdk::api::time();
+
+    // first we check if the last_observed_block_number is newly updated(it's not older than 10
+    // seconds), if the last_observed_block_number is fresh we dont need to request for a new block
+    // number, on the opposite the on-chain request has to be sent.
+    if let (Some(last_observed_block_number), Some(last_observed_block_time)) =
+        read_state(|s| (s.last_observed_block_number, s.last_observed_block_time))
+    {
+        pub(crate) const TEN_SEC: u64 = 10_000_000_000_u64; // 10 seconds
+
+        if now_ns < last_observed_block_time.saturating_add(TEN_SEC) {
+            return Some(last_observed_block_number);
+        }
+    };
+
     match read_state(|s| RpcClient::from_state_one_provider(s, Provider::DRPC))
         .get_block_by_number(BlockSpec::Tag(block_height))
         .await
     {
         Ok(latest_block) => {
-            let mut block_number = Some(latest_block.number);
-            match network {
-                EvmNetwork::BSC => {
-                    // Waiting for 12 blocks means the transaction is practically safe on BSC
-                    // So we go 12 blocks before the latest block
-                    block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(3_u32)
-                            .expect("Removing 5 blocks from latest block should never fail"),
-                    )
-                }
-                EvmNetwork::ArbitrumOne => {
-                    // it's generally recommended to wait for at least 6-12 blocks after a block is initially produced before
-                    // considering it to be finalized and safe from reorgs. This waiting period provides a buffer to account for potential fork scenarios
-                    //  or other unexpected events.
-                    block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(6_u32)
-                            .expect("Removing 12 blocks from latest block should never fail"),
-                    )
-                }
-                EvmNetwork::Base => {
-                    // like Arbitrum, it's recommended to wait for a few blocks after a transaction is included in a block
-                    // to ensure finality and minimize the risk of reorgs. A waiting period of 6-12 blocks is
-                    // typically considered sufficient for most applications.
+            let block_number = latest_block.number;
+            mutate_state(|s| s.last_observed_block_number = Some(block_number));
+            mutate_state(|s| s.last_observed_block_time = Some(now_ns));
 
-                    block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(3_u32)
-                            .expect("Removing 12 blocks from latest block should never fail"),
-                    )
-                }
-                EvmNetwork::Optimism => {
-                    // Similar to the other layer-2 networks, it's recommended to wait for a few blocks after a transaction is included in a block to
-                    // ensure finality and minimize the risk of reorgs. A waiting period of 6-12 blocks is typically considered sufficient.
-
-                    block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(12_u32)
-                            .expect("Removing 12 blocks from latest block should never fail"),
-                    )
-                }
-                EvmNetwork::Avalanche => {
-                    // If your application deals with extremely high-value transactions or sensitive data,
-                    // you might want to consider waiting for a slightly longer period, such as 12 blocks.
-                    // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
-
-                    block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(12_u32)
-                            .expect("Removing 12 blocks from latest block should never fail"),
-                    )
-                }
-
-                EvmNetwork::Fantom => {
-                    // If your application deals with extremely high-value transactions or sensitive data,
-                    // you might want to consider waiting for a slightly longer period, such as 12 blocks.
-                    // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
-
-                    block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(12_u32)
-                            .expect("Removing 12 blocks from latest block should never fail"),
-                    )
-                }
-
-                // For the rest of the networks we rely on BlockTag::Finalized, So we can make sure that there wont be any reorgs
-                _ => {}
-            }
-            mutate_state(|s| s.last_observed_block_number = block_number);
-            block_number
+            Some(apply_safe_threshold_to_latest_block_numner(
+                network,
+                block_number,
+            ))
         }
         Err(e) => {
             log!(
@@ -606,4 +564,98 @@ pub fn validate_log_scraping_request(
     }
 
     Ok(())
+}
+
+pub fn apply_safe_threshold_to_latest_block_numner(
+    network: EvmNetwork,
+    latest_block: BlockNumber,
+) -> BlockNumber {
+    match network {
+        EvmNetwork::BSC => {
+            // Waiting for 12 blocks means the transaction is practically safe on BSC
+            // So we go 12 blocks before the latest block
+            latest_block
+                .checked_sub(BlockNumber::try_from(3_u32).unwrap())
+                .expect("Removing 5 blocks from latest block should never fail")
+        }
+        EvmNetwork::ArbitrumOne => {
+            // it's generally recommended to wait for at least 6-12 blocks after a block is initially produced before
+            // considering it to be finalized and safe from reorgs. This waiting period provides a buffer to account for potential fork scenarios
+            //  or other unexpected events.
+            latest_block
+                .checked_sub(BlockNumber::try_from(6_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::Base => {
+            // like Arbitrum, it's recommended to wait for a few blocks after a transaction is included in a block
+            // to ensure finality and minimize the risk of reorgs. A waiting period of 6-12 blocks is
+            // typically considered sufficient for most applications.
+
+            latest_block
+                .checked_sub(BlockNumber::try_from(3_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::Optimism => {
+            // Similar to the other layer-2 networks, it's recommended to wait for a few blocks after a transaction is included in a block to
+            // ensure finality and minimize the risk of reorgs. A waiting period of 6-12 blocks is typically considered sufficient.
+
+            latest_block
+                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::Avalanche => {
+            // If your application deals with extremely high-value transactions or sensitive data,
+            // you might want to consider waiting for a slightly longer period, such as 12 blocks.
+            // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
+
+            latest_block
+                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::Fantom => {
+            // If your application deals with extremely high-value transactions or sensitive data,
+            // you might want to consider waiting for a slightly longer period, such as 12 blocks.
+            // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
+
+            latest_block
+                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::Ethereum =>
+        // If your application deals with extremely high-value transactions or sensitive data,
+        // you might want to consider waiting for a slightly longer period, such as 12 blocks.
+        // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
+        {
+            latest_block
+                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::Sepolia =>
+        // If your application deals with extremely high-value transactions or sensitive data,
+        // you might want to consider waiting for a slightly longer period, such as 12 blocks.
+        // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
+        {
+            latest_block
+                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::BSCTestnet =>
+        // If your application deals with extremely high-value transactions or sensitive data,
+        // you might want to consider waiting for a slightly longer period, such as 12 blocks.
+        // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
+        {
+            latest_block
+                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::Polygon =>
+        // If your application deals with extremely high-value transactions or sensitive data,
+        // you might want to consider waiting for a slightly longer period, such as 12 blocks.
+        // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
+        {
+            latest_block
+                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+    }
 }

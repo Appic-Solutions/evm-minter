@@ -773,15 +773,15 @@ impl Reduce for EvmMultiRpcResult<Option<EvmFeeHistory>> {
             })
         }
 
-        fn wei_per_gas_iter(values: Vec<Nat256>) -> Vec<WeiPerGas> {
-            values.into_iter().map(WeiPerGas::from).collect()
-        }
-
         let mapped_fee_history = ReducedResult::from_multi_result(self)
             .map_reduce(&map_fee_history)
             .reduce_with_strict_majority_by_key(|fee_history| fee_history.oldest_block);
         mapped_fee_history
     }
+}
+
+pub fn wei_per_gas_iter(values: Vec<Nat256>) -> Vec<WeiPerGas> {
+    values.into_iter().map(WeiPerGas::from).collect()
 }
 
 impl Reduce for EvmMultiRpcResult<EvmSendRawTransactionStatus> {
