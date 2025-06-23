@@ -42,13 +42,16 @@ fn should_get_estimated_eip1559_transaction_price() {
     create_and_install_minter_plus_dependency_canisters(&pic);
 
     five_ticks(&pic);
+    five_ticks(&pic);
 
     let canister_http_requests = pic.get_canister_http();
+
+    print!("{:?}", canister_http_requests);
 
     generate_and_submit_mock_http_response(
         &pic,
         &canister_http_requests,
-        1,
+        0,
         MOCK_FEE_HISTORY_RESPONSE,
     );
 
@@ -104,16 +107,16 @@ fn should_deposit_and_withdrawal_native() {
     // [1] is for eth_feeHistory
     let canister_http_requests = pic.get_canister_http();
 
-    // 1st Generating mock response for eth_getBlockByNumber
-    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_BLOCK_NUMBER);
-
-    // 2nd Generating mock response for eth_feehistory
+    // 1st Generating mock response for eth_feehistory
     generate_and_submit_mock_http_response(
         &pic,
         &canister_http_requests,
-        1,
+        0,
         MOCK_FEE_HISTORY_RESPONSE,
     );
+
+    // 2nd Generating mock response for eth_getBlockByNumber
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 1, MOCK_BLOCK_NUMBER);
 
     five_ticks(&pic);
 
@@ -152,9 +155,7 @@ fn should_deposit_and_withdrawal_native() {
         },
     );
 
-    // 99_840_000_000_000_000
-
-    assert_eq!(balance, Nat::from(99_950_000_000_000_000_u128));
+    assert_eq!(balance, Nat::from(100_000_000_000_000_000_u128));
 
     // Withdrawal Section
     // Calling icrc2_approve and giving the permission to minter for taking funds from users principal
@@ -169,7 +170,7 @@ fn should_deposit_and_withdrawal_native() {
                 subaccount: None,
             },
             amount: Nat::from(
-                99_940_000_000_000_000_u128, // Users balance - approval fee => 99_950_000_000_000_000_u128 - 10_000_000_000_000_u128
+                99_990_000_000_000_000_u128, // Users balance - approval fee => 100_000_000_000_000_000_u128 - 10_000_000_000_000_u128
             ),
             expected_allowance: None,
             expires_at: None,
@@ -201,7 +202,7 @@ fn should_deposit_and_withdrawal_native() {
         },
     );
 
-    assert_eq!(balance, Nat::from(99_940_000_000_000_000_u128));
+    assert_eq!(balance, Nat::from(99_990_000_000_000_000_u128));
 
     // Making the withdrawal request to minter
     let withdrawal_request_result = update_call::<
@@ -212,7 +213,7 @@ fn should_deposit_and_withdrawal_native() {
         minter_principal(),
         "withdraw_native_token",
         WithdrawalArg {
-            amount: Nat::from(99_940_000_000_000_000_u128),
+            amount: Nat::from(99_990_000_000_000_000_u128),
             recipient: "0x3bcE376777eCFeb93953cc6C1bB957fbAcb1A261".to_string(),
         },
         Some(
@@ -225,7 +226,7 @@ fn should_deposit_and_withdrawal_native() {
     // Minting deposit block 0
     // Minting deposit fee block 1
     // Transfer
-    assert_eq!(withdrawal_request_result.block_index, Nat::from(4_u64));
+    assert_eq!(withdrawal_request_result.block_index, Nat::from(2_u64));
 
     five_ticks(&pic);
     five_ticks(&pic);
@@ -401,7 +402,7 @@ fn should_deposit_and_withdrawal_native() {
         &pic,
         minter_principal(),
         "retrieve_withdrawal_status",
-        4_u64,
+        2_u64,
         None,
     );
     let expected_transaction_result =
@@ -432,16 +433,16 @@ fn should_not_deposit_twice() {
     // [1] is for eth_feeHistory
     let canister_http_requests = pic.get_canister_http();
 
-    // 1st Generating mock response for eth_getBlockByNumber
-    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_BLOCK_NUMBER);
-
-    // 2nd Generating mock response for eth_feehistory
+    // 1st Generating mock response for eth_feehistory
     generate_and_submit_mock_http_response(
         &pic,
         &canister_http_requests,
-        1,
+        0,
         MOCK_FEE_HISTORY_RESPONSE,
     );
+
+    // 2nd Generating mock response for eth_getBlockByNumber
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 1, MOCK_BLOCK_NUMBER);
 
     five_ticks(&pic);
 
@@ -536,7 +537,7 @@ fn should_not_deposit_twice() {
         },
     );
 
-    assert_eq!(balance, Nat::from(99950000000000000_u128));
+    assert_eq!(balance, Nat::from(100000000000000000_u128));
 }
 
 #[test]
@@ -563,16 +564,16 @@ fn should_deposit_and_withdrawal_erc20() {
 
     let canister_http_requests = pic.get_canister_http();
 
-    // 1st Generating mock response for eth_getBlockByNumber
-    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_BLOCK_NUMBER);
-
-    // 2nd Generating mock response for eth_feehistory
+    // 1st Generating mock response for eth_feehistory
     generate_and_submit_mock_http_response(
         &pic,
         &canister_http_requests,
-        1,
+        0,
         MOCK_FEE_HISTORY_RESPONSE,
     );
+
+    // 2nd Generating mock response for eth_getBlockByNumber
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 1, MOCK_BLOCK_NUMBER);
 
     five_ticks(&pic);
     five_ticks(&pic);
@@ -604,7 +605,6 @@ fn should_deposit_and_withdrawal_erc20() {
     five_ticks(&pic);
 
     // Check Native deposit
-    // Based on the logs there should be 100_000_000_000_000_000 - deposit fees(50_000_000_000_000_u64)= 99_950_000_000_000_000 icBNB minted for Native to b4any-vxcgx-dm654-xhumb-4pl7k-5kysk-qnjlt-w7hcb-2hd2h-ttzpz-fqe
     let balance = query_call::<Account, Nat>(
         &pic,
         native_ledger_principal(),
@@ -618,9 +618,7 @@ fn should_deposit_and_withdrawal_erc20() {
         },
     );
 
-    // 99_840_000_000_000_000
-
-    assert_eq!(balance, Nat::from(99_950_000_000_000_000_u128));
+    assert_eq!(balance, Nat::from(100_000_000_000_000_000_u128));
 
     // Calling icrc2_approve and giving the permission to lsm for taking funds from users principal
     let _approve_result = update_call::<ApproveArgs, Result<Nat, ApproveError>>(
@@ -811,7 +809,7 @@ fn should_deposit_and_withdrawal_erc20() {
                 subaccount: None,
             },
             amount: Nat::from(
-                99_940_000_000_000_000_u128, // Users balance - approval fee => 99_950_000_000_000_000_u128 - 10_000_000_000_000_u128
+                99_990_000_000_000_000_u128, // Users balance - approval fee => 99_990_000_000_000_000_u128 - 10_000_000_000_000_u128
             ),
             expected_allowance: None,
             expires_at: None,
@@ -901,7 +899,7 @@ fn should_deposit_and_withdrawal_erc20() {
     // Minting deposit block 0
     // Minting deposit fee block 1
     // Transfer
-    assert_eq!(withdrawal_request_result.block_index, Nat::from(4_u64));
+    assert_eq!(withdrawal_request_result.block_index, Nat::from(2_u64));
 
     five_ticks(&pic);
 
@@ -1081,7 +1079,7 @@ fn should_deposit_and_withdrawal_erc20() {
         &pic,
         minter_principal(),
         "retrieve_withdrawal_status",
-        4_u64,
+        2_u64,
         None,
     );
     let expected_transaction_result =
@@ -1118,7 +1116,7 @@ fn should_deposit_and_withdrawal_erc20() {
 
     assert_eq!(
         withdrawal_request_result.native_block_index,
-        Nat::from(6_u64)
+        Nat::from(3_u64)
     );
     assert_eq!(
         withdrawal_request_result.erc20_block_index,
@@ -1293,18 +1291,19 @@ fn should_deposit_and_withdrawal_erc20() {
     );
 
     five_ticks(&pic);
+    five_ticks(&pic);
 
     // The transaction should be included into finalized transaction list.
     let get_withdrawal_transaction_by_block_index = update_call::<u64, RetrieveWithdrawalStatus>(
         &pic,
         minter_principal(),
         "retrieve_withdrawal_status",
-        6_u64,
+        3_u64,
         None,
     );
     let expected_transaction_result =
         RetrieveWithdrawalStatus::TxFinalized(TxFinalizedStatus::Success {
-            transaction_hash: "0xbb61f6de6191e08bc5925af9b91ca98347e94307c32c73b7c68ee78e6b1fe580"
+            transaction_hash: "0x9b53b8f7443629f54ec92ac031d49c21df19bf695515a5435caab89441dae823"
                 .to_string(),
             effective_transaction_fee: Some(Nat::from(63000000000000_u128)),
         });
@@ -1330,16 +1329,16 @@ fn should_fail_log_scrapping_request_without_proper_gap() {
     // [1] is for eth_feeHistory
     let canister_http_requests = pic.get_canister_http();
 
-    // 1st Generating mock response for eth_getBlockByNumber
-    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_BLOCK_NUMBER);
-
-    // 2nd Generating mock response for eth_feehistory
+    // 1st Generating mock response for eth_feehistory
     generate_and_submit_mock_http_response(
         &pic,
         &canister_http_requests,
-        1,
+        0,
         MOCK_FEE_HISTORY_RESPONSE,
     );
+
+    // 2nd Generating mock response for eth_getBlockByNumber
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 1, MOCK_BLOCK_NUMBER);
 
     five_ticks(&pic);
 
@@ -1364,8 +1363,8 @@ fn should_fail_log_scrapping_request_without_proper_gap() {
     five_ticks(&pic);
 
     // There should be a gap of at least one minute between each log scraping so we advance time for 1 min
-    // So we only add 30 seconds to make the process fail
-    pic.advance_time(Duration::from_secs(1 * 30));
+    // So we only add 10 seconds to make the process fail
+    pic.advance_time(Duration::from_secs(1 * 5));
 
     // Requesting for another log_scrapping
     let request_result = update_call::<Nat, Result<(), RequestScrapingError>>(
@@ -1382,7 +1381,7 @@ fn should_fail_log_scrapping_request_without_proper_gap() {
     );
 }
 
-mod mock_rpc_https_responses {
+pub mod mock_rpc_https_responses {
     use pocket_ic::{common::rest::CanisterHttpRequest, PocketIc};
 
     use crate::tests::pocket_ic_helpers::generate_successful_mock_response;
@@ -1583,6 +1582,27 @@ mod mock_rpc_https_responses {
         }
     }"#;
 
+    pub const MOCK_MINT_WRAPPED_ICRC_RECEIPT: &str = r#"{
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "blockHash": "0xe06f75670e6fdc6a7d988cff3227cd1d8b767ad37f9c2bb57b2bcaef7abcef31",
+            "blockNumber": "0x2bcf802",
+            "contractAddress": null,
+            "cumulativeGasUsed": "0x1f00c",
+            "effectiveGasPrice": "0xb2d05e00",
+            "from": "0xffd465f2655e4ee9164856715518f4287b22a49d",
+            "gasUsed": "0x5208",
+            "logs": [],
+            "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "status": "0x1",
+            "to": "0x3bce376777ecfeb93953cc6c1bb957fbacb1a261",
+            "transactionHash": "0xe06f75670e6fdc6a7d988cff3227cd1d8b767ad37f9c2bb57b2bcaef7abcef31",
+            "transactionIndex": "0x3",
+            "type": "0x2"
+        }
+    }"#;
+
     pub const MOCK_TRANSACTION_RECEIPT_ERC20: &str = r#"{
         "jsonrpc": "2.0",
         "id": 1,
@@ -1598,7 +1618,7 @@ mod mock_rpc_https_responses {
             "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
             "status": "0x1",
             "to": "0x3bce376777ecfeb93953cc6c1bb957fbacb1a261",
-            "transactionHash": "0xbb61f6de6191e08bc5925af9b91ca98347e94307c32c73b7c68ee78e6b1fe580",
+            "transactionHash": "0x9b53b8f7443629f54ec92ac031d49c21df19bf695515a5435caab89441dae823",
             "transactionIndex": "0x3",
             "type": "0x2"
         }
@@ -1618,6 +1638,68 @@ mod mock_rpc_https_responses {
         "id": 1,
         "result": "0x7176ed5bd7b639277afa2796148b7b10129c1d98a20ebfc2409606c13606be81"
     }"#;
+
+    pub const MOCK_WRAPPED_ICRC_DEPLOYED_AND_DEPOSIT: &str = r#"{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": [
+        {
+            "address": "0xabcdef1234567890abcdef1234567890abcdef12",
+            "topics": [
+                "0xe63ddf723173735772522be59b64b9c95be6eb8f14b87948f670ad6f8949ab2e",
+                "0x0a00000000000000020101000000000000000000000000000000000000000000",
+                "0x0000000000000000000000001234567890abcdef1234567890abcdef12345678"
+            ],
+            "data": "0x",
+            "blockNumber": "0x1a2b3c",
+            "transactionHash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            "transactionIndex": "0x0",
+            "blockHash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+            "logIndex": "0x0",
+            "removed": false
+        },
+         {
+                "address": "0x733a1beef5a02990aad285d7ed93fc1b622eef1d",
+                "topics": [
+                    "0xdeaddf8708b62ae1bf8ec4693b523254aa961b2da6bc5be57f3188ee784d6275",
+                    "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "0x000000000000000000000000000000000000000000000000016345785d8a0000",
+                    "0x1de235c6cf77973d181e3d7f5755892a0d4ae76f9c41d1c7a3ce797e4b020000"
+                ],
+                "data": "0x0000000000000000000000005d737f982696fe2fe4ef1c7584e914c3a8e44d540000000000000000000000000000000000000000000000000000000000000000",
+                "blockNumber": "0x2bd0f45",
+                "transactionHash": "0xcde530df6850bd19f822264791dac4f6730caa8642f65bd3810389bf982babfe",
+                "transactionIndex": "0x4",
+                "blockHash": "0xc1ff7931ceab1152c911cbb033bb5f6dad378263e3849cb7c5d90711fcbe352c",
+                "logIndex": "0x3",
+                "removed": false
+            }
+
+    ]
+}"#;
+
+    pub const MOCK_ICRC_RELEASE_REUQEST: &str = r#"{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": [
+        {
+            "address": "0xabcdef1234567890abcdef1234567890abcdef12",
+            "topics": [
+                "0x37199deebd336af9013dbddaaf9a68e337707bb4ed64cb45ed12841af85e0377",
+                "0x000000000000000000000000abcdefabcdefabcdefabcdefabcdefabcdefabcd",
+                "0x0a00000000000000020101000000000000000000000000000000000000000000",
+                "0x0000000000000000000000001234567890abcdef1234567890abcdef12345678"
+            ],
+            "data": "0x00000000000000000000000000000000000000000000000000000000000186a00000000000000000000000000000000000000000000000000000000000000000",
+            "blockNumber": "0x1a2b3c",
+            "transactionHash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            "transactionIndex": "0x0",
+            "blockHash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+            "logIndex": "0x0",
+            "removed": false
+        }
+    ]
+}"#;
 
     pub fn generate_and_submit_mock_http_response(
         pic: &PocketIc,

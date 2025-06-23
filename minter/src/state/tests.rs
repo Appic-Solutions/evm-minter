@@ -386,8 +386,11 @@ mod upgrade {
             Wei::new(20_000_000_000_000_000)
         );
         assert_eq!(
-            state.helper_contract_address,
-            Some(Address::from_str("0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34").unwrap())
+            state.helper_contract_addresses,
+            Some(vec![Address::from_str(
+                "0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34"
+            )
+            .unwrap()])
         );
         assert_eq!(state.block_height, BlockTag::Safe);
     }
@@ -963,11 +966,9 @@ pub fn state_equivalence() {
         ecdsa_key_name: "test_key".to_string(),
         native_ledger_id: "apia6-jaaaa-aaaar-qabma-cai".parse().unwrap(),
         native_index_id: "eysav-tyaaa-aaaap-akqfq-cai".parse().unwrap(),
-        helper_contract_address: Some(
-            "0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34"
-                .parse()
-                .unwrap(),
-        ),
+        helper_contract_addresses: Some(vec!["0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34"
+            .parse()
+            .unwrap()]),
         ecdsa_public_key: Some(EcdsaPublicKeyResponse {
             public_key: vec![1; 32],
             chain_code: vec![2; 32],
@@ -1028,6 +1029,7 @@ pub fn state_equivalence() {
         quarantined_releases: Default::default(),
         icrc_balances: Default::default(),
         wrapped_icrc_tokens: Default::default(),
+        last_log_scraping_time: None,
     };
 
     assert_eq!(
@@ -1070,7 +1072,7 @@ pub fn state_equivalence() {
     assert_ne!(
         Ok(()),
         state.is_equivalent_to(&State {
-            helper_contract_address: None,
+            helper_contract_addresses: None,
             ..state.clone()
         }),
         "changing essential fields should break equivalence",

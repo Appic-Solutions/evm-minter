@@ -11,7 +11,9 @@ use evm_minter::contract_logs::types::{
     ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent, ReceivedWrappedIcrcDeployedEvent,
 };
 use evm_minter::contract_logs::EventSource;
-use evm_minter::deposit::{scrape_logs, validate_log_scraping_request};
+use evm_minter::deposit::{
+    apply_safe_threshold_to_latest_block_numner, scrape_logs, validate_log_scraping_request,
+};
 
 use evm_minter::candid_types::{
     self, AddErc20Token, DepositStatus, Icrc28TrustedOriginsResponse, IcrcBalance,
@@ -52,6 +54,7 @@ use evm_minter::state::{
 use evm_minter::storage::set_rpc_api_key;
 use evm_minter::tx::gas_fees::{
     estimate_transaction_fee, lazy_fetch_l1_fee_estimate, lazy_refresh_gas_fee_estimate,
+    DEFAULT_L1_BASE_GAS_FEE,
 };
 use evm_minter::withdraw::{
     process_reimbursement, process_retrieve_tokens_requests, ERC20_MINT_TRANSACTION_GAS_LIMIT,
@@ -144,6 +147,8 @@ async fn init(arg: MinterArg) {
             let _ = lazy_add_native_ls_to_lsm_canister().await;
         })
     });
+
+    setup_timers();
 }
 
 fn emit_preupgrade_events() {
@@ -189,10 +194,15 @@ async fn minter_address() -> String {
 }
 
 #[query]
-async fn smart_contract_address() -> String {
-    read_state(|s| s.helper_contract_address)
-        .map(|a| a.to_string())
-        .unwrap_or("N/A".to_string())
+async fn smart_contract_address() -> Option<Vec<String>> {
+    read_state(|s| {
+        s.helper_contract_addresses.as_ref().map(|addresses| {
+            addresses
+                .into_iter()
+                .map(|address| address.to_string())
+                .collect()
+        })
+    })
 }
 
 /// Estimate price of EIP-1559 transaction based on the
@@ -276,7 +286,19 @@ async fn get_minter_info() -> MinterInfo {
 
         MinterInfo {
             minter_address: s.minter_address().map(|a| a.to_string()),
-            helper_smart_contract_address: s.helper_contract_address.map(|a| a.to_string()),
+            helper_smart_contract_address: s
+                .helper_contract_addresses
+                .as_ref()
+                .and_then(|addresses| addresses.first().map(|address| address.to_string())),
+
+            helper_smart_contract_addresses: s.helper_contract_addresses.as_ref().map(
+                |addresses| {
+                    addresses
+                        .into_iter()
+                        .map(|address| address.to_string())
+                        .collect()
+                },
+            ),
             supported_erc20_tokens,
             minimum_withdrawal_amount: Some(s.native_minimum_withdrawal_amount.into()),
             deposit_native_fee: None,
@@ -313,12 +335,12 @@ async fn get_minter_info() -> MinterInfo {
 // Meaning that this function can only be called onces in a minute due to cycle drain attacks.
 #[update]
 async fn request_scraping_logs() -> Result<(), RequestScrapingError> {
-    let last_observed_block_time = read_state(|s| s.last_observed_block_time)
+    let last_log_scraping_time = read_state(|s| s.last_log_scraping_time)
         .expect("The block time should not be null at the time of this function call");
 
     let now_ns = ic_cdk::api::time();
 
-    validate_log_scraping_request(last_observed_block_time, now_ns)?;
+    validate_log_scraping_request(last_log_scraping_time, now_ns)?;
 
     ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(scrape_logs()));
 
@@ -366,14 +388,7 @@ async fn withdraw_native_token(
 
     // Check if l1_fee is required for this network
     let l1_fee = match read_state(|s| s.evm_network) {
-        EvmNetwork::Base | EvmNetwork::Optimism => match lazy_fetch_l1_fee_estimate().await {
-            Some(fee) => Some(fee),
-            None => {
-                return Err(WithdrawalError::TemporarilyUnavailable(
-                    "Failed to retrieve current l1 fee".to_string(),
-                ));
-            }
-        },
+        EvmNetwork::Base => Some(DEFAULT_L1_BASE_GAS_FEE),
         _ => None,
     };
 
@@ -527,14 +542,7 @@ async fn withdraw_erc20(
 
     // Check if l1_fee is required for this network
     let l1_fee = match read_state(|s| s.evm_network) {
-        EvmNetwork::Base | EvmNetwork::Optimism => match lazy_fetch_l1_fee_estimate().await {
-            Some(fee) => Some(fee),
-            None => {
-                return Err(WithdrawErc20Error::TemporarilyUnavailable(
-                    "Failed to retrieve current l1 fee".to_string(),
-                ));
-            }
-        },
+        EvmNetwork::Base => Some(DEFAULT_L1_BASE_GAS_FEE),
         _ => None,
     };
 
@@ -708,14 +716,7 @@ async fn wrap_icrc(
 
     // Check if l1_fee is required for this network
     let l1_fee = match read_state(|s| s.evm_network) {
-        EvmNetwork::Base | EvmNetwork::Optimism => match lazy_fetch_l1_fee_estimate().await {
-            Some(fee) => Some(fee),
-            None => {
-                return Err(WrapIcrcError::TemporarilyUnavailable(
-                    "Failed to retrieve current l1 fee".to_string(),
-                ));
-            }
-        },
+        EvmNetwork::Base => Some(DEFAULT_L1_BASE_GAS_FEE),
         _ => None,
     };
 
@@ -1293,9 +1294,13 @@ pub async fn update_chain_data(chain_data: ChainData) {
     }
 
     let now = ic_cdk::api::time();
+    let network = read_state(|s| s.evm_network());
+    let latest_block_number = apply_safe_threshold_to_latest_block_numner(
+        network,
+        BlockNumber::try_from(chain_data.latest_block_number)
+            .expect("Failed to parse block number"),
+    );
 
-    let latest_block_number = BlockNumber::try_from(chain_data.latest_block_number)
-        .expect("Failed to parse block number");
     let fee_history =
         parse_fee_history(chain_data.fee_history).expect("Failed to parse fee hisotry");
 

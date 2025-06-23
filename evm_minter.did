@@ -18,7 +18,7 @@ type CanisterStatusResponse = record {
   reserved_cycles : nat;
 };
 type CanisterStatusType = variant { stopped; stopping; running };
-type ChainData = record { fee_history : FeeHistory; latest_block_number : nat };
+type ChainData = record { fee_history : text; latest_block_number : nat };
 type DefiniteCanisterSettings = record {
   freezing_threshold : nat;
   controllers : vec principal;
@@ -233,12 +233,6 @@ type FeeError_1 = variant {
     failed_transfer_amount : nat;
   };
 };
-type FeeHistory = record {
-  reward : vec vec nat;
-  gasUsedRatio : vec float64;
-  oldestBlock : nat;
-  baseFeePerGas : vec nat;
-};
 type GasFeeEstimate = record {
   max_priority_fee_per_gas : nat;
   max_fee_per_gas : nat;
@@ -315,6 +309,7 @@ type MinterInfo = record {
   last_observed_block_number : opt nat;
   wrapped_icrc_tokens : opt vec WrappedIcrcToken;
   supported_erc20_tokens : opt vec Erc20Token;
+  helper_smart_contract_addresses : opt vec text;
   deposit_native_fee : opt nat;
   last_gas_fee_estimate : opt GasFeeEstimate;
   native_twin_token_ledger_id : opt principal;
@@ -493,7 +488,7 @@ service : (MinterArg) -> {
   request_scraping_logs : () -> (Result);
   retrieve_deposit_status : (text) -> (opt DepositStatus) query;
   retrieve_withdrawal_status : (nat64) -> (RetrieveWithdrawalStatus);
-  smart_contract_address : () -> (text) query;
+  smart_contract_address : () -> (opt vec text) query;
   update_chain_data : (ChainData) -> ();
   withdraw_erc20 : (WithdrawErc20Arg) -> (Result_1);
   withdraw_native_token : (WithdrawalArg) -> (Result_2);

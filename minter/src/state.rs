@@ -120,7 +120,7 @@ pub struct State {
     pub native_ledger_id: Principal,
     pub native_index_id: Principal,
     pub native_symbol: ERC20TokenSymbol,
-    pub helper_contract_address: Option<Address>,
+    pub helper_contract_addresses: Option<Vec<Address>>,
 
     // Principal id of EVM_RPC_CANISTER
     pub evm_canister_id: Principal,
@@ -134,6 +134,8 @@ pub struct State {
     pub last_scraped_block_number: BlockNumber,
     pub last_observed_block_number: Option<BlockNumber>,
     pub last_observed_block_time: Option<u64>,
+
+    pub last_log_scraping_time: Option<u64>,
 
     // after icp-evm bridge update we have both events to mint and events to release locked
     // icp tokens in case the wrapped ones on the evm side are already burnt
@@ -217,9 +219,9 @@ impl State {
             ));
         }
         if self
-            .helper_contract_address
+            .helper_contract_addresses
             .iter()
-            .any(|address| address == &Address::ZERO)
+            .any(|addresses| addresses.contains(&Address::ZERO))
         {
             return Err(InvalidStateError::InvalidHelperContractAddress(
                 "helper_contract_address cannot be the zero address".to_string(),
@@ -309,6 +311,7 @@ impl State {
         match event {
             ReceivedContractEvent::NativeDeposit(_received_native_event) => {
                 self.events_to_mint.insert(event_source, event.clone());
+                self.update_balance_upon_deposit(event)
             }
             ReceivedContractEvent::Erc20Deposit(received_erc20_event) => {
                 assert!(
@@ -318,6 +321,8 @@ impl State {
                 );
 
                 self.events_to_mint.insert(event_source, event.clone());
+
+                self.update_balance_upon_deposit(event)
             }
             ReceivedContractEvent::WrappedIcrcBurn(received_burn_event) => {
                 assert!(
@@ -345,8 +350,6 @@ impl State {
                     .expect("Bug: duplicate wrapped icp token should've been detected before");
             }
         };
-
-        self.update_balance_upon_deposit(event)
     }
 
     pub fn record_skipped_block(&mut self, block_number: BlockNumber) {
@@ -717,7 +720,10 @@ impl State {
         ensure_eq!(self.evm_network, other.evm_network);
         ensure_eq!(self.native_ledger_id, other.native_ledger_id);
         ensure_eq!(self.ecdsa_key_name, other.ecdsa_key_name);
-        ensure_eq!(self.helper_contract_address, other.helper_contract_address);
+        ensure_eq!(
+            self.helper_contract_addresses,
+            other.helper_contract_addresses
+        );
         ensure_eq!(
             self.native_minimum_withdrawal_amount,
             other.native_minimum_withdrawal_amount
@@ -754,7 +760,7 @@ impl State {
             native_ledger_transfer_fee,
             min_max_priority_fee_per_gas,
             // deposit native fee is deprecated
-            deposit_native_fee,
+            deposit_native_fee: _,
             withdrawal_native_fee,
         } = upgrade_args;
         if let Some(nonce) = next_transaction_nonce {
@@ -787,11 +793,13 @@ impl State {
             self.min_max_priority_fee_per_gas = min_max_priority_fee_per_gas;
         }
 
-        if let Some(address) = helper_contract_address {
-            let helper_contract_address = Address::from_str(&address).map_err(|e| {
-                InvalidStateError::InvalidHelperContractAddress(format!("ERROR: {}", e))
+        if let Some(addr) = helper_contract_address {
+            let contract_address = Address::from_str(&addr).map_err(|e| {
+                InvalidStateError::InvalidHelperContractAddress(format!("Invalid address: {}", e))
             })?;
-            self.helper_contract_address = Some(helper_contract_address);
+            self.helper_contract_addresses
+                .get_or_insert_with(|| vec![])
+                .push(contract_address);
         }
 
         if let Some(block_number) = last_scraped_block_number {

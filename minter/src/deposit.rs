@@ -26,6 +26,8 @@ use crate::state::audit::{process_event, EventType};
 use crate::state::{mutate_state, read_state, State, TaskType};
 use num_traits::ToPrimitive;
 
+pub(crate) const TEN_SEC: u64 = 10_000_000_000_u64; // 10 seconds
+
 async fn mint_and_release() {
     use icrc_ledger_client_cdk::{CdkRuntime, ICRC1Client};
     use icrc_ledger_types::icrc1::transfer::TransferArg;
@@ -298,7 +300,7 @@ pub async fn scrape_logs() {
         Err(_) => return,
     };
 
-    mutate_state(|s| s.last_observed_block_time = Some(ic_cdk::api::time()));
+    mutate_state(|s| s.last_log_scraping_time = Some(ic_cdk::api::time()));
 
     let mut attempts = 0;
     const MAX_ATTEMPTS: u32 = 3;
@@ -342,8 +344,6 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
     if let (Some(last_observed_block_number), Some(last_observed_block_time)) =
         read_state(|s| (s.last_observed_block_number, s.last_observed_block_time))
     {
-        pub(crate) const TEN_SEC: u64 = 10_000_000_000_u64; // 10 seconds
-
         if now_ns < last_observed_block_time.saturating_add(TEN_SEC) {
             return Some(last_observed_block_number);
         }
@@ -557,9 +557,7 @@ pub fn validate_log_scraping_request(
     last_observed_block_time: u64,
     now_ns: u64,
 ) -> Result<(), RequestScrapingError> {
-    pub(crate) const ONE_MIN_NS: u64 = 60_000_000_000_u64; // 60 seconds
-
-    if now_ns < last_observed_block_time.saturating_add(ONE_MIN_NS) {
+    if now_ns < last_observed_block_time.saturating_add(TEN_SEC) {
         return Err(RequestScrapingError::CalledTooManyTimes);
     }
 

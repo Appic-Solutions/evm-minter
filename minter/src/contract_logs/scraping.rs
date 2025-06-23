@@ -34,8 +34,9 @@ impl LogScraping for ReceivedEventsLogScraping {
 
     // TODO: Add contract addresses
     fn next_scrape(state: &State) -> Option<Scrape> {
-        let contract_address = state
-            .helper_contract_address
+        let contract_addresses = state
+            .helper_contract_addresses
+            .clone()
             .expect("Scraping not activated");
 
         let last_scraped_block_number = state.last_scraped_block_number;
@@ -72,7 +73,7 @@ impl LogScraping for ReceivedEventsLogScraping {
         );
 
         Some(Scrape {
-            contract_addresses: vec![],
+            contract_addresses,
             last_scraped_block_number,
             topics,
         })

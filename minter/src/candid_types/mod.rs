@@ -87,6 +87,7 @@ pub struct IcrcBalance {
 pub struct MinterInfo {
     pub minter_address: Option<String>,
     pub helper_smart_contract_address: Option<String>,
+    pub helper_smart_contract_addresses: Option<Vec<String>>,
     pub supported_erc20_tokens: Option<Vec<Erc20Token>>,
     pub minimum_withdrawal_amount: Option<Nat>,
     pub deposit_native_fee: Option<Nat>,

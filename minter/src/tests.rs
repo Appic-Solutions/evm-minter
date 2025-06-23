@@ -6,6 +6,10 @@ pub mod lsm_types;
 mod minter_flow_tets;
 #[cfg(test)]
 pub mod pocket_ic_helpers;
+
+#[cfg(test)]
+pub mod lock_release;
+
 use ic_cdk::api::management_canister::ecdsa::EcdsaPublicKeyResponse;
 use maplit::btreemap;
 
@@ -1076,11 +1080,9 @@ fn test_state() -> State {
         ecdsa_key_name: "test_key".to_string(),
         native_ledger_id: "apia6-jaaaa-aaaar-qabma-cai".parse().unwrap(),
         native_index_id: "eysav-tyaaa-aaaap-akqfq-cai".parse().unwrap(),
-        helper_contract_address: Some(
-            "0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34"
-                .parse()
-                .unwrap(),
-        ),
+        helper_contract_addresses: Some(vec!["0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34"
+            .parse()
+            .unwrap()]),
         ecdsa_public_key: Some(EcdsaPublicKeyResponse {
             public_key: vec![1; 32],
             chain_code: vec![2; 32],
@@ -1141,6 +1143,7 @@ fn test_state() -> State {
         quarantined_releases: Default::default(),
         icrc_balances: Default::default(),
         wrapped_icrc_tokens,
+        last_log_scraping_time: None,
     }
 }
 
