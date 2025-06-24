@@ -53,8 +53,7 @@ use evm_minter::state::{
 };
 use evm_minter::storage::set_rpc_api_key;
 use evm_minter::tx::gas_fees::{
-    estimate_transaction_fee, lazy_fetch_l1_fee_estimate, lazy_refresh_gas_fee_estimate,
-    DEFAULT_L1_BASE_GAS_FEE,
+    estimate_transaction_fee, lazy_refresh_gas_fee_estimate, DEFAULT_L1_BASE_GAS_FEE,
 };
 use evm_minter::withdraw::{
     process_reimbursement, process_retrieve_tokens_requests, ERC20_MINT_TRANSACTION_GAS_LIMIT,
@@ -1295,11 +1294,19 @@ pub async fn update_chain_data(chain_data: ChainData) {
 
     let now = ic_cdk::api::time();
     let network = read_state(|s| s.evm_network());
+
     let latest_block_number = apply_safe_threshold_to_latest_block_numner(
         network,
         BlockNumber::try_from(chain_data.latest_block_number)
             .expect("Failed to parse block number"),
     );
+
+    let previous_observed_block =
+        read_state(|s| s.last_observed_block_number).unwrap_or(BlockNumber::ZERO);
+
+    if previous_observed_block > latest_block_number {
+        return;
+    }
 
     let fee_history =
         parse_fee_history(chain_data.fee_history).expect("Failed to parse fee hisotry");

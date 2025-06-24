@@ -958,6 +958,16 @@ mod eth_fee_history {
     }
 
     #[test]
+    fn should_deserialize_eth_fee_history_response_base() {
+        const BASE_FEE_HISOTRY: &str = r#"{"baseFeePerGas":["0x11535c","0x114116","0x114768","0x11393d","0x1141b3","0x1151fa","0x114dcb","0x113f39","0x112bdf","0x114e6f","0x116881"],"gasUsedRatio":[0.26466441333333335,0.35718779333333334,0.27994958,0.36532474,0.39474598,0.31759408666666666,0.27850063333333336,0.2602731933333333,0.46438367333333336,0.41186010666666667],"baseFeePerBlobGas":["0x1","0x1","0x1","0x1","0x1","0x1","0x1","0x1","0x1","0x1","0x1"],"blobGasUsedRatio":[0,0,0,0,0,0,0,0,0,0],"oldestBlock":"0x1e85374","reward":[["0xf5a3e"],["0x127685"],["0x110ea7"],["0x182276"],["0xf47f5"],["0xf4240"],["0xf466f"],["0x116739"],["0xf685b"],["0x12732f"]]
+    }"#;
+        let fee_history: FeeHistory = serde_json::from_str(BASE_FEE_HISOTRY).unwrap();
+
+        println!("{:?}", fee_history);
+        assert!(false);
+    }
+
+    #[test]
     fn should_deserialize_eth_fee_history_response() {
         const ETH_FEE_HISTORY: &str = r#"{
         "baseFeePerGas": [

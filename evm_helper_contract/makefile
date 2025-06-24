@@ -27,7 +27,7 @@ deploy_base:
 	@echo "Deploying to Base"
 	@echo "BASE_RPC_URL=$(BASE_RPC_URL)"
 	@echo "BASESCAN_API_KEY"=$(BASESCAN_API_KEY)
-	forge script --chain 8453 script/Depositbase.s.sol:DeployDeposit --rpc-url $(BASE_RPC_URL) --broadcast --verifier-url https://api.basescan.org/api --etherscan-api-key  $(BASESCAN_API_KEY)  --verify -vvvv 
+	forge script --chain 8453 DeployBaseBridge --rpc-url $(BASE_RPC_URL) --broadcast --verifier-url https://api.basescan.org/api --etherscan-api-key  $(BASESCAN_API_KEY)  --verify -vvvv 
 
 
 

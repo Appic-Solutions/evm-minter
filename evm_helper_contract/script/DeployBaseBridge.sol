@@ -4,12 +4,18 @@ pragma solidity ^0.8.20;
 import "forge-std/Script.sol";
 import {IcpEvmBridge} from "../src/IcpEvmBridge.sol";
 
-contract DeployBridge is Script {
+contract DeployBaseBridge is Script {
     function run() external {
-        address minter = vm.envAddress("MINTER_ADDRESS");
-        address owner = vm.envAddress("OWNER_ADDRESS");
+        address minter = vm.envAddress("BASE_MINTER_ADDRESS");
 
-        vm.startBroadcast(owner);
+        uint256 pk = vm.envUint("PRIVATE_KEY");
+
+        console.log(
+            "Deploying DepositHelper contract with address",
+            vm.addr(pk)
+        );
+
+        vm.startBroadcast(pk);
 
         IcpEvmBridge bridge = new IcpEvmBridge(minter);
         console.log("Deployed IcpEvmBridge at:", address(bridge));
@@ -17,4 +23,3 @@ contract DeployBridge is Script {
         vm.stopBroadcast();
     }
 }
-
