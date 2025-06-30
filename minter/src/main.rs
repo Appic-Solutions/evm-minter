@@ -555,7 +555,12 @@ async fn withdraw_erc20(
         .checked_add(withdrawal_native_fee.unwrap_or(Wei::ZERO))
         .unwrap_or(Wei::MAX);
 
-    log!(INFO, "[withdraw_erc20]: burning {:?} native", erc20_tx_fee);
+    log!(
+        INFO,
+        "[withdraw_erc20]: burning {:?} native",
+        native_burn_amount
+    );
+
     match native_ledger
         .burn_from(
             caller.into(),
@@ -601,7 +606,7 @@ async fn withdraw_erc20(
                         from_subaccount: None,
                         created_at: now,
                         l1_fee,
-                        is_wrapped_mint: false,
+                        is_wrapped_mint: Some(false),
                         withdrawal_fee: withdrawal_native_fee,
                     };
                     log!(
@@ -731,7 +736,7 @@ async fn wrap_icrc(
 
     let icrc_ledger_client = LedgerClient::icrc_ledger(icrc_ledger_id);
 
-    log!(INFO, "[wrap_icrc]: burning {:?} native", erc20_tx_fee);
+    log!(INFO, "[wrap_icrc]: burning {:?} native", native_burn_amount);
     match native_ledger
         .burn_from(
             caller.into(),
@@ -771,7 +776,7 @@ async fn wrap_icrc(
                         from_subaccount: None,
                         created_at: now,
                         l1_fee,
-                        is_wrapped_mint: true,
+                        is_wrapped_mint: Some(true),
                         withdrawal_fee: withdrawal_native_fee,
                     };
                     log!(
@@ -1152,7 +1157,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     created_at,
                     l1_fee: l1_fee.map(|fee| fee.into()),
                     withdrawal_fee: withdrawal_fee.map(|fee| fee.into()),
-                    is_wrapped_mint,
+                    is_wrapped_mint: is_wrapped_mint.unwrap_or_default(),
                 },
                 EventType::MintedErc20 {
                     event_source,
@@ -1329,11 +1334,11 @@ pub async fn update_chain_data(chain_data: ChainData) {
 }
 
 /// Returns the amount of heap memory in bytes that has been allocated.
-#[cfg(target_arch = "wasm32")]
-pub fn heap_memory_size_bytes() -> usize {
-    const WASM_PAGE_SIZE_BYTES: usize = 65536;
-    core::arch::wasm32::memory_size(0) * WASM_PAGE_SIZE_BYTES
-}
+//#[cfg(target_arch = "wasm32")]
+//pub fn heap_memory_size_bytes() -> usize {
+//    const WASM_PAGE_SIZE_BYTES: usize = 65536;
+//    core::arch::wasm32::memory_size(0) * WASM_PAGE_SIZE_BYTES
+//}
 
 #[cfg(not(any(target_arch = "wasm32")))]
 pub fn heap_memory_size_bytes() -> usize {

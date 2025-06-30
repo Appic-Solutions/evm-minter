@@ -67,9 +67,9 @@ pub async fn process_reimbursement() {
             ReimbursementIndex::Native { .. } => read_state(|s| (s.native_ledger_id, false)),
             ReimbursementIndex::Erc20 { ledger_id, .. } => (ledger_id, false),
             ReimbursementIndex::IcrcWrap {
-                native_ledger_burn_index,
+                native_ledger_burn_index: _,
                 icrc_token,
-                icrc_ledger_lock_index,
+                icrc_ledger_lock_index: _,
             } => (icrc_token, true),
         };
         let client = ICRC1Client {
@@ -515,7 +515,7 @@ pub fn estimate_gas_limit(withdrawal_request: &WithdrawalRequest) -> GasAmount {
     match withdrawal_request {
         WithdrawalRequest::Native(_) => NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
         WithdrawalRequest::Erc20(request) => {
-            if request.is_wrapped_mint {
+            if request.is_wrapped_mint.unwrap_or_default() {
                 ERC20_MINT_TRANSACTION_GAS_LIMIT
             } else {
                 ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT

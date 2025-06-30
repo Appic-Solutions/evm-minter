@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests;
 
+use super::audit::EventType;
 use crate::candid_types::{
     withdraw_native::WithdrawalStatus, RetrieveWithdrawalStatus, Transaction, TxFinalizedStatus,
 };
@@ -23,8 +24,6 @@ use minicbor::{Decode, Encode};
 use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt;
-
-use super::audit::EventType;
 
 #[derive(Clone, Eq, PartialEq, Encode, Decode)]
 #[cbor(transparent)]
@@ -112,7 +111,7 @@ pub struct Erc20WithdrawalRequest {
     /// if the transaction mint new wrapped erc20 tokens on the evm side after icrc tokens got
     /// locked on the icp side     
     #[n(12)]
-    pub is_wrapped_mint: bool,
+    pub is_wrapped_mint: Option<bool>,
 }
 
 struct DebugPrincipal<'a>(&'a Principal);
@@ -328,7 +327,7 @@ impl From<&WithdrawalRequest> for ReimbursementIndex {
                 ledger_burn_index: request.ledger_burn_index,
             },
             WithdrawalRequest::Erc20(request) => {
-                if request.is_wrapped_mint {
+                if request.is_wrapped_mint.unwrap_or_default() {
                     ReimbursementIndex::IcrcWrap {
                         native_ledger_burn_index: request.native_ledger_burn_index,
                         icrc_token: request.erc20_ledger_id,

@@ -2622,7 +2622,7 @@ pub mod arbitrary {
                         from_subaccount,
                         created_at,
                         l1_fee: None,
-                        is_wrapped_mint: false,
+                        is_wrapped_mint: Some(false),
                         withdrawal_fee: None,
                     }
                 },
@@ -2746,7 +2746,7 @@ fn erc20_withdrawal_request_with_index(
         from_subaccount: Some(Subaccount(DEFAULT_SUBACCOUNT)),
         created_at: DEFAULT_CREATED_AT,
         l1_fee: None,
-        is_wrapped_mint: false,
+        is_wrapped_mint: Some(false),
         withdrawal_fee: None,
     }
 }

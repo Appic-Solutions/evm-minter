@@ -482,7 +482,7 @@ impl State {
     }
 
     pub fn record_erc20_withdrawal_request(&mut self, request: Erc20WithdrawalRequest) {
-        if request.is_wrapped_mint {
+        if request.is_wrapped_mint.unwrap_or_default() {
             assert!(self
                 .wrapped_icrc_tokens
                 .contains_alt(&request.erc20_contract_address));
@@ -582,7 +582,10 @@ impl State {
 
                 (charged_tx_fee, false)
             }
-            WithdrawalRequest::Erc20(req) => (req.max_transaction_fee, req.is_wrapped_mint),
+            WithdrawalRequest::Erc20(req) => (
+                req.max_transaction_fee,
+                req.is_wrapped_mint.unwrap_or_default(),
+            ),
         };
 
         let unspent_tx_fee = charged_tx_fee.checked_sub(tx_fee).expect(

@@ -19,7 +19,7 @@ deploy_bsc:
 	@echo "Deploying to Binance smart chain"
 	@echo "BSC_RPC_URL=$(BSC_RPC_URL)"
 	@echo "BNBSCAN_API_KEY"=$(BNBSCAN_API_KEY)
-	forge script --chain 56 script/Depositbnb.s.sol:DeployDeposit --rpc-url $(BSC_RPC_URL) --broadcast --verifier-url https://api.bscscan.com/api --etherscan-api-key  $(BNBSCAN_API_KEY)  --verify -vvvv 
+	forge script --chain 56 DeployBscBridge --rpc-url $(BSC_RPC_URL) --broadcast --verifier-url https://api.bscscan.com/api --etherscan-api-key  $(BNBSCAN_API_KEY)  --verify -vvvv 
 
 
 # deploy to bnb testnet

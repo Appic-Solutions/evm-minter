@@ -1268,7 +1268,6 @@ mod native_balance {
     };
     use crate::state::{NativeBalance, State};
     use crate::tx::{Eip1559Signature, SignedEip1559TransactionRequest};
-    use ethers_core::types::transaction::request;
     use maplit::btreemap;
 
     #[test]
@@ -1813,7 +1812,7 @@ fn erc20_withdrawal_request() -> Erc20WithdrawalRequest {
         from_subaccount: None,
         created_at: 1_711_138_972_460_345_032,
         l1_fee: Some(Wei::new(10_000_000)),
-        is_wrapped_mint: false,
+        is_wrapped_mint: Some(false),
         withdrawal_fee: Some(Wei::new(5_000_000)),
     }
 }
