@@ -6,17 +6,17 @@ use ic_canister_log::log;
 use icrc_ledger_types::icrc1::account::Account;
 use scopeguard::ScopeGuard;
 
-use crate::deposit_logs::{
-    report_transaction_error, ReceivedDepositEvent, ReceivedDepositEventError,
+use crate::candid_types::RequestScrapingError;
+use crate::contract_logs::parser::{LogParser, ReceivedEventsLogParser};
+use crate::contract_logs::scraping::{LogScraping, ReceivedEventsLogScraping};
+use crate::contract_logs::{
+    report_transaction_error, ReceivedContractEvent, ReceivedContractEventError,
 };
-use crate::deposit_logs::{LogParser, ReceivedDepositLogParser};
-use crate::deposit_logs::{LogScraping, ReceivedDepositLogScraping};
-use crate::endpoints::RequestScrapingError;
 use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
 use crate::guard::TimerGuard;
 use crate::logs::{DEBUG, INFO};
-use crate::numeric::{BlockNumber, BlockRangeInclusive, LedgerMintIndex};
+use crate::numeric::{BlockNumber, BlockRangeInclusive, IcrcValue, LedgerMintIndex};
 use crate::rpc_client::providers::Provider;
 use crate::rpc_client::{is_response_too_large, MultiCallError, RpcClient};
 use crate::rpc_declarations::LogEntry;
@@ -24,10 +24,11 @@ use crate::rpc_declarations::Topic;
 use crate::rpc_declarations::{BlockSpec, GetLogsParam};
 use crate::state::audit::{process_event, EventType};
 use crate::state::{mutate_state, read_state, State, TaskType};
-use crate::FEES_SUBACCOUNT;
 use num_traits::ToPrimitive;
 
-async fn mint() {
+pub(crate) const TEN_SEC: u64 = 10_000_000_000_u64; // 10 seconds
+
+async fn mint_and_release() {
     use icrc_ledger_client_cdk::{CdkRuntime, ICRC1Client};
     use icrc_ledger_types::icrc1::transfer::TransferArg;
 
@@ -36,14 +37,17 @@ async fn mint() {
         Err(_) => return,
     };
 
-    let (native_ledger_canister_id, events) =
-        read_state(|s| (s.native_ledger_id, s.events_to_mint()));
-
-    let deposit_native_fee = read_state(|s| s.deposit_native_fee).map(|fee| Nat::from(fee));
+    let (native_ledger_canister_id, events_to_mint, events_to_release) = read_state(|s| {
+        (
+            s.native_ledger_id,
+            s.events_to_mint(),
+            s.events_to_release(),
+        )
+    });
 
     let mut error_count = 0;
 
-    for event in events {
+    for event in events_to_mint {
         // Ensure that even if we were to panic in the callback, after having contacted the ledger to mint the tokens,
         // this event will not be processed again.
         let prevent_double_minting_guard = scopeguard::guard(event.clone(), |event| {
@@ -56,45 +60,48 @@ async fn mint() {
                 )
             });
         });
-        let (token_symbol, ledger_canister_id, is_native_deposit) = match &event {
-            ReceivedDepositEvent::Native(_) => {
-                ("Native".to_string(), native_ledger_canister_id, true)
-            }
-            ReceivedDepositEvent::Erc20(event) => {
+        let (token_symbol, ledger_canister_id, amount, recepient, subaccount) = match &event {
+            ReceivedContractEvent::NativeDeposit(event) => (
+                "Native".to_string(),
+                native_ledger_canister_id,
+                Nat::from(event.value),
+                event.principal,
+                event.subaccount.clone(),
+            ),
+            ReceivedContractEvent::Erc20Deposit(event) => {
                 if let Some(result) = read_state(|s| {
                     s.erc20_tokens
                         .get_entry_alt(&event.erc20_contract_address)
-                        .map(|(principal, symbol)| (symbol.to_string(), *principal, false))
+                        .map(|(principal, symbol)| {
+                            (
+                                symbol.to_string(),
+                                *principal,
+                                Nat::from(event.value),
+                                event.principal,
+                                event.subaccount.clone(),
+                            )
+                        })
                 }) {
                     result
                 } else {
-                    panic!(
-                        "Failed to mint ERC20: {event:?} Unsupported ERC20 contract address. (This should have already been filtered out by process_event)"
-                    )
+                    panic!("Failed to mint ERC20: {event:?} Unsupported ERC20 contract address. (This should have already been filtered out by process_event)");
                 }
             }
+            _ => panic!("BUG: Only deposit events should be in the minting list"),
         };
+
         let client = ICRC1Client {
             runtime: CdkRuntime,
             ledger_canister_id,
         };
-
-        // If deposit type is native_deposit and the fees are not set to zero,
-        // The minted amount for user should be as follow
-        // event.value() - deposit_native_fee
-        let amount = calculate_deposit_amount_deducting_fee(
-            event.value(),
-            &deposit_native_fee,
-            is_native_deposit,
-        );
 
         // Mint tokens for the user
         let block_index = match client
             .transfer(TransferArg {
                 from_subaccount: None,
                 to: Account {
-                    owner: event.principal(),
-                    subaccount: event.subaccount(),
+                    owner: recepient,
+                    subaccount: subaccount.map(|subaccount| subaccount.to_bytes()),
                 },
                 fee: None,
                 created_at_time: None,
@@ -123,69 +130,23 @@ async fn mint() {
             }
         };
 
-        // In case the deposit is native and there is deposit fee,
-        // Mint the fees for the fee collector account
-        // If minting tokens is successful and minting deposit fees fails,
-        // The minting process will be considered as successful and will not go for another iteration,
-        // To prevent double minting
-        if is_native_deposit {
-            match deposit_native_fee {
-                Some(ref deposit_fee) => {
-                    // Minting deposit fees in minters fee collector subaccount
-                    match client
-                        .transfer(TransferArg {
-                            from_subaccount: None,
-                            to: Account {
-                                owner: ic_cdk::id(),
-                                subaccount: Some(FEES_SUBACCOUNT),
-                            },
-                            fee: None,
-                            created_at_time: None,
-                            memo: None,
-                            amount: deposit_fee.clone(),
-                        })
-                        .await
-                    {
-                        Ok(Ok(block_index)) => {
-                            log!(
-                                INFO,
-                                "Minted deposit fee {} in fee collecting account in block {}",
-                                deposit_fee,
-                                block_index
-                            );
-                        }
-                        Ok(Err(err)) => {
-                            log!(
-                                INFO,
-                                "Failed to minter fees {}: {err:?}",
-                                deposit_fee.clone()
-                            );
-                        }
-                        Err(err) => {
-                            log!(INFO,"Failed to send a message to the ledger for minting fees({ledger_canister_id}): {err:?}");
-                        }
-                    };
-                }
-                None => {}
-            }
-        };
-
         // Record event
         mutate_state(|s| {
             process_event(
                 s,
                 match &event {
-                    ReceivedDepositEvent::Native(event) => EventType::MintedNative {
+                    ReceivedContractEvent::NativeDeposit(event) => EventType::MintedNative {
                         event_source: event.source(),
                         mint_block_index: LedgerMintIndex::new(block_index),
                     },
 
-                    ReceivedDepositEvent::Erc20(event) => EventType::MintedErc20 {
+                    ReceivedContractEvent::Erc20Deposit(event) => EventType::MintedErc20 {
                         event_source: event.source(),
                         mint_block_index: LedgerMintIndex::new(block_index),
                         erc20_contract_address: event.erc20_contract_address,
                         erc20_token_symbol: token_symbol.clone(),
                     },
+                    _ => panic!("BUG: Only deposit events should be in the minting list"),
                 },
             )
         });
@@ -193,18 +154,143 @@ async fn mint() {
             INFO,
             "Minted {} {token_symbol} to {} in block {block_index} ",
             amount,
-            event.principal(),
+            recepient.to_text(),
         );
         // minting succeeded, defuse guard
         ScopeGuard::into_inner(prevent_double_minting_guard);
     }
 
+    for event in events_to_release {
+        let received_burn_event = match &event {
+            ReceivedContractEvent::WrappedIcrcBurn(event) => event,
+
+            _ => panic!("BUG: Only burn events should be in the minting list"),
+        };
+
+        let client = ICRC1Client {
+            runtime: CdkRuntime,
+            ledger_canister_id: received_burn_event.icrc_token_principal,
+        };
+
+        let fee = match client.fee().await {
+            Ok(fee) => fee,
+            Err(err) => {
+                log!(
+                    INFO,
+                    "Failed to send a message to the ledger ({}): {err:?}",
+                    received_burn_event.icrc_token_principal
+                );
+                error_count += 1;
+                mutate_state(|s| {
+                    process_event(
+                        s,
+                        EventType::QuarantinedRelease {
+                            event_source: event.source(),
+                            release_event: received_burn_event.clone(),
+                        },
+                    )
+                });
+                continue;
+            }
+        };
+
+        // sub transfer fee from amount
+        let transfer_fee = IcrcValue::try_from(fee.clone()).unwrap_or(IcrcValue::MAX);
+
+        let amount = received_burn_event
+            .value
+            .checked_sub(transfer_fee)
+            .unwrap_or(IcrcValue::ZERO);
+
+        let mut block_index = 0_u64;
+
+        // if amount is greater than transfer fee
+        if amount != IcrcValue::ZERO {
+            // Release tokens for the user
+            block_index = match client
+                .transfer(TransferArg {
+                    from_subaccount: None,
+                    to: Account {
+                        owner: received_burn_event.principal,
+                        subaccount: received_burn_event
+                            .subaccount
+                            .clone()
+                            .map(|subaccount| subaccount.to_bytes()),
+                    },
+                    fee: Some(fee),
+                    created_at_time: None,
+                    memo: Some((&event).into()),
+                    amount: amount.into(),
+                })
+                .await
+            {
+                Ok(Ok(block_index)) => block_index.0.to_u64().expect("nat does not fit into u64"),
+                Ok(Err(err)) => {
+                    log!(
+                        INFO,
+                        "Failed to release {}: {event:?} {err}",
+                        received_burn_event.icrc_token_principal.to_text()
+                    );
+                    error_count += 1;
+                    // releasing failed
+                    mutate_state(|s| {
+                        process_event(
+                            s,
+                            EventType::QuarantinedRelease {
+                                event_source: event.source(),
+                                release_event: received_burn_event.clone(),
+                            },
+                        )
+                    });
+                    continue;
+                }
+                Err(err) => {
+                    log!(
+                        INFO,
+                        "Failed to send a message to the ledger ({}): {err:?}",
+                        received_burn_event.icrc_token_principal
+                    );
+                    error_count += 1;
+                    // releasing failed, defuse guard
+                    mutate_state(|s| {
+                        process_event(
+                            s,
+                            EventType::QuarantinedRelease {
+                                event_source: event.source(),
+                                release_event: received_burn_event.clone(),
+                            },
+                        )
+                    });
+                    continue;
+                }
+            };
+        }
+
+        // record event
+        mutate_state(|s| {
+            process_event(
+                s,
+                EventType::ReleasedIcrcToken {
+                    event_source: event.source(),
+                    release_block_index: block_index.into(),
+                    released_icrc_token: received_burn_event.icrc_token_principal,
+                    wrapped_erc20_contract_address: received_burn_event
+                        .wrapped_erc20_contract_address,
+                    transfer_fee,
+                },
+            )
+        })
+    }
+
     if error_count > 0 {
         log!(
             INFO,
-            "Failed to mint {error_count} events, rescheduling the minting"
+            "Failed to mint or release {error_count} events, rescheduling the minting and releasing"
         );
-        ic_cdk_timers::set_timer(crate::MINT_RETRY_DELAY, || ic_cdk::spawn(mint()));
+        ic_cdk_timers::set_timer(
+            crate::MINT_RETRY_DELAY,
+            || ic_cdk::spawn(mint_and_release()),
+        );
     }
 }
 
@@ -214,7 +300,7 @@ pub async fn scrape_logs() {
         Err(_) => return,
     };
 
-    mutate_state(|s| s.last_observed_block_time = Some(ic_cdk::api::time()));
+    mutate_state(|s| s.last_log_scraping_time = Some(ic_cdk::api::time()));
 
     let mut attempts = 0;
     const MAX_ATTEMPTS: u32 = 3;
@@ -250,76 +336,32 @@ pub async fn scrape_logs() {
 pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
     let block_height = read_state(State::block_height);
     let network = read_state(|state| state.evm_network);
+    let now_ns = ic_cdk::api::time();
+
+    // first we check if the last_observed_block_number is newly updated(it's not older than 10
+    // seconds), if the last_observed_block_number is fresh we dont need to request for a new block
+    // number, on the opposite the on-chain request has to be sent.
+    if let (Some(last_observed_block_number), Some(last_observed_block_time)) =
+        read_state(|s| (s.last_observed_block_number, s.last_observed_block_time))
+    {
+        if now_ns < last_observed_block_time.saturating_add(TEN_SEC) {
+            return Some(last_observed_block_number);
+        }
+    };
+
     match read_state(|s| RpcClient::from_state_one_provider(s, Provider::DRPC))
         .get_block_by_number(BlockSpec::Tag(block_height))
         .await
     {
         Ok(latest_block) => {
-            let mut block_number = Some(latest_block.number);
-            match network {
-                EvmNetwork::BSC => {
-                    // Waiting for 12 blocks means the transaction is practically safe on BSC
-                    // So we go 12 blocks before the latest block
-                    block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(3_u32)
-                            .expect("Removing 5 blocks from latest block should never fail"),
-                    )
-                }
-                EvmNetwork::ArbitrumOne => {
-                    // it's generally recommended to wait for at least 6-12 blocks after a block is initially produced before
-                    // considering it to be finalized and safe from reorgs. This waiting period provides a buffer to account for potential fork scenarios
-                    //  or other unexpected events.
-                    block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(6_u32)
-                            .expect("Removing 12 blocks from latest block should never fail"),
-                    )
-                }
-                EvmNetwork::Base => {
-                    // like Arbitrum, it's recommended to wait for a few blocks after a transaction is included in a block
-                    // to ensure finality and minimize the risk of reorgs. A waiting period of 6-12 blocks is
-                    // typically considered sufficient for most applications.
+            let block_number = latest_block.number;
+            mutate_state(|s| s.last_observed_block_number = Some(block_number));
+            mutate_state(|s| s.last_observed_block_time = Some(now_ns));
 
-                    block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(3_u32)
-                            .expect("Removing 12 blocks from latest block should never fail"),
-                    )
-                }
-                EvmNetwork::Optimism => {
-                    // Similar to the other layer-2 networks, it's recommended to wait for a few blocks after a transaction is included in a block to
-                    // ensure finality and minimize the risk of reorgs. A waiting period of 6-12 blocks is typically considered sufficient.
-
-                    block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(12_u32)
-                            .expect("Removing 12 blocks from latest block should never fail"),
-                    )
-                }
-                EvmNetwork::Avalanche => {
-                    // If your application deals with extremely high-value transactions or sensitive data,
-                    // you might want to consider waiting for a slightly longer period, such as 12 blocks.
-                    // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
-
-                    block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(12_u32)
-                            .expect("Removing 12 blocks from latest block should never fail"),
-                    )
-                }
-
-                EvmNetwork::Fantom => {
-                    // If your application deals with extremely high-value transactions or sensitive data,
-                    // you might want to consider waiting for a slightly longer period, such as 12 blocks.
-                    // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
-
-                    block_number = latest_block.number.checked_sub(
-                        BlockNumber::try_from(12_u32)
-                            .expect("Removing 12 blocks from latest block should never fail"),
-                    )
-                }
-
-                // For the rest of the networks we rely on BlockTag::Finalized, So we can make sure that there wont be any reorgs
-                _ => {}
-            }
-            mutate_state(|s| s.last_observed_block_number = block_number);
-            block_number
+            Some(apply_safe_threshold_to_latest_block_numner(
+                network,
+                block_number,
+            ))
         }
         Err(e) => {
             log!(
@@ -332,7 +374,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
 }
 
 async fn scrape_until_block(last_block_number: BlockNumber, max_block_spread: u16) {
-    let scrape = match read_state(|state| ReceivedDepositLogScraping::next_scrape(state)) {
+    let scrape = match read_state(|state| ReceivedEventsLogScraping::next_scrape(state)) {
         Some(s) => s,
         None => {
             log!(
@@ -357,7 +399,7 @@ async fn scrape_until_block(last_block_number: BlockNumber, max_block_spread: u1
     for block_range in block_range.into_chunks(max_block_spread) {
         match scrape_block_range(
             &rpc_client,
-            scrape.contract_address,
+            scrape.contract_addresses.clone(),
             scrape.topics.clone(),
             block_range.clone(),
         )
@@ -377,7 +419,7 @@ async fn scrape_until_block(last_block_number: BlockNumber, max_block_spread: u1
 
 async fn scrape_block_range(
     rpc_client: &RpcClient,
-    contract_address: Address,
+    contract_addresses: Vec<Address>,
     topics: Vec<Topic>,
     block_range: BlockRangeInclusive,
 ) -> Result<(), MultiCallError<Vec<LogEntry>>> {
@@ -391,14 +433,14 @@ async fn scrape_block_range(
         let request = GetLogsParam {
             from_block: BlockSpec::from(from_block),
             to_block: BlockSpec::from(to_block),
-            address: vec![contract_address],
+            address: contract_addresses.clone(),
             topics: topics.clone(),
         };
 
         let result = rpc_client
             .get_logs(request)
             .await
-            .map(ReceivedDepositLogParser::parse_all_logs);
+            .map(ReceivedEventsLogParser::parse_all_logs);
 
         match result {
             Ok((events, errors)) => {
@@ -446,28 +488,56 @@ async fn scrape_block_range(
 }
 
 pub fn register_deposit_events(
-    transaction_events: Vec<ReceivedDepositEvent>,
-    errors: Vec<ReceivedDepositEventError>,
+    transaction_events: Vec<ReceivedContractEvent>,
+    errors: Vec<ReceivedContractEventError>,
 ) {
     for event in transaction_events {
-        log!(
-            INFO,
-            "Received event {event:?}; will mint {} to {}",
-            event.value(),
-            event.principal()
-        );
+        match &event {
+            ReceivedContractEvent::NativeDeposit(received_native_event) => {
+                log!(
+                    INFO,
+                    "Received event {event:?}; will mint {} to {}",
+                    received_native_event.value,
+                    received_native_event.principal.to_text()
+                );
+            }
+            ReceivedContractEvent::Erc20Deposit(received_erc20_event) => {
+                log!(
+                    INFO,
+                    "Received event {event:?}; will mint {} to {}",
+                    received_erc20_event.value,
+                    received_erc20_event.principal.to_text()
+                );
+            }
+            ReceivedContractEvent::WrappedIcrcBurn(received_burn_event) => {
+                log!(
+                    INFO,
+                    "Received event {event:?}; will release {} to {}",
+                    received_burn_event.value,
+                    received_burn_event.principal.to_text()
+                );
+            }
+            ReceivedContractEvent::WrappedIcrcDeployed(wrapped_icrc_deployed) => {
+                log!(
+                    INFO,
+                    "Received event {event:?}, erc20 token {}, was deployed for icrc token {}",
+                    wrapped_icrc_deployed.deployed_wrapped_erc20,
+                    wrapped_icrc_deployed.base_token.to_text()
+                );
+            }
+        }
 
-        mutate_state(|s| process_event(s, event.into_deposit()));
+        mutate_state(|s| process_event(s, event.into_event_type()));
     }
-    if read_state(State::has_events_to_mint) {
-        ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(mint()));
+    if read_state(|s| s.has_events_to_mint() || s.has_events_to_release()) {
+        ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(mint_and_release()));
     }
     for error in errors {
-        if let ReceivedDepositEventError::InvalidEventSource { source, error } = &error {
+        if let ReceivedContractEventError::InvalidEventSource { source, error } = &error {
             mutate_state(|s| {
                 process_event(
                     s,
-                    EventType::InvalidDeposit {
+                    EventType::InvalidEvent {
                         event_source: *source,
                         reason: error.to_string(),
                     },
@@ -487,28 +557,103 @@ pub fn validate_log_scraping_request(
     last_observed_block_time: u64,
     now_ns: u64,
 ) -> Result<(), RequestScrapingError> {
-    pub(crate) const ONE_MIN_NS: u64 = 60_000_000_000_u64; // 60 seconds
-
-    if now_ns < last_observed_block_time.saturating_add(ONE_MIN_NS) {
+    if now_ns < last_observed_block_time.saturating_add(TEN_SEC) {
         return Err(RequestScrapingError::CalledTooManyTimes);
     }
 
     Ok(())
 }
 
-pub fn calculate_deposit_amount_deducting_fee(
-    amount: Nat,
-    deposit_native_fee: &Option<Nat>,
-    is_native_deposit: bool,
-) -> candid::Nat {
-    // Calculate Amount - Deposit fee
-    if is_native_deposit {
-        // If there is a deposit fee
-        match deposit_native_fee {
-            Some(fee) => amount - fee.clone(),
-            None => amount,
+pub fn apply_safe_threshold_to_latest_block_numner(
+    network: EvmNetwork,
+    latest_block: BlockNumber,
+) -> BlockNumber {
+    match network {
+        EvmNetwork::BSC => {
+            // Waiting for 12 blocks means the transaction is practically safe on BSC
+            // So we go 12 blocks before the latest block
+            latest_block
+                .checked_sub(BlockNumber::try_from(3_u32).unwrap())
+                .expect("Removing 5 blocks from latest block should never fail")
         }
-    } else {
-        amount
+        EvmNetwork::ArbitrumOne => {
+            // it's generally recommended to wait for at least 6-12 blocks after a block is initially produced before
+            // considering it to be finalized and safe from reorgs. This waiting period provides a buffer to account for potential fork scenarios
+            //  or other unexpected events.
+            latest_block
+                .checked_sub(BlockNumber::try_from(6_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::Base => {
+            // like Arbitrum, it's recommended to wait for a few blocks after a transaction is included in a block
+            // to ensure finality and minimize the risk of reorgs. A waiting period of 6-12 blocks is
+            // typically considered sufficient for most applications.
+
+            latest_block
+                .checked_sub(BlockNumber::try_from(3_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::Optimism => {
+            // Similar to the other layer-2 networks, it's recommended to wait for a few blocks after a transaction is included in a block to
+            // ensure finality and minimize the risk of reorgs. A waiting period of 6-12 blocks is typically considered sufficient.
+
+            latest_block
+                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::Avalanche => {
+            // If your application deals with extremely high-value transactions or sensitive data,
+            // you might want to consider waiting for a slightly longer period, such as 12 blocks.
+            // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
+
+            latest_block
+                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::Fantom => {
+            // If your application deals with extremely high-value transactions or sensitive data,
+            // you might want to consider waiting for a slightly longer period, such as 12 blocks.
+            // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
+
+            latest_block
+                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::Ethereum =>
+        // If your application deals with extremely high-value transactions or sensitive data,
+        // you might want to consider waiting for a slightly longer period, such as 12 blocks.
+        // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
+        {
+            latest_block
+                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::Sepolia =>
+        // If your application deals with extremely high-value transactions or sensitive data,
+        // you might want to consider waiting for a slightly longer period, such as 12 blocks.
+        // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
+        {
+            latest_block
+                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::BSCTestnet =>
+        // If your application deals with extremely high-value transactions or sensitive data,
+        // you might want to consider waiting for a slightly longer period, such as 12 blocks.
+        // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
+        {
+            latest_block
+                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
+        EvmNetwork::Polygon =>
+        // If your application deals with extremely high-value transactions or sensitive data,
+        // you might want to consider waiting for a slightly longer period, such as 12 blocks.
+        // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
+        {
+            latest_block
+                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .expect("Removing 12 blocks from latest block should never fail")
+        }
     }
 }

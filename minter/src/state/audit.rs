@@ -3,7 +3,10 @@ use super::{
     transactions::{Reimbursed, ReimbursementIndex},
     State,
 };
-use crate::storage::{record_event, with_event_iter};
+use crate::{
+    contract_logs::ReceivedContractEvent,
+    storage::{record_event, with_event_iter},
+};
 
 /// Updates the state to reflect the given state transition.
 // public because it's used in tests since process_event
@@ -19,16 +22,16 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
                 .expect("applying upgrade event should succeed");
         }
         EventType::AcceptedDeposit(native_event) => {
-            state.record_event_to_mint(&native_event.clone().into());
+            state.record_contract_events(&native_event.clone().into());
         }
         EventType::AcceptedErc20Deposit(erc20_event) => {
-            state.record_event_to_mint(&erc20_event.clone().into());
+            state.record_contract_events(&erc20_event.clone().into());
         }
         EventType::InvalidDeposit {
             event_source,
             reason,
         } => {
-            let _ = state.record_invalid_deposit(*event_source, reason.clone());
+            let _ = state.record_invalid_event(*event_source, reason.clone());
         }
         EventType::MintedNative {
             event_source,
@@ -58,9 +61,7 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
             state.last_scraped_block_number = *block_number;
         }
         EventType::AcceptedNativeWithdrawalRequest(request) => {
-            state
-                .withdrawal_transactions
-                .record_withdrawal_request(request.clone());
+            state.record_native_withdrawal_request(request.clone());
         }
         EventType::CreatedTransaction {
             withdrawal_id,
@@ -97,6 +98,7 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
             reimbursed_in_block,
             reimbursed_amount: _,
             transaction_hash: _,
+            transfer_fee: _,
         }) => {
             state
                 .withdrawal_transactions
@@ -105,6 +107,7 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
                         ledger_burn_index: *withdrawal_id,
                     },
                     *reimbursed_in_block,
+                    None,
                 );
         }
         EventType::SkippedBlock { block_number } => {
@@ -130,6 +133,7 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
                         erc20_ledger_burn_index: reimbursed.burn_in_block,
                     },
                     reimbursed.reimbursed_in_block,
+                    None,
                 );
         }
         EventType::FailedErc20WithdrawalRequest(native_reimbursement_request) => {
@@ -147,6 +151,67 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
             state
                 .withdrawal_transactions
                 .record_quarantined_reimbursement(index.clone());
+        }
+        EventType::AcceptedWrappedIcrcBurn(received_burn_event) => {
+            state.record_contract_events(&received_burn_event.clone().into());
+        }
+        EventType::InvalidEvent {
+            event_source,
+            reason,
+        } => {
+            state.record_invalid_event(event_source.clone(), reason.clone());
+        }
+        EventType::DeployedWrappedIcrcToken(received_wrapped_icrc_deployed_event) => {
+            state.record_contract_events(&received_wrapped_icrc_deployed_event.clone().into());
+        }
+        EventType::QuarantinedRelease {
+            event_source,
+            release_event,
+        } => {
+            state.record_quarantined_release(
+                event_source.clone(),
+                ReceivedContractEvent::WrappedIcrcBurn(release_event.clone()),
+            );
+        }
+        EventType::ReleasedIcrcToken {
+            event_source,
+            release_block_index,
+            released_icrc_token,
+            wrapped_erc20_contract_address,
+            transfer_fee,
+        } => {
+            state.record_successful_release(
+                *event_source,
+                *transfer_fee,
+                *release_block_index,
+                *wrapped_erc20_contract_address,
+                *released_icrc_token,
+            );
+        }
+        EventType::FailedIcrcLockRequest(native_reimbursement_request) => {
+            state.withdrawal_transactions.record_reimbursement_request(
+                ReimbursementIndex::Native {
+                    ledger_burn_index: native_reimbursement_request.ledger_burn_index,
+                },
+                native_reimbursement_request.clone(),
+            )
+        }
+        EventType::ReimbursedIcrcWrap {
+            native_ledger_burn_index,
+            reimbursed_icrc_token,
+            reimbursed,
+        } => {
+            state
+                .withdrawal_transactions
+                .record_finalized_reimbursement(
+                    ReimbursementIndex::IcrcWrap {
+                        native_ledger_burn_index: *native_ledger_burn_index,
+                        icrc_token: *reimbursed_icrc_token,
+                        icrc_ledger_lock_index: reimbursed.burn_in_block,
+                    },
+                    reimbursed.reimbursed_in_block,
+                    reimbursed.transfer_fee,
+                );
         }
     }
 }

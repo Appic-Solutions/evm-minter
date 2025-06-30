@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod tests;
 
+pub mod fee_hisotry_parser;
+
 use minicbor::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::fmt;

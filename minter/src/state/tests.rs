@@ -1,7 +1,6 @@
-use crate::deposit_logs::{
-    EventSource, LedgerSubaccount, ReceivedDepositEvent, ReceivedErc20Event, ReceivedNativeEvent,
-};
-use crate::endpoints::CandidBlockTag;
+use crate::candid_types::CandidBlockTag;
+use crate::contract_logs::types::{ReceivedErc20Event, ReceivedNativeEvent};
+use crate::contract_logs::{EventSource, LedgerSubaccount};
 use crate::erc20::ERC20TokenSymbol;
 use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
@@ -31,7 +30,7 @@ use proptest::collection::vec as pvec;
 use proptest::prelude::*;
 use std::collections::BTreeMap;
 
-fn initial_state() -> State {
+pub fn initial_state() -> State {
     State::try_from(InitArg {
         evm_network: Default::default(),
         ecdsa_key_name: "test_key_1".to_string(),
@@ -50,13 +49,14 @@ fn initial_state() -> State {
         ledger_suite_manager_id: Principal::from_text("kmcdp-4yaaa-aaaag-ats3q-cai")
             .expect("BUG: invalid principal"),
         deposit_native_fee: wei_from_milli_ether(1).into(),
-        withdrawal_native_fee: wei_from_milli_ether(1).into(),
+        withdrawal_native_fee: 5_000_000_u128.into(),
     })
     .expect("init args should be valid")
 }
 
 mod mint_transaction {
-    use crate::deposit_logs::{EventSourceError, ReceivedNativeEvent};
+    use crate::contract_logs::types::ReceivedNativeEvent;
+    use crate::contract_logs::EventSourceError;
     use crate::erc20::ERC20Token;
     use crate::evm_config::EvmNetwork;
     use crate::numeric::{LedgerMintIndex, LogIndex};
@@ -68,14 +68,14 @@ mod mint_transaction {
         let mut state = initial_state();
         let event = received_deposit_event();
 
-        state.record_event_to_mint(&event.clone().into());
+        state.record_contract_events(&event.clone().into());
 
         assert!(state.events_to_mint.contains_key(&event.source()));
 
         let block_index = LedgerMintIndex::new(1u64);
 
         let minted_event = MintedEvent {
-            deposit_event: event.clone().into(),
+            event: event.clone().into(),
             mint_block_index: block_index,
             token_symbol: "icETH".to_string(),
             erc20_contract_address: None,
@@ -101,14 +101,14 @@ mod mint_transaction {
         let mut event = received_erc20_event();
         event.erc20_contract_address = erc20_contract_address;
 
-        state.record_event_to_mint(&event.clone().into());
+        state.record_contract_events(&event.clone().into());
 
         assert!(state.events_to_mint.contains_key(&event.source()));
 
         let block_index = LedgerMintIndex::new(1u64);
 
         let minted_event = MintedEvent {
-            deposit_event: event.clone().into(),
+            event: event.clone().into(),
             mint_block_index: block_index,
             token_symbol: token.erc20_token_symbol.to_string(),
             erc20_contract_address: Some(erc20_contract_address),
@@ -144,11 +144,11 @@ mod mint_transaction {
 
         assert_ne!(event_1, event_2);
 
-        state.record_event_to_mint(&event_1);
+        state.record_contract_events(&event_1);
 
         assert!(state.events_to_mint.contains_key(&event_1.source()));
 
-        state.record_event_to_mint(&event_2);
+        state.record_contract_events(&event_2);
 
         assert!(state.events_to_mint.contains_key(&event_2.source()));
 
@@ -167,15 +167,15 @@ mod mint_transaction {
 
     #[test]
     #[should_panic = "invalid"]
-    fn should_not_record_invalid_deposit_already_recorded_as_valid() {
+    fn should_not_record_invalid_event_already_recorded_as_valid() {
         let mut state = initial_state();
         let event = received_deposit_event().into();
 
-        state.record_event_to_mint(&event);
+        state.record_contract_events(&event);
 
         assert!(state.events_to_mint.contains_key(&event.source()));
 
-        state.record_invalid_deposit(
+        state.record_invalid_event(
             event.source(),
             EventSourceError::InvalidEvent("bad".to_string()).to_string(),
         );
@@ -189,16 +189,16 @@ mod mint_transaction {
         let other_error = EventSourceError::InvalidEvent("second".to_string());
         assert_ne!(error, other_error);
 
-        assert!(state.record_invalid_deposit(event.source(), error.to_string()));
+        assert!(state.record_invalid_event(event.source(), error.to_string()));
         assert_eq!(
             state.invalid_events[&event.source()],
-            InvalidEventReason::InvalidDeposit(error.to_string())
+            InvalidEventReason::InvalidEvent(error.to_string())
         );
 
-        assert!(!state.record_invalid_deposit(event.source(), other_error.to_string()));
+        assert!(!state.record_invalid_event(event.source(), other_error.to_string()));
         assert_eq!(
             state.invalid_events[&event.source()],
-            InvalidEventReason::InvalidDeposit(error.to_string())
+            InvalidEventReason::InvalidEvent(error.to_string())
         );
     }
 
@@ -206,7 +206,7 @@ mod mint_transaction {
     fn should_quarantine_deposit() {
         let mut state = initial_state();
         let event = received_deposit_event();
-        state.record_event_to_mint(&event.clone().into());
+        state.record_contract_events(&event.clone().into());
         assert_eq!(state.events_to_mint.len(), 1);
 
         state.record_quarantined_deposit(event.source());
@@ -364,7 +364,7 @@ mod upgrade {
 
     #[test]
     fn should_succeed() {
-        use crate::endpoints::CandidBlockTag;
+        use crate::candid_types::CandidBlockTag;
         let mut state = initial_state();
         let upgrade_arg = UpgradeArg {
             next_transaction_nonce: Some(Nat::from(15_u8)),
@@ -386,8 +386,11 @@ mod upgrade {
             Wei::new(20_000_000_000_000_000)
         );
         assert_eq!(
-            state.helper_contract_address,
-            Some(Address::from_str("0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34").unwrap())
+            state.helper_contract_addresses,
+            Some(vec![Address::from_str(
+                "0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34"
+            )
+            .unwrap()])
         );
         assert_eq!(state.block_height, BlockTag::Safe);
     }
@@ -715,7 +718,7 @@ fn arb_event_type() -> impl Strategy<Value = EventType> {
         arb_upgrade_arg().prop_map(EventType::Upgrade),
         arb_received_deposit_event().prop_map(EventType::AcceptedDeposit),
         arb_received_erc20_event().prop_map(EventType::AcceptedErc20Deposit),
-        arb_event_source().prop_map(|event_source| EventType::InvalidDeposit {
+        arb_event_source().prop_map(|event_source| EventType::InvalidEvent {
             event_source,
             reason: "bad principal".to_string()
         }),
@@ -767,7 +770,7 @@ proptest! {
 }
 
 #[test]
-fn state_equivalence() {
+pub fn state_equivalence() {
     use crate::map::MultiKeyMap;
     use crate::rpc_declarations::{TransactionReceipt, TransactionStatus};
     use crate::state::transactions::{
@@ -780,7 +783,7 @@ fn state_equivalence() {
     use ic_cdk::api::management_canister::ecdsa::EcdsaPublicKeyResponse;
     use maplit::{btreemap, btreeset};
 
-    fn source(txhash: &str, index: u64) -> EventSource {
+    pub fn source(txhash: &str, index: u64) -> EventSource {
         EventSource {
             transaction_hash: txhash.parse().unwrap(),
             log_index: LogIndex::from(index),
@@ -812,6 +815,7 @@ fn state_equivalence() {
         from_subaccount: None,
         created_at: Some(1699527697000000000),
         l1_fee: Some(Wei::new(1_000_000_000_000)),
+        withdrawal_fee: None,
     };
     let withdrawal_request2 = NativeWithdrawalRequest {
         ledger_burn_index: LedgerBurnIndex::new(20),
@@ -834,7 +838,8 @@ fn state_equivalence() {
                     .unwrap(),
                 from_subaccount: None,
                 created_at: Some(1699527697000000000),
-                l1_fee:Some(Wei::new(4_000_000_000_000))
+                l1_fee:Some(Wei::new(4_000_000_000_000)),
+                withdrawal_fee:None
             }.into(),
            withdrawal_request1.ledger_burn_index  => withdrawal_request1.clone().into(),
         },
@@ -941,12 +946,9 @@ fn state_equivalence() {
             }
         },
         reimbursed: btreemap! {
-           ReimbursementIndex::Native { ledger_burn_index: LedgerBurnIndex::new(6) } => Ok(Reimbursed {
-                transaction_hash: Some("0x06afc3c693dc2ba2c19b5c287c4dddce040d766bea5fd13c8a7268b04aa94f2d".parse().unwrap()),
-                reimbursed_in_block: LedgerMintIndex::new(150),
-                reimbursed_amount: Erc20TokenAmount::new(10_000_000_000_000),
-                burn_in_block: LedgerBurnIndex::new(6),
-            }),
+           ReimbursementIndex::Native { ledger_burn_index: LedgerBurnIndex::new(6) } =>
+            Ok(Reimbursed {transaction_hash:Some("0x06afc3c693dc2ba2c19b5c287c4dddce040d766bea5fd13c8a7268b04aa94f2d".parse().unwrap())
+                ,reimbursed_in_block:LedgerMintIndex::new(150),reimbursed_amount:Erc20TokenAmount::new(10_000_000_000_000),burn_in_block:LedgerBurnIndex::new(6), transfer_fee: None }),
         },
     };
     let mut erc20_tokens = DedupMultiKeyMap::default();
@@ -964,11 +966,9 @@ fn state_equivalence() {
         ecdsa_key_name: "test_key".to_string(),
         native_ledger_id: "apia6-jaaaa-aaaar-qabma-cai".parse().unwrap(),
         native_index_id: "eysav-tyaaa-aaaap-akqfq-cai".parse().unwrap(),
-        helper_contract_address: Some(
-            "0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34"
-                .parse()
-                .unwrap(),
-        ),
+        helper_contract_addresses: Some(vec!["0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34"
+            .parse()
+            .unwrap()]),
         ecdsa_public_key: Some(EcdsaPublicKeyResponse {
             public_key: vec![1; 32],
             chain_code: vec![2; 32],
@@ -991,7 +991,7 @@ fn state_equivalence() {
         },
         minted_events: btreemap! {
             source("0x705f826861c802b407843e99af986cfde8749b669e5e0a5a150f4350bcaa9bc3", 1) => MintedEvent {
-                deposit_event: ReceivedNativeEvent {
+            event: ReceivedNativeEvent {
                     transaction_hash: "0x705f826861c802b407843e99af986cfde8749b669e5e0a5a150f4350bcaa9bc3".parse().unwrap(),
                     block_number: BlockNumber::new(450_000),
                     log_index: LogIndex::new(1),
@@ -1006,7 +1006,7 @@ fn state_equivalence() {
             }
         },
         invalid_events: btreemap! {
-            source("0x05c6ec45699c9a6a4b1a4ea2058b0cee852ea2f19b18fb8313c04bf8156efde4", 11) => InvalidEventReason::InvalidDeposit("failed to decode principal from bytes 0x00333c125dc9f41abaf2b8b85d49fdc7ff75b2a4000000000000000000000000".to_string()),
+            source("0x05c6ec45699c9a6a4b1a4ea2058b0cee852ea2f19b18fb8313c04bf8156efde4", 11) => InvalidEventReason::InvalidEvent("failed to decode principal from bytes 0x00333c125dc9f41abaf2b8b85d49fdc7ff75b2a4000000000000000000000000".to_string()),
         },
         withdrawal_transactions: withdrawal_transactions.clone(),
         pending_withdrawal_principals: Default::default(),
@@ -1023,8 +1023,13 @@ fn state_equivalence() {
         ledger_suite_manager_id: None,
         swap_canister_id: None,
         last_observed_block_time: None,
-        deposit_native_fee: None,
         withdrawal_native_fee: None,
+        events_to_release: Default::default(),
+        released_events: Default::default(),
+        quarantined_releases: Default::default(),
+        icrc_balances: Default::default(),
+        wrapped_icrc_tokens: Default::default(),
+        last_log_scraping_time: None,
     };
 
     assert_eq!(
@@ -1067,7 +1072,7 @@ fn state_equivalence() {
     assert_ne!(
         Ok(()),
         state.is_equivalent_to(&State {
-            helper_contract_address: None,
+            helper_contract_addresses: None,
             ..state.clone()
         }),
         "changing essential fields should break equivalence",
@@ -1249,6 +1254,7 @@ fn state_equivalence() {
 
 mod native_balance {
     use super::*;
+    use crate::contract_logs::ReceivedContractEvent;
     use crate::evm_config::EvmNetwork;
     use crate::numeric::{
         BlockNumber, GasAmount, LedgerBurnIndex, TransactionNonce, Wei, WeiPerGas,
@@ -1262,6 +1268,7 @@ mod native_balance {
     };
     use crate::state::{NativeBalance, State};
     use crate::tx::{Eip1559Signature, SignedEip1559TransactionRequest};
+    use ethers_core::types::transaction::request;
     use maplit::btreemap;
 
     #[test]
@@ -1272,7 +1279,7 @@ mod native_balance {
         let deposit_event = received_deposit_event();
         apply_state_transition(
             &mut state,
-            &ReceivedDepositEvent::from(deposit_event.clone()).into_deposit(),
+            &ReceivedContractEvent::from(deposit_event.clone()).into_event_type(),
         );
         let balance_after = state.native_balance.clone();
 
@@ -1293,7 +1300,7 @@ mod native_balance {
         let deposit_event = received_erc20_event();
         apply_state_transition(
             &mut state,
-            &ReceivedDepositEvent::from(deposit_event.clone()).into_deposit(),
+            &ReceivedContractEvent::from(deposit_event.clone()).into_event_type(),
         );
         let balance_after = state.native_balance.clone();
 
@@ -1308,7 +1315,7 @@ mod native_balance {
         let deposit_event = received_deposit_event();
         apply_state_transition(
             &mut state,
-            &EventType::InvalidDeposit {
+            &EventType::InvalidEvent {
                 event_source: deposit_event.source(),
                 reason: "invalid principal".to_string(),
             },
@@ -1320,7 +1327,7 @@ mod native_balance {
         let deposit_event = received_erc20_event();
         apply_state_transition(
             &mut state,
-            &EventType::InvalidDeposit {
+            &EventType::InvalidEvent {
                 event_source: deposit_event.source(),
                 reason: "invalid principal".to_string(),
             },
@@ -1338,9 +1345,14 @@ mod native_balance {
             &EventType::AcceptedDeposit(received_deposit_event()),
         );
 
+        let withdrawal_native_fee = state_before_withdrawal.withdrawal_native_fee.unwrap();
+
         let mut state_after_successful_withdrawal = state_before_withdrawal.clone();
         let native_balance_before_withdrawal = state_before_withdrawal.native_balance.clone();
         let erc20_balance_before_withdrawal = state_before_withdrawal.erc20_balances.clone();
+
+        let l1_fee = Wei::new(10_000_000);
+
         //Values from https://sepolia.etherscan.io/tx/0xef628b8f45984bdf386f5b765b665a2e584295e1190d21c6acdfabe17c27e1bb
         let withdrawal_request = NativeWithdrawalRequest {
             withdrawal_amount: Wei::new(10_000_000_000_000_000),
@@ -1353,8 +1365,10 @@ mod native_balance {
                 .unwrap(),
             from_subaccount: None,
             created_at: Some(1699527697000000000),
-            l1_fee: None,
+            l1_fee: Some(l1_fee),
+            withdrawal_fee: Some(withdrawal_native_fee),
         };
+
         let withdrawal_flow = WithdrawalFlow {
             tx_fee: GasFeeEstimate {
                 base_fee_per_gas: WeiPerGas::from(0xbc9998d1_u64),
@@ -1378,7 +1392,9 @@ mod native_balance {
             NativeBalance {
                 native_balance: native_balance_before_withdrawal
                     .native_balance
-                    .checked_sub(Wei::from(9_934_054_275_043_000_u64))
+                    .checked_sub(Wei::from(9_934_054_260_043_000_u64))
+                    .unwrap()
+                    .checked_sub(l1_fee)
                     .unwrap(),
                 total_effective_tx_fees: native_balance_before_withdrawal
                     .total_effective_tx_fees
@@ -1388,8 +1404,13 @@ mod native_balance {
                     .total_unspent_tx_fees
                     .checked_add(Wei::from(65_945_724_957_000_u64))
                     .unwrap(),
+                total_collected_operation_native_fee: native_balance_before_withdrawal
+                    .total_collected_operation_native_fee
+                    .checked_add(withdrawal_native_fee)
+                    .unwrap(),
             }
         );
+
         assert_eq!(
             erc20_balance_before_withdrawal,
             erc20_balance_after_successful_withdrawal
@@ -1411,6 +1432,8 @@ mod native_balance {
             native_balance_before_withdrawal
                 .native_balance
                 .checked_sub(receipt_failed.effective_transaction_fee())
+                .unwrap()
+                .checked_sub(l1_fee)
                 .unwrap()
         );
         assert_eq!(
@@ -1439,16 +1462,24 @@ mod native_balance {
             &EventType::AcceptedDeposit(received_deposit_event()),
         );
 
+        let withdrawal_fee = state_before_withdrawal
+            .withdrawal_native_fee
+            .clone()
+            .unwrap();
+
         let mut state_after_successful_withdrawal = state_before_withdrawal.clone();
         let native_balance_before_withdrawal = state_before_withdrawal.native_balance.clone();
         let erc20_balance_before_withdrawal = state_before_withdrawal.erc20_balances.clone();
-        //Values from https://sepolia.etherscan.io/tx/0x9695853792c636f9098844931da5e0ae7c5bdc8b9c6a7471aa44aed96875affc
+
         let withdrawal_request = erc20_withdrawal_request();
         let tx_fee = GasFeeEstimate {
             base_fee_per_gas: WeiPerGas::from(0x4ce9a_u64),
             max_priority_fee_per_gas: WeiPerGas::from(1_500_000_000_u64),
         };
-        let gas_limit = GasAmount::from(65_000_u64);
+
+        let l1_fee = withdrawal_request.l1_fee.unwrap();
+
+        let gas_limit = GasAmount::from(66_000_u64);
         let effective_gas_price = WeiPerGas::from(0x596cfd9a_u64);
         let effective_gas_used = GasAmount::from(0xb003_u32);
         let withdrawal_flow = WithdrawalFlow {
@@ -1480,6 +1511,8 @@ mod native_balance {
                 native_balance: native_balance_before_withdrawal
                     .native_balance
                     .checked_sub(effective_transaction_fee)
+                    .unwrap()
+                    .checked_sub(l1_fee)
                     .unwrap(),
                 total_effective_tx_fees: native_balance_before_withdrawal
                     .total_effective_tx_fees
@@ -1489,6 +1522,10 @@ mod native_balance {
                     .total_unspent_tx_fees
                     .checked_add(unspent_tx_fee)
                     .unwrap(),
+                total_collected_operation_native_fee: native_balance_before_withdrawal
+                    .total_collected_operation_native_fee
+                    .checked_add(withdrawal_fee)
+                    .unwrap()
             }
         );
         assert_eq!(
@@ -1632,7 +1669,8 @@ mod native_balance {
 }
 
 mod erc20_balance {
-    use crate::deposit_logs::{ReceivedDepositEvent, ReceivedErc20Event};
+    use crate::contract_logs::types::ReceivedErc20Event;
+    use crate::contract_logs::ReceivedContractEvent;
     use crate::eth_types::Address;
     use crate::state::audit::EventType::AcceptedErc20WithdrawalRequest;
     use crate::state::audit::{apply_state_transition, EventType};
@@ -1660,7 +1698,7 @@ mod erc20_balance {
             || {
                 apply_state_transition(
                     &mut state,
-                    &ReceivedDepositEvent::from(deposit_event.clone()).into_deposit(),
+                    &ReceivedContractEvent::from(deposit_event.clone()).into_event_type(),
                 )
             },
             "BUG: unsupported ERC-20",
@@ -1705,7 +1743,7 @@ mod erc20_balance {
         let deposit_event = received_erc20_event();
         apply_state_transition(
             &mut state,
-            &ReceivedDepositEvent::from(deposit_event.clone()).into_deposit(),
+            &ReceivedContractEvent::from(deposit_event.clone()).into_event_type(),
         );
         let balance_after = state.erc20_balances.clone();
 
@@ -1724,7 +1762,7 @@ mod erc20_balance {
         let deposit_event = received_erc20_event();
         apply_state_transition(
             &mut state,
-            &EventType::InvalidDeposit {
+            &EventType::InvalidEvent {
                 event_source: deposit_event.source(),
                 reason: "invalid principal".to_string(),
             },
@@ -1774,7 +1812,9 @@ fn erc20_withdrawal_request() -> Erc20WithdrawalRequest {
         .unwrap(),
         from_subaccount: None,
         created_at: 1_711_138_972_460_345_032,
-        l1_fee: Some(Wei::new(5_000_000_000_000)),
+        l1_fee: Some(Wei::new(10_000_000)),
+        is_wrapped_mint: false,
+        withdrawal_fee: Some(Wei::new(5_000_000)),
     }
 }
 

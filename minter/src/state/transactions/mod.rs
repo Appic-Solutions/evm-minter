@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests;
 
-use crate::endpoints::{
-    RetrieveWithdrawalStatus, Transaction, TxFinalizedStatus, WithdrawalStatus,
+use crate::candid_types::{
+    withdraw_native::WithdrawalStatus, RetrieveWithdrawalStatus, Transaction, TxFinalizedStatus,
 };
 use crate::evm_config::EvmNetwork;
 use crate::map::MultiKeyMap;
@@ -61,9 +61,13 @@ pub struct NativeWithdrawalRequest {
     /// Fee consumed for batch l1 submission, only applicable to some l2s like Op, and Base
     #[n(6)]
     pub l1_fee: Option<Wei>,
+
+    /// Fee taken for covering the signing, rpc calls, and other incfraustructure costs
+    #[n(7)]
+    pub withdrawal_fee: Option<Wei>,
 }
 
-/// ERC-20 withdrawal request issued by the user.
+/// ERC-20(both unlocking erc20 tokens, and minting wrappped icrc tokens) withdrawal request issued by the user.
 #[derive(Clone, Eq, PartialEq, Encode, Decode)]
 pub struct Erc20WithdrawalRequest {
     /// Amount of burn Native token that can be used to pay for the EVM transaction fees.
@@ -100,6 +104,15 @@ pub struct Erc20WithdrawalRequest {
     /// Fee consumed for batch l1 submission, only applicable to some l2s like Op, and Base
     #[n(10)]
     pub l1_fee: Option<Wei>,
+
+    /// Fee taken for covering the signing, rpc calls, and other incfraustructure costs
+    #[n(11)]
+    pub withdrawal_fee: Option<Wei>,
+
+    /// if the transaction mint new wrapped erc20 tokens on the evm side after icrc tokens got
+    /// locked on the icp side     
+    #[n(12)]
+    pub is_wrapped_mint: bool,
 }
 
 struct DebugPrincipal<'a>(&'a Principal);
@@ -120,6 +133,7 @@ impl fmt::Debug for NativeWithdrawalRequest {
             from_subaccount,
             created_at,
             l1_fee,
+            withdrawal_fee,
         } = self;
         f.debug_struct("NativeWithdrawalRequest")
             .field("withdrawal_amount", withdrawal_amount)
@@ -129,6 +143,7 @@ impl fmt::Debug for NativeWithdrawalRequest {
             .field("from_subaccount", from_subaccount)
             .field("created_at", created_at)
             .field("l1_fee", l1_fee)
+            .field("withdrawal_fee", withdrawal_fee)
             .finish()
     }
 }
@@ -147,6 +162,8 @@ impl fmt::Debug for Erc20WithdrawalRequest {
             from_subaccount,
             created_at,
             l1_fee,
+            withdrawal_fee,
+            is_wrapped_mint,
         } = self;
         f.debug_struct("Erc20WithdrawalRequest")
             .field("max_transaction_fee", max_transaction_fee)
@@ -160,6 +177,8 @@ impl fmt::Debug for Erc20WithdrawalRequest {
             .field("from_subaccount", from_subaccount)
             .field("created_at", created_at)
             .field("l1_fee", l1_fee)
+            .field("withdrawal_fee", withdrawal_fee)
+            .field("is_wrapped_mint", is_wrapped_mint)
             .finish()
     }
 }
@@ -197,6 +216,20 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.destination,
             WithdrawalRequest::Erc20(request) => request.destination,
+        }
+    }
+
+    pub fn l1_fee(&self) -> Option<Wei> {
+        match self {
+            WithdrawalRequest::Native(request) => request.l1_fee,
+            WithdrawalRequest::Erc20(request) => request.l1_fee,
+        }
+    }
+
+    pub fn withdrawal_fee(&self) -> Option<Wei> {
+        match self {
+            WithdrawalRequest::Native(request) => request.withdrawal_fee,
+            WithdrawalRequest::Erc20(request) => request.withdrawal_fee,
         }
     }
 
@@ -275,6 +308,17 @@ pub enum ReimbursementIndex {
         #[cbor(n(2), with = "crate::cbor::id")]
         erc20_ledger_burn_index: LedgerBurnIndex,
     },
+    #[n(2)]
+    IcrcWrap {
+        #[cbor(n(0), with = "crate::cbor::id")]
+        native_ledger_burn_index: LedgerBurnIndex,
+        /// The icrc ledger canister ID identifying the ledger on which the lock to be reimbursed was made.
+        #[cbor(n(1), with = "crate::cbor::principal")]
+        icrc_token: Principal,
+        /// lock index on the Erc20 ledger
+        #[cbor(n(2), with = "crate::cbor::id")]
+        icrc_ledger_lock_index: LedgerBurnIndex,
+    },
 }
 
 impl From<&WithdrawalRequest> for ReimbursementIndex {
@@ -283,11 +327,21 @@ impl From<&WithdrawalRequest> for ReimbursementIndex {
             WithdrawalRequest::Native(request) => ReimbursementIndex::Native {
                 ledger_burn_index: request.ledger_burn_index,
             },
-            WithdrawalRequest::Erc20(request) => ReimbursementIndex::Erc20 {
-                native_ledger_burn_index: request.native_ledger_burn_index,
-                ledger_id: request.erc20_ledger_id,
-                erc20_ledger_burn_index: request.erc20_ledger_burn_index,
-            },
+            WithdrawalRequest::Erc20(request) => {
+                if request.is_wrapped_mint {
+                    ReimbursementIndex::IcrcWrap {
+                        native_ledger_burn_index: request.native_ledger_burn_index,
+                        icrc_token: request.erc20_ledger_id,
+                        icrc_ledger_lock_index: request.erc20_ledger_burn_index,
+                    }
+                } else {
+                    ReimbursementIndex::Erc20 {
+                        native_ledger_burn_index: request.native_ledger_burn_index,
+                        ledger_id: request.erc20_ledger_id,
+                        erc20_ledger_burn_index: request.erc20_ledger_burn_index,
+                    }
+                }
+            }
         }
     }
 }
@@ -300,6 +354,10 @@ impl ReimbursementIndex {
                 native_ledger_burn_index,
                 ..
             } => *native_ledger_burn_index,
+            ReimbursementIndex::IcrcWrap {
+                native_ledger_burn_index,
+                ..
+            } => *native_ledger_burn_index,
         }
     }
     pub fn burn_in_block(&self) -> LedgerBurnIndex {
@@ -309,6 +367,10 @@ impl ReimbursementIndex {
                 erc20_ledger_burn_index,
                 ..
             } => *erc20_ledger_burn_index,
+            ReimbursementIndex::IcrcWrap {
+                icrc_ledger_lock_index,
+                ..
+            } => *icrc_ledger_lock_index,
         }
     }
 }
@@ -343,15 +405,20 @@ pub struct Reimbursed {
     pub reimbursed_amount: Erc20TokenAmount,
     #[n(3)]
     pub transaction_hash: Option<Hash>,
+    #[n(4)]
+    /// In case reimbursement_request is for releaseing(locked) icrc tokens, transfer_fee should be
+    /// calculated, since minintg and burning does not have transfer fee but a simple
+    /// transfer(locking, unlocking) contains transfer fee.
+    pub transfer_fee: Option<Erc20TokenAmount>,
 }
 
 pub type ReimbursedResult = Result<Reimbursed, ReimbursedError>;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ReimbursedError {
-    /// Whether reimbursement was minted or not is unknown,
+    /// Whether reimbursement was (minted, released) or not is unknown,
     /// most likely because there was an unexpected panic in the callback.
-    /// The reimbursement request is quarantined to avoid any double minting and
+    /// The reimbursement request is quarantined to avoid any double (minting, releaseing) and
     /// will not be further processed without manual intervention.
     Quarantined,
 }
@@ -725,6 +792,7 @@ impl WithdrawalTransactions {
             .get(&ledger_burn_index)
             .expect("failed to find entry from processed_withdrawal_requests with block index: {ledger_burn_index}");
         let index = ReimbursementIndex::from(request);
+
         match &request {
             WithdrawalRequest::Native(request) => {
                 if receipt.status == TransactionStatus::Failure {
@@ -792,6 +860,7 @@ impl WithdrawalTransactions {
         &mut self,
         index: ReimbursementIndex,
         reimbursed_in_block: LedgerMintIndex,
+        transfer_fee: Option<Erc20TokenAmount>,
     ) {
         let reimbursement_request = self
             .reimbursement_requests
@@ -806,6 +875,7 @@ impl WithdrawalTransactions {
                     reimbursed_in_block,
                     reimbursed_amount: reimbursement_request.reimbursed_amount,
                     transaction_hash: reimbursement_request.transaction_hash,
+                    transfer_fee: transfer_fee
                 }),
             ),
             None
@@ -1130,16 +1200,21 @@ pub fn create_transaction(
             let transaction_price = gas_fee_estimate.to_price(gas_limit);
             let max_transaction_fee = transaction_price.max_transaction_fee();
             let l1_fee = request.l1_fee.unwrap_or(Wei::ZERO);
-            let tx_amount = match request
-                .withdrawal_amount
-                .checked_sub(max_transaction_fee.checked_add(l1_fee).unwrap_or(Wei::MAX))
-            {
+            let withdrawal_fee = request.withdrawal_fee.unwrap_or(Wei::ZERO);
+
+            let fees_combined = max_transaction_fee
+                .checked_add(l1_fee)
+                .unwrap_or(Wei::MAX)
+                .checked_add(withdrawal_fee)
+                .unwrap_or(Wei::MAX);
+
+            let tx_amount = match request.withdrawal_amount.checked_sub(fees_combined) {
                 Some(tx_amount) => tx_amount,
                 None => {
                     return Err(CreateTransactionError::InsufficientTransactionFee {
                         native_ledger_burn_index: request.ledger_burn_index,
                         allowed_max_transaction_fee: request.withdrawal_amount,
-                        actual_max_transaction_fee: max_transaction_fee,
+                        actual_max_transaction_fee: fees_combined,
                     });
                 }
             };
@@ -1163,21 +1238,17 @@ pub fn create_transaction(
             // the transaction could still make it as long as `transaction.max_fee_per_gas >=  block.base_fee_per_gas`,
             // since the `priority_fee_per_gas` received by the miner is capped to (see https://eips.ethereum.org/EIPS/eip-1559)
             // min(transaction.max_priority_fee_per_gas, transaction.max_fee_per_gas - block.base_fee_per_gas).
-            let l1_fee = request.l1_fee.unwrap_or(Wei::ZERO);
+
             let request_max_fee_per_gas = request
                 .max_transaction_fee
-                .checked_sub(l1_fee)
-                .unwrap_or(Wei::ZERO)
                 .into_wei_per_gas(gas_limit)
                 .expect("BUG: gas_limit should be non-zero");
+
             let actual_min_max_fee_per_gas = gas_fee_estimate.min_max_fee_per_gas();
             if actual_min_max_fee_per_gas > request_max_fee_per_gas {
                 return Err(CreateTransactionError::InsufficientTransactionFee {
                     native_ledger_burn_index: request.native_ledger_burn_index,
-                    allowed_max_transaction_fee: request
-                        .max_transaction_fee
-                        .checked_sub(l1_fee)
-                        .unwrap_or(Wei::ZERO),
+                    allowed_max_transaction_fee: request.max_transaction_fee,
                     actual_max_transaction_fee: actual_min_max_fee_per_gas
                         .transaction_cost(gas_limit)
                         .unwrap_or(Wei::MAX),

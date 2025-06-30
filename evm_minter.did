@@ -18,6 +18,7 @@ type CanisterStatusResponse = record {
   reserved_cycles : nat;
 };
 type CanisterStatusType = variant { stopped; stopping; running };
+type ChainData = record { fee_history : text; latest_block_number : nat };
 type DefiniteCanisterSettings = record {
   freezing_threshold : nat;
   controllers : vec principal;
@@ -55,9 +56,21 @@ type EventPayload = variant {
     erc20_contract_address : text;
     from_address : text;
   };
+  FailedIcrcLockRequest : record {
+    to : principal;
+    withdrawal_id : nat;
+    reimbursed_amount : nat;
+    to_subaccount : opt blob;
+  };
   SignedTransaction : record { raw_transaction : text; withdrawal_id : nat };
+  ReleasedIcrcToken : record {
+    transfer_fee : nat;
+    release_block_index : nat;
+    event_source : EventSource;
+  };
   Upgrade : UpgradeArg;
   Init : InitArg;
+  QuarantinedRelease : record { event_source : EventSource };
   AddedErc20Token : AddErc20Token;
   QuarantinedDeposit : record { event_source : EventSource };
   SyncedToBlock : record { block_number : nat };
@@ -75,6 +88,13 @@ type EventPayload = variant {
     transaction : UnsignedTransaction;
   };
   QuarantinedReimbursement : record { index : ReimbursementIndex };
+  DeployedWrappedIcrcToken : record {
+    transaction_hash : text;
+    log_index : nat;
+    deployed_wrapped_erc20 : text;
+    block_number : nat;
+    base_token : principal;
+  };
   ReimbursedNativeWithdrawal : record {
     transaction_hash : opt text;
     withdrawal_id : nat;
@@ -101,6 +121,15 @@ type EventPayload = variant {
     ledger_id : principal;
     reimbursed_in_block : nat;
   };
+  ReimbursedIcrcWrap : record {
+    transaction_hash : opt text;
+    transfer_fee : opt nat;
+    reimbursed_amount : nat;
+    lock_in_block : nat;
+    reimbursed_icrc_token : principal;
+    reimbursed_in_block : nat;
+    native_ledger_burn_index : nat;
+  };
   AcceptedNativeWithdrawalRequest : record {
     ledger_burn_index : nat;
     destination : text;
@@ -108,6 +137,7 @@ type EventPayload = variant {
     from : principal;
     created_at : opt nat64;
     from_subaccount : opt blob;
+    withdrawal_fee : opt nat;
     l1_fee : opt nat;
   };
   CreatedTransaction : record {
@@ -124,13 +154,27 @@ type EventPayload = variant {
     created_at : nat64;
     from_subaccount : opt blob;
     erc20_contract_address : text;
+    withdrawal_fee : opt nat;
     max_transaction_fee : nat;
     l1_fee : opt nat;
+    is_wrapped_mint : bool;
     native_ledger_burn_index : nat;
   };
+  InvalidEvent : record { event_source : EventSource; reason : text };
   FinalizedTransaction : record {
     withdrawal_id : nat;
     transaction_receipt : TransactionReceipt;
+  };
+  AcceptedWrappedIcrcBurn : record {
+    "principal" : principal;
+    transaction_hash : text;
+    value : nat;
+    wrapped_erc20_contract_address : text;
+    log_index : nat;
+    subaccount : opt blob;
+    block_number : nat;
+    icrc_token_principal : principal;
+    from_address : text;
   };
   MintedNative : record { event_source : EventSource; mint_block_index : nat };
 };
@@ -168,6 +212,27 @@ type FeeError = variant {
     failed_transfer_amount : nat;
   };
 };
+type FeeError_1 = variant {
+  TemporarilyUnavailable : text;
+  InsufficientAllowance : record {
+    token_symbol : text;
+    ledger_id : principal;
+    allowance : nat;
+    failed_transfer_amount : nat;
+  };
+  AmountTooLow : record {
+    token_symbol : text;
+    ledger_id : principal;
+    minimum_transfer_amount : nat;
+    failed_transfer_amount : nat;
+  };
+  InsufficientFunds : record {
+    balance : nat;
+    token_symbol : text;
+    ledger_id : principal;
+    failed_transfer_amount : nat;
+  };
+};
 type GasFeeEstimate = record {
   max_priority_fee_per_gas : nat;
   max_fee_per_gas : nat;
@@ -176,6 +241,7 @@ type GasFeeEstimate = record {
 type GetEventsArg = record { start : nat64; length : nat64 };
 type GetEventsResult = record { total_event_count : nat64; events : vec Event };
 type Icrc28TrustedOriginsResponse = record { trusted_origins : vec text };
+type IcrcBalance = record { icrc_token : principal; balance : nat };
 type InitArg = record {
   last_scraped_block_number : nat;
   ecdsa_key_name : text;
@@ -214,12 +280,36 @@ type LedgerError = variant {
     failed_burn_amount : nat;
   };
 };
+type LedgerError_1 = variant {
+  TemporarilyUnavailable : text;
+  InsufficientAllowance : record {
+    token_symbol : text;
+    ledger_id : principal;
+    allowance : nat;
+    failed_burn_amount : nat;
+  };
+  AmountTooLow : record {
+    minimum_burn_amount : nat;
+    token_symbol : text;
+    ledger_id : principal;
+    failed_burn_amount : nat;
+  };
+  InsufficientFunds : record {
+    balance : nat;
+    token_symbol : text;
+    ledger_id : principal;
+    failed_burn_amount : nat;
+  };
+};
 type LogVisibility = variant { controllers; public };
 type MinterArg = variant { UpgradeArg : UpgradeArg; InitArg : InitArg };
 type MinterInfo = record {
+  icrc_balances : opt vec IcrcBalance;
   last_scraped_block_number : opt nat;
   last_observed_block_number : opt nat;
+  wrapped_icrc_tokens : opt vec WrappedIcrcToken;
   supported_erc20_tokens : opt vec Erc20Token;
+  helper_smart_contract_addresses : opt vec text;
   deposit_native_fee : opt nat;
   last_gas_fee_estimate : opt GasFeeEstimate;
   native_twin_token_ledger_id : opt principal;
@@ -230,6 +320,7 @@ type MinterInfo = record {
   erc20_balances : opt vec Erc20Balance;
   minter_address : opt text;
   block_height : opt CandidBlockTag;
+  total_collected_operation_fee : opt nat;
   native_balance : opt nat;
   ledger_suite_manager_id : opt principal;
 };
@@ -245,6 +336,11 @@ type ReimbursementIndex = variant {
     ledger_id : principal;
     native_ledger_burn_index : nat;
   };
+  IcrcWrap : record {
+    icrc_token : principal;
+    icrc_ledger_lock_index : nat;
+    native_ledger_burn_index : nat;
+  };
   Native : record { ledger_burn_index : nat };
 };
 type RequestScrapingError = variant {
@@ -255,6 +351,7 @@ type RequestScrapingError = variant {
 type Result = variant { Ok; Err : RequestScrapingError };
 type Result_1 = variant { Ok : RetrieveErc20Request; Err : WithdrawErc20Error };
 type Result_2 = variant { Ok : RetrieveNativeRequest; Err : WithdrawalError };
+type Result_3 = variant { Ok : RetrieveWrapIcrcRequest; Err : WrapIcrcError };
 type RetrieveErc20Request = record {
   erc20_block_index : nat;
   native_block_index : nat;
@@ -266,6 +363,10 @@ type RetrieveWithdrawalStatus = variant {
   TxSent : Transaction;
   TxCreated;
   Pending;
+};
+type RetrieveWrapIcrcRequest = record {
+  icrc_block_index : nat;
+  native_block_index : nat;
 };
 type Transaction = record { transaction_hash : text };
 type TransactionReceipt = record {
@@ -354,6 +455,25 @@ type WithdrawalStatus = variant {
   TxCreated;
   Pending;
 };
+type WrapIcrcArg = record {
+  recipient : text;
+  icrc_ledger_id : principal;
+  amount : nat;
+};
+type WrapIcrcError = variant {
+  TransferFeeUnknow : text;
+  TokenNotSupported : record { supported_tokens : vec WrappedIcrcToken };
+  TemporarilyUnavailable : text;
+  InvalidDestination : text;
+  NativeLedgerError : record { error : LedgerError_1 };
+  NativeFeeTransferError : record { error : FeeError_1 };
+  AmountTooLow;
+  IcrcLedgerError : record { error : LedgerError_1; native_block_index : nat };
+};
+type WrappedIcrcToken = record {
+  deployed_wrapped_erc20 : text;
+  base_token : principal;
+};
 service : (MinterArg) -> {
   add_erc20_token : (AddErc20Token) -> ();
   check_new_deposits : () -> ();
@@ -368,10 +488,12 @@ service : (MinterArg) -> {
   request_scraping_logs : () -> (Result);
   retrieve_deposit_status : (text) -> (opt DepositStatus) query;
   retrieve_withdrawal_status : (nat64) -> (RetrieveWithdrawalStatus);
-  smart_contract_address : () -> (text) query;
+  smart_contract_address : () -> (opt vec text) query;
+  update_chain_data : (ChainData) -> ();
   withdraw_erc20 : (WithdrawErc20Arg) -> (Result_1);
   withdraw_native_token : (WithdrawalArg) -> (Result_2);
   withdrawal_status : (WithdrawalSearchParameter) -> (
       vec WithdrawalDetail,
     ) query;
+  wrap_icrc : (WrapIcrcArg) -> (Result_3);
 }

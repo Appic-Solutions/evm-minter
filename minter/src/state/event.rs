@@ -2,11 +2,17 @@ use candid::Principal;
 use minicbor::{Decode, Encode};
 
 use crate::{
-    deposit_logs::{EventSource, ReceivedDepositEvent, ReceivedErc20Event, ReceivedNativeEvent},
+    contract_logs::{
+        types::{
+            ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent,
+            ReceivedWrappedIcrcDeployedEvent,
+        },
+        EventSource, ReceivedContractEvent,
+    },
     erc20::ERC20Token,
     eth_types::Address,
     lifecycle::{InitArg, UpgradeArg},
-    numeric::{BlockNumber, LedgerBurnIndex, LedgerMintIndex},
+    numeric::{BlockNumber, IcrcValue, LedgerBurnIndex, LedgerMintIndex, LedgerReleaseIndex, Wei},
     rpc_declarations::TransactionReceipt,
     tx::{Eip1559TransactionRequest, SignedEip1559TransactionRequest},
 };
@@ -160,13 +166,71 @@ pub enum EventType {
         #[n(0)]
         block_number: BlockNumber,
     },
+    #[n(24)]
+    /// Accepted burn icrc wrapped burn event, so the token to be released(unlocked) on the icp
+    /// side
+    AcceptedWrappedIcrcBurn(#[n(0)] ReceivedBurnEvent),
+    #[n(25)]
+    /// The minter discovered an invalid burn or deposit event in the helper contract logs.
+    InvalidEvent {
+        /// The unique identifier of the deposit on the Ethereum network.
+        #[n(0)]
+        event_source: EventSource,
+        /// The reason why minter considers the deposit invalid.
+        #[n(1)]
+        reason: String,
+    },
+    // The minter discovered a new wrapped erc20 token deployed for an Icrc based token
+    #[n(26)]
+    DeployedWrappedIcrcToken(#[n(0)] ReceivedWrappedIcrcDeployedEvent),
+    #[n(27)]
+    // The release event was quarantined due to transfer errors, will retry later
+    QuarantinedRelease {
+        #[n(0)]
+        event_source: EventSource,
+        #[n(1)]
+        release_event: ReceivedBurnEvent,
+    },
+
+    #[n(28)]
+    ReleasedIcrcToken {
+        /// The unique identifier of the deposit on the Ethereum network.
+        #[n(0)]
+        event_source: EventSource,
+        /// The transaction index on the native ledger.
+        #[cbor(n(1), with = "crate::cbor::id")]
+        release_block_index: LedgerReleaseIndex,
+        #[cbor(n(2), with = "crate::cbor::principal")]
+        released_icrc_token: Principal,
+        #[n(3)]
+        wrapped_erc20_contract_address: Address,
+        #[n(4)]
+        transfer_fee: IcrcValue,
+    },
+    #[n(29)]
+    FailedIcrcLockRequest(#[n(0)] ReimbursementRequest),
+    #[n(30)]
+    ReimbursedIcrcWrap {
+        #[cbor(n(0), with = "crate::cbor::id")]
+        native_ledger_burn_index: LedgerBurnIndex,
+        #[cbor(n(1), with = "crate::cbor::principal")]
+        reimbursed_icrc_token: Principal,
+        #[n(2)]
+        reimbursed: Reimbursed,
+    },
 }
 
-impl ReceivedDepositEvent {
-    pub fn into_deposit(self) -> EventType {
+impl ReceivedContractEvent {
+    pub fn into_event_type(self) -> EventType {
         match self {
-            ReceivedDepositEvent::Native(event) => EventType::AcceptedDeposit(event),
-            ReceivedDepositEvent::Erc20(event) => EventType::AcceptedErc20Deposit(event),
+            ReceivedContractEvent::NativeDeposit(event) => EventType::AcceptedDeposit(event),
+            ReceivedContractEvent::Erc20Deposit(event) => EventType::AcceptedErc20Deposit(event),
+            ReceivedContractEvent::WrappedIcrcBurn(event) => {
+                EventType::AcceptedWrappedIcrcBurn(event)
+            }
+            ReceivedContractEvent::WrappedIcrcDeployed(event) => {
+                EventType::DeployedWrappedIcrcToken(event)
+            }
         }
     }
 }

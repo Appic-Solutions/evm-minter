@@ -1,15 +1,19 @@
 use std::str::FromStr;
 
-use crate::deposit_logs::{
-    LogParser, ReceivedDepositLogParser, RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC,
-};
 use crate::eth_types::Address;
 use crate::numeric::BlockNumber;
 use crate::rpc_declarations::{FixedSizeData, Topic};
 use crate::state::State;
 
+use super::parser::{LogParser, ReceivedEventsLogParser};
+use super::types::{
+    RECEIVED_DEPLOYED_WRAPPED_ICRC_TOKEN_EVENT_TOPIC,
+    RECEIVED_DEPOSITED_AND_BURNT_TOKENS_EVENT_TOPIC_NEW_CONTRACT,
+    RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT,
+};
+
 pub struct Scrape {
-    pub contract_address: Address,
+    pub contract_addresses: Vec<Address>,
     pub last_scraped_block_number: BlockNumber,
     pub topics: Vec<Topic>,
 }
@@ -23,14 +27,16 @@ pub trait LogScraping {
     fn update_last_scraped_block_number(state: &mut State, block_number: BlockNumber);
 }
 
-pub enum ReceivedDepositLogScraping {}
+pub enum ReceivedEventsLogScraping {}
 
-impl LogScraping for ReceivedDepositLogScraping {
-    type Parser = ReceivedDepositLogParser;
+impl LogScraping for ReceivedEventsLogScraping {
+    type Parser = ReceivedEventsLogParser;
 
+    // TODO: Add contract addresses
     fn next_scrape(state: &State) -> Option<Scrape> {
-        let contract_address = state
-            .helper_contract_address
+        let contract_addresses = state
+            .helper_contract_addresses
+            .clone()
             .expect("Scraping not activated");
 
         let last_scraped_block_number = state.last_scraped_block_number;
@@ -44,9 +50,18 @@ impl LogScraping for ReceivedDepositLogScraping {
             Address::from_str("0x0000000000000000000000000000000000000000")
                 .expect("Should not fail converting zero address"),
         );
-        let mut topics: Vec<_> = vec![Topic::from(FixedSizeData(
-            RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC,
-        ))];
+
+        let mut topics: Vec<_> = vec![
+            Topic::from(FixedSizeData(
+                RECEIVED_DEPOSITED_AND_BURNT_TOKENS_EVENT_TOPIC_NEW_CONTRACT,
+            )),
+            Topic::from(FixedSizeData(
+                RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT,
+            )),
+            Topic::from(FixedSizeData(
+                RECEIVED_DEPLOYED_WRAPPED_ICRC_TOKEN_EVENT_TOPIC,
+            )),
+        ];
         // We add token contract addresses as additional topics to match.
         // It has a disjunction semantics, so it will match if event matches any one of these addresses.
         topics.push(
@@ -58,7 +73,7 @@ impl LogScraping for ReceivedDepositLogScraping {
         );
 
         Some(Scrape {
-            contract_address,
+            contract_addresses,
             last_scraped_block_number,
             topics,
         })

@@ -24,7 +24,6 @@ ic-management-canister-types = { git = "https://github.com/dfinity/ic.git" }
 ic-utils-ensure = { git = "https://github.com/dfinity/ic.git" }
 icrc-ledger-client-cdk = { git = "https://github.com/dfinity/ic.git" }
 icrc-ledger-types={ git = "https://github.com/dfinity/ic.git"}
-ic-ethereum-types = { git = "https://github.com/dfinity/ic.git"}
 evm_rpc_types = "1.2.0"
 
 

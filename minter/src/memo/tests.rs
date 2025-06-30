@@ -1,5 +1,6 @@
 use crate::cbor::tests::check_roundtrip;
-use crate::deposit_logs::{ReceivedDepositEvent, ReceivedNativeEvent};
+use crate::contract_logs::types::ReceivedNativeEvent;
+use crate::contract_logs::ReceivedContractEvent;
 use crate::memo::BurnMemo;
 use crate::memo::{Address, MintMemo};
 use crate::numeric::{BlockNumber, Erc20TokenAmount, LedgerBurnIndex, LogIndex, Wei};
@@ -67,7 +68,7 @@ fn encode_mint_convert_memo_is_stable() {
         principal: Principal::from_str("2chl6-4hpzw-vqaaa-aaaaa-c").unwrap(),
         subaccount: None,
     };
-    let memo: Memo = (&ReceivedDepositEvent::from(event)).into();
+    let memo: Memo = (&ReceivedContractEvent::from(event)).into();
 
     assert_eq!(
         memo.0,
@@ -216,6 +217,16 @@ mod arbitrary {
             )
     }
 
+    fn arb_burn_native_for_wrap_icrc_fee_memo() -> impl Strategy<Value = BurnMemo> {
+        (arb_principal(), arb_checked_amount_of(), arb_address()).prop_map(
+            |(wrapped_icrc_base, wrap_amount, to_address)| BurnMemo::WrapIcrcGasFee {
+                wrapped_icrc_base,
+                wrap_amount,
+                to_address,
+            },
+        )
+    }
+
     fn arb_burn_erc20_memo() -> impl Strategy<Value = BurnMemo> {
         (any::<u64>(), arb_address()).prop_map(|(erc20_withdrawal_id, to_address)| {
             BurnMemo::Erc20Convert {
@@ -223,6 +234,10 @@ mod arbitrary {
                 to_address,
             }
         })
+    }
+
+    fn arb_icrc_lock_memo() -> impl Strategy<Value = BurnMemo> {
+        (arb_address()).prop_map(|to_address| BurnMemo::IcrcLocked { to_address })
     }
 
     pub fn arb_reimbursement_request() -> impl Strategy<Value = ReimbursementRequest> {
@@ -277,6 +292,8 @@ mod arbitrary {
             BurnMemo::Convert { .. } => arb_burn_native_memo().boxed(),
             BurnMemo::Erc20GasFee { .. } => arb_burn_native_for_erc20_fee_memo().boxed(),
             BurnMemo::Erc20Convert { .. } => arb_burn_erc20_memo().boxed(),
+            BurnMemo::WrapIcrcGasFee { .. } => arb_burn_native_for_wrap_icrc_fee_memo().boxed(),
+            BurnMemo::IcrcLocked { .. } => arb_icrc_lock_memo().boxed(),
         };
     }
 }

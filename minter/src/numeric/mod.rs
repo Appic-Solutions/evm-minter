@@ -15,6 +15,9 @@ pub type Wei = CheckedAmountOf<WeiTag>;
 pub enum Erc20Tag {}
 pub type Erc20Value = CheckedAmountOf<Erc20Tag>;
 
+pub enum IcrcValueTag {}
+pub type IcrcValue = CheckedAmountOf<IcrcValueTag>;
+
 /// Amount of tokens using their smallest denomination.
 pub enum Erc20TokenAmountTag {}
 pub type Erc20TokenAmount = CheckedAmountOf<Erc20TokenAmountTag>;
@@ -61,6 +64,12 @@ pub type LedgerBurnIndex = Id<BurnIndexTag, u64>;
 
 pub enum MintIndexTag {}
 pub type LedgerMintIndex = Id<MintIndexTag, u64>;
+
+pub enum ReleaseIndexTag {}
+pub type LedgerReleaseIndex = Id<ReleaseIndexTag, u64>;
+
+pub enum LockIndexTag {}
+pub type LedgerLockIndex = Id<LockIndexTag, u64>;
 
 impl WeiPerGas {
     pub fn transaction_cost(self, gas: GasAmount) -> Option<Wei> {

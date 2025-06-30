@@ -1,11 +1,12 @@
 #[cfg(test)]
 mod tests;
-use crate::deposit_logs::ReceivedDepositEvent;
+use crate::contract_logs::ReceivedContractEvent;
 use crate::erc20::ERC20TokenSymbol;
 use crate::eth_types::Address;
 use crate::numeric::{Erc20Value, LogIndex};
 use crate::rpc_declarations::Hash;
 use crate::state::transactions::ReimbursementRequest;
+use candid::Principal;
 use icrc_ledger_types::icrc1::transfer::Memo;
 use minicbor;
 use minicbor::{Decode, Encode, Encoder};
@@ -81,6 +82,7 @@ pub enum BurnMemo {
         #[n(2)]
         to_address: Address,
     },
+
     /// The minter processed a ERC20 withdrawal request.
     #[n(2)]
     Erc20Convert {
@@ -88,6 +90,33 @@ pub enum BurnMemo {
         #[n(0)]
         erc20_withdrawal_id: u64,
 
+        /// The destination of the withdrawal request.
+        #[n(1)]
+        to_address: Address,
+    },
+
+    #[n(3)]
+    /// The minter processed a WrapIcrc request
+    /// and that burn pays the transaction fee.
+    WrapIcrcGasFee {
+        /// icrc base token to be wrapped.
+        #[cbor(n(0), with = "crate::cbor::principal")]
+        wrapped_icrc_base: Principal,
+
+        /// The amount of the Icrc wrapped request.
+        #[n(1)]
+        wrap_amount: Erc20Value,
+
+        /// The destination of the wrapped token.
+        #[n(2)]
+        to_address: Address,
+    },
+
+    #[n(4)]
+    /// Locked icrc token to be wrapped on the evm side
+    /// intentionally kept short to prevent ledger memo size limit specially when it comes to ICP
+    /// ledger
+    IcrcLocked {
         /// The destination of the withdrawal request.
         #[n(1)]
         to_address: Address,
@@ -100,13 +129,30 @@ impl From<BurnMemo> for Memo {
     }
 }
 
-impl From<&ReceivedDepositEvent> for Memo {
-    fn from(event: &ReceivedDepositEvent) -> Self {
-        Memo::from(MintMemo::Convert {
-            from_address: event.from_address(),
-            tx_hash: event.transaction_hash(),
-            log_index: event.log_index(),
-        })
+impl From<&ReceivedContractEvent> for Memo {
+    fn from(event: &ReceivedContractEvent) -> Self {
+        //todo!()
+        match event {
+            ReceivedContractEvent::NativeDeposit(received_native_event) => MintMemo::Convert {
+                from_address: received_native_event.from_address,
+                tx_hash: received_native_event.transaction_hash,
+                log_index: received_native_event.log_index,
+            },
+            ReceivedContractEvent::Erc20Deposit(received_erc20_event) => MintMemo::Convert {
+                from_address: received_erc20_event.from_address,
+                tx_hash: received_erc20_event.transaction_hash,
+                log_index: received_erc20_event.log_index,
+            },
+            ReceivedContractEvent::WrappedIcrcBurn(received_burn_event) => MintMemo::Convert {
+                from_address: received_burn_event.from_address,
+                tx_hash: received_burn_event.transaction_hash,
+                log_index: received_burn_event.log_index,
+            },
+            ReceivedContractEvent::WrappedIcrcDeployed(_received_wrapped_icrc_deployed_event) => {
+                panic!("Bug: this event is not mintable")
+            }
+        }
+        .into()
     }
 }
 

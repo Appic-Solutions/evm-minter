@@ -1,4 +1,4 @@
-use crate::endpoints::CandidBlockTag;
+use crate::candid_types::CandidBlockTag;
 use crate::erc20::ERC20TokenSymbol;
 use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
@@ -85,9 +85,9 @@ impl TryFrom<InitArg> for State {
             })?;
         let native_symbol = ERC20TokenSymbol::new(native_symbol);
 
-        let helper_contract_address = match helper_contract_address {
+        let helper_contract_addresses = match helper_contract_address {
             Some(address_string) => match Address::from_str(&address_string) {
-                Ok(address) => Ok(Some(address)),
+                Ok(address) => Ok(Some(vec![address])),
                 Err(e) => Err(InvalidStateError::InvalidHelperContractAddress(format!(
                     "ERROR: {}",
                     e
@@ -118,7 +118,7 @@ impl TryFrom<InitArg> for State {
             .map_err(|e| InvalidStateError::InvalidFeeInput(format!("ERROR: {}", e)))?;
 
         // If fee is set to zero it should be remapped to None
-        let deposit_native_fee = if deposit_native_fee_converted == Wei::ZERO {
+        let _deposit_native_fee = if deposit_native_fee_converted == Wei::ZERO {
             None
         } else {
             Some(deposit_native_fee_converted)
@@ -138,7 +138,7 @@ impl TryFrom<InitArg> for State {
         let state = Self {
             evm_network,
             ecdsa_key_name,
-            helper_contract_address,
+            helper_contract_addresses,
             pending_withdrawal_principals: Default::default(),
             native_symbol,
             withdrawal_transactions: WithdrawalTransactions::new(initial_nonce),
@@ -165,8 +165,13 @@ impl TryFrom<InitArg> for State {
             evm_canister_id: Principal::from_text("sosge-5iaaa-aaaag-alcla-cai").unwrap(),
             min_max_priority_fee_per_gas,
             swap_canister_id: None,
-            deposit_native_fee,
             withdrawal_native_fee,
+            events_to_release: Default::default(),
+            released_events: Default::default(),
+            quarantined_releases: Default::default(),
+            icrc_balances: Default::default(),
+            wrapped_icrc_tokens: Default::default(),
+            last_log_scraping_time: None,
         };
         state.validate_config()?;
         Ok(state)
@@ -191,6 +196,7 @@ pub struct UpgradeArg {
     pub native_ledger_transfer_fee: Option<Nat>,
     #[cbor(n(7), with = "crate::cbor::nat::option")]
     pub min_max_priority_fee_per_gas: Option<Nat>,
+    // deposit_native_fee is deprecated
     #[cbor(n(8), with = "crate::cbor::nat::option")]
     pub deposit_native_fee: Option<Nat>,
     #[cbor(n(9), with = "crate::cbor::nat::option")]

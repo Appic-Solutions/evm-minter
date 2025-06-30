@@ -1,22 +1,37 @@
-use candid::Nat;
+use candid::{Nat, Principal};
 use evm_minter::address::{validate_address_as_destination, AddressValidationError};
-use evm_minter::deposit::{scrape_logs, validate_log_scraping_request};
-use evm_minter::deposit_logs::{EventSource, ReceivedErc20Event, ReceivedNativeEvent};
-use evm_minter::endpoints::events::{
+use evm_minter::candid_types::chain_data::ChainData;
+use evm_minter::candid_types::events::{
     Event as CandidEvent, EventSource as CandidEventSource, GetEventsArg, GetEventsResult,
 };
+use evm_minter::candid_types::wrapped_icrc::{
+    RetrieveWrapIcrcRequest, WrapIcrcArg, WrapIcrcError, WrappedIcrcToken,
+};
+use evm_minter::contract_logs::types::{
+    ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent, ReceivedWrappedIcrcDeployedEvent,
+};
+use evm_minter::contract_logs::EventSource;
+use evm_minter::deposit::{
+    apply_safe_threshold_to_latest_block_numner, scrape_logs, validate_log_scraping_request,
+};
 
-use evm_minter::endpoints::{
-    self, AddErc20Token, DepositStatus, FeeError, Icrc28TrustedOriginsResponse,
+use evm_minter::candid_types::{
+    self, AddErc20Token, DepositStatus, Icrc28TrustedOriginsResponse, IcrcBalance,
     RequestScrapingError,
 };
-use evm_minter::endpoints::{
-    Eip1559TransactionPrice, Eip1559TransactionPriceArg, Erc20Balance, GasFeeEstimate, MinterInfo,
-    RetrieveNativeRequest, RetrieveWithdrawalStatus, WithdrawalArg, WithdrawalDetail,
-    WithdrawalError, WithdrawalSearchParameter,
+use evm_minter::candid_types::{
+    withdraw_erc20::RetrieveErc20Request, withdraw_erc20::WithdrawErc20Arg,
+    withdraw_erc20::WithdrawErc20Error,
 };
-use evm_minter::endpoints::{RetrieveErc20Request, WithdrawErc20Arg, WithdrawErc20Error};
+use evm_minter::candid_types::{
+    withdraw_native::WithdrawalArg, withdraw_native::WithdrawalDetail,
+    withdraw_native::WithdrawalError, withdraw_native::WithdrawalSearchParameter,
+    Eip1559TransactionPrice, Eip1559TransactionPriceArg, Erc20Balance, GasFeeEstimate, MinterInfo,
+    RetrieveNativeRequest, RetrieveWithdrawalStatus,
+};
+
 use evm_minter::erc20::ERC20Token;
+use evm_minter::eth_types::fee_hisotry_parser::parse_fee_history;
 use evm_minter::evm_config::EvmNetwork;
 use evm_minter::guard::retrieve_withdraw_guard;
 use evm_minter::ledger_client::{LedgerBurnError, LedgerClient};
@@ -24,10 +39,11 @@ use evm_minter::lifecycle::MinterArg;
 use evm_minter::logs::INFO;
 use evm_minter::lsm_client::lazy_add_native_ls_to_lsm_canister;
 use evm_minter::memo::BurnMemo;
-use evm_minter::numeric::{Erc20Value, LedgerBurnIndex, Wei};
+use evm_minter::numeric::{BlockNumber, Erc20Value, LedgerBurnIndex, Wei};
 use evm_minter::rpc_client::providers::Provider;
 use evm_minter::rpc_declarations::Hash;
-use evm_minter::state::audit::{process_event, Event, EventType};
+use evm_minter::state::audit::{process_event, EventType};
+use evm_minter::state::event::Event;
 use evm_minter::state::transactions::{
     Erc20WithdrawalRequest, NativeWithdrawalRequest, Reimbursed, ReimbursementIndex,
     ReimbursementRequest,
@@ -36,14 +52,16 @@ use evm_minter::state::{
     lazy_call_ecdsa_public_key, mutate_state, read_state, transactions, State, STATE,
 };
 use evm_minter::storage::set_rpc_api_key;
-use evm_minter::tx::gas_fees::{lazy_fetch_l1_fee_estimate, lazy_refresh_gas_fee_estimate};
+use evm_minter::tx::gas_fees::{
+    estimate_transaction_fee, lazy_refresh_gas_fee_estimate, DEFAULT_L1_BASE_GAS_FEE,
+};
 use evm_minter::withdraw::{
-    process_reimbursement, process_retrieve_tokens_requests,
+    process_reimbursement, process_retrieve_tokens_requests, ERC20_MINT_TRANSACTION_GAS_LIMIT,
     ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT, NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
 };
 use evm_minter::{
     state, storage, PROCESS_REIMBURSEMENT, PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL,
-    SCRAPING_DEPOSIT_LOGS_INTERVAL,
+    RPC_HELPER_PRINCIPAL, SCRAPING_CONTRACT_LOGS_INTERVAL,
 };
 use ic_canister_log::log;
 use ic_cdk::{init, post_upgrade, pre_upgrade, query, update};
@@ -83,7 +101,7 @@ fn setup_timers() {
 
     // Start scraping logs immediately after the install, then repeat with the interval.
     ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(scrape_logs()));
-    ic_cdk_timers::set_timer_interval(SCRAPING_DEPOSIT_LOGS_INTERVAL, || {
+    ic_cdk_timers::set_timer_interval(SCRAPING_CONTRACT_LOGS_INTERVAL, || {
         ic_cdk::spawn(scrape_logs())
     });
     ic_cdk_timers::set_timer_interval(PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL, || {
@@ -128,6 +146,8 @@ async fn init(arg: MinterArg) {
             let _ = lazy_add_native_ls_to_lsm_canister().await;
         })
     });
+
+    setup_timers();
 }
 
 fn emit_preupgrade_events() {
@@ -173,10 +193,15 @@ async fn minter_address() -> String {
 }
 
 #[query]
-async fn smart_contract_address() -> String {
-    read_state(|s| s.helper_contract_address)
-        .map(|a| a.to_string())
-        .unwrap_or("N/A".to_string())
+async fn smart_contract_address() -> Option<Vec<String>> {
+    read_state(|s| {
+        s.helper_contract_addresses.as_ref().map(|addresses| {
+            addresses
+                .into_iter()
+                .map(|address| address.to_string())
+                .collect()
+        })
+    })
 }
 
 /// Estimate price of EIP-1559 transaction based on the
@@ -233,16 +258,49 @@ async fn get_minter_info() -> MinterInfo {
         );
         let supported_erc20_tokens = Some(
             s.supported_erc20_tokens()
-                .map(|token| endpoints::Erc20Token::from(token))
+                .map(|token| candid_types::Erc20Token::from(token))
+                .collect(),
+        );
+
+        let icrc_balances = Some(
+            s.icrc_balances
+                .balance_by_icrc_ledger
+                .iter()
+                .map(|(token, balance)| IcrcBalance {
+                    icrc_token: *token,
+                    balance: (*balance).into(),
+                })
+                .collect(),
+        );
+
+        let wrapped_icrc_tokens = Some(
+            s.wrapped_icrc_tokens
+                .iter()
+                .map(|(token, erc20_address, _)| WrappedIcrcToken {
+                    base_token: *token,
+                    deployed_wrapped_erc20: erc20_address.to_string(),
+                })
                 .collect(),
         );
 
         MinterInfo {
             minter_address: s.minter_address().map(|a| a.to_string()),
-            helper_smart_contract_address: s.helper_contract_address.map(|a| a.to_string()),
+            helper_smart_contract_address: s
+                .helper_contract_addresses
+                .as_ref()
+                .and_then(|addresses| addresses.first().map(|address| address.to_string())),
+
+            helper_smart_contract_addresses: s.helper_contract_addresses.as_ref().map(
+                |addresses| {
+                    addresses
+                        .into_iter()
+                        .map(|address| address.to_string())
+                        .collect()
+                },
+            ),
             supported_erc20_tokens,
             minimum_withdrawal_amount: Some(s.native_minimum_withdrawal_amount.into()),
-            deposit_native_fee: s.deposit_native_fee.map(|fee| fee.into()),
+            deposit_native_fee: None,
             withdrawal_native_fee: s.withdrawal_native_fee.map(|fee| fee.into()),
             block_height: Some(s.block_height.into()),
             last_observed_block_number: s.last_observed_block_number.map(|n| n.into()),
@@ -259,6 +317,11 @@ async fn get_minter_info() -> MinterInfo {
             native_twin_token_ledger_id: Some(s.native_ledger_id),
             ledger_suite_manager_id: s.ledger_suite_manager_id,
             swap_canister_id: s.swap_canister_id,
+            total_collected_operation_fee: Some(
+                s.native_balance.total_collected_operation_native_fee.into(),
+            ),
+            icrc_balances,
+            wrapped_icrc_tokens,
         }
     })
 }
@@ -271,12 +334,12 @@ async fn get_minter_info() -> MinterInfo {
 // Meaning that this function can only be called onces in a minute due to cycle drain attacks.
 #[update]
 async fn request_scraping_logs() -> Result<(), RequestScrapingError> {
-    let last_observed_block_time = read_state(|s| s.last_observed_block_time)
+    let last_log_scraping_time = read_state(|s| s.last_log_scraping_time)
         .expect("The block time should not be null at the time of this function call");
 
     let now_ns = ic_cdk::api::time();
 
-    validate_log_scraping_request(last_observed_block_time, now_ns)?;
+    validate_log_scraping_request(last_log_scraping_time, now_ns)?;
 
     ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(scrape_logs()));
 
@@ -309,15 +372,13 @@ async fn withdraw_native_token(
         }
     })?;
 
+    let amount = Wei::try_from(amount).expect("failed to convert Nat to u256");
+
     // If withdrawal_native_fee is some, the total transaction value should be as follow
     // amount - withdrawal_native_fee
-    let withdrawal_native_fee = read_state(|s| s.withdrawal_native_fee);
+    let (withdrawal_native_fee, minimum_withdrawal_amount) =
+        read_state(|s| (s.withdrawal_native_fee, s.native_minimum_withdrawal_amount));
 
-    let native_transfer_fee = read_state(|s| s.native_ledger_transfer_fee);
-
-    let mut amount = Wei::try_from(amount).expect("failed to convert Nat to u256");
-
-    let minimum_withdrawal_amount = read_state(|s| s.native_minimum_withdrawal_amount);
     if amount < minimum_withdrawal_amount {
         return Err(WithdrawalError::AmountTooLow {
             min_withdrawal_amount: minimum_withdrawal_amount.into(),
@@ -326,55 +387,9 @@ async fn withdraw_native_token(
 
     // Check if l1_fee is required for this network
     let l1_fee = match read_state(|s| s.evm_network) {
-        EvmNetwork::Base | EvmNetwork::Optimism => match lazy_fetch_l1_fee_estimate().await {
-            Some(fee) => Some(fee),
-            None => {
-                return Err(WithdrawalError::TemporarilyUnavailable(
-                    "Failed to retrieve current l1 fee".to_string(),
-                ));
-            }
-        },
+        EvmNetwork::Base => Some(DEFAULT_L1_BASE_GAS_FEE),
         _ => None,
     };
-
-    // Fee transfer and calculation
-    // The amount of transferred fee is as follow
-    // withdrawal_native_fee - native_transfer_fee
-    // Fee transfer will only be triggered if
-    // withdrawal_native_fee is Some(Wei)
-    let _fee_transfer_result = match withdrawal_native_fee {
-        Some(withdrawal_fee) => {
-            let client = read_state(LedgerClient::native_ledger_from_state);
-            let transfer_amount = withdrawal_fee
-                .checked_sub(native_transfer_fee)
-                .expect("Failed to calculate withdrawal fee");
-            log!(
-                INFO,
-                "[withdraw]: Transferring Withdrawal fee - ledger transfer fee {:?}",
-                transfer_amount
-            );
-            match client
-                .transfer_withdrawal_fee(caller.into(), transfer_amount)
-                .await
-            {
-                Ok(block_index) => {
-                    log!(
-                        INFO,
-                        "Transferred Withdrawal fee to minter with block {}",
-                        block_index
-                    );
-
-                    // Deducting withdrawal_fee from withdrawal amount
-                    amount = amount
-                        .checked_sub(withdrawal_fee)
-                        .expect("Failed calculating withdrawal amount");
-                    Ok(())
-                }
-                Err(err) => Err(WithdrawalError::from(err)),
-            }
-        }
-        None => Ok(()),
-    }?;
 
     let client = read_state(LedgerClient::native_ledger_from_state);
     let now = ic_cdk::api::time();
@@ -386,6 +401,7 @@ async fn withdraw_native_token(
             BurnMemo::Convert {
                 to_address: destination,
             },
+            None,
         )
         .await
     {
@@ -398,6 +414,7 @@ async fn withdraw_native_token(
                 from_subaccount: None,
                 created_at: Some(now),
                 l1_fee,
+                withdrawal_fee: withdrawal_native_fee,
             };
 
             log!(
@@ -419,28 +436,7 @@ async fn withdraw_native_token(
 
             Ok(RetrieveNativeRequest::from(withdrawal_request))
         }
-        Err(e) => {
-            // If by any chance the transaction fails and the withdraw fees are already deducted,
-            // Refunding withdrawal fee process will start
-            match withdrawal_native_fee {
-                Some(withdrawal_fee) => {
-                    // Amount= Withdrawal_fee - (ledger_transfer_fee * 2)
-                    let refund_amount = withdrawal_fee
-                        .checked_sub(
-                            native_transfer_fee
-                                .checked_mul(2_u8)
-                                .unwrap_or(withdrawal_fee),
-                        )
-                        .unwrap_or(Wei::ZERO);
-                    let _refund_result = client
-                        .refund_withdrawal_fee(caller.into(), refund_amount)
-                        .await;
-                }
-                None => {}
-            };
-
-            Err(WithdrawalError::from(e))
-        }
+        Err(e) => Err(WithdrawalError::from(e)),
     }
 }
 
@@ -515,6 +511,7 @@ async fn withdraw_erc20(
             WithdrawErc20Error::InvalidDestination("Invalid destination entered".to_string())
         }
     })?;
+
     let erc20_withdrawal_amount =
         Erc20Value::try_from(amount).expect("ERROR: failed to convert Nat to u256");
 
@@ -529,77 +526,46 @@ async fn withdraw_erc20(
                 supported_tokens: Vec::from_iter(supported_erc20_tokens),
             }
         })?;
-    let native_transfer_fee = read_state(|s| s.native_ledger_transfer_fee);
-    let native_ledger = read_state(LedgerClient::native_ledger_from_state);
+
+    let (withdrawal_native_fee, native_ledger, native_transfer_fee) = read_state(|s| {
+        (
+            s.withdrawal_native_fee,
+            LedgerClient::native_ledger_from_state(s),
+            s.native_ledger_transfer_fee,
+        )
+    });
+
     let erc20_tx_fee = estimate_erc20_transaction_fee().await.ok_or_else(|| {
         WithdrawErc20Error::TemporarilyUnavailable("Failed to retrieve current gas fee".to_string())
     })?;
 
     // Check if l1_fee is required for this network
     let l1_fee = match read_state(|s| s.evm_network) {
-        EvmNetwork::Base | EvmNetwork::Optimism => match lazy_fetch_l1_fee_estimate().await {
-            Some(fee) => Some(fee),
-            None => {
-                return Err(WithdrawErc20Error::TemporarilyUnavailable(
-                    "Failed to retrieve current l1 fee".to_string(),
-                ));
-            }
-        },
+        EvmNetwork::Base => Some(DEFAULT_L1_BASE_GAS_FEE),
         _ => None,
     };
 
-    // withdrawal fee deducted in native token
-    let withdrawal_native_fee = read_state(|s| s.withdrawal_native_fee);
-
-    // Fee transfer and calculation
-    // The amount of transferred fee is as follow:
-    // withdrawal_native_fee - native_transfer_fee
-    let _fee_transfer_result = match withdrawal_native_fee {
-        Some(withdrawal_fee) => {
-            let transfer_amount = withdrawal_fee
-                .checked_sub(native_transfer_fee)
-                .expect("Failed to calculate withdrawal fee");
-            log!(
-                INFO,
-                "[withdraw]: Transferring Withdrawal fee {:?}",
-                withdrawal_fee
-            );
-            match native_ledger
-                .transfer_withdrawal_fee(caller.into(), transfer_amount)
-                .await
-            {
-                Ok(block_index) => {
-                    log!(
-                        INFO,
-                        "Transferred Withdrawal fee to minter with block {}",
-                        block_index
-                    );
-
-                    Ok(())
-                }
-                Err(err) => Err(WithdrawErc20Error::NativeFeeTransferError {
-                    error: FeeError::from(err),
-                }),
-            }
-        }
-        None => Ok(()),
-    }?;
-
     let now = ic_cdk::api::time();
-    let max_transaction_fee = erc20_tx_fee
+
+    // amount that will be burnt to cover transaction_fees plus transaction_signing
+    // cost(native_withdrawal_fee)
+    let native_burn_amount = erc20_tx_fee
         .checked_add(l1_fee.unwrap_or(Wei::ZERO))
+        .expect("Bug: Tx_fee plus l1_fee should fit in u256")
+        .checked_add(withdrawal_native_fee.unwrap_or(Wei::ZERO))
         .unwrap_or(Wei::MAX);
 
     log!(INFO, "[withdraw_erc20]: burning {:?} native", erc20_tx_fee);
     match native_ledger
         .burn_from(
             caller.into(),
-            max_transaction_fee,
+            native_burn_amount,
             BurnMemo::Erc20GasFee {
                 erc20_token_symbol: erc20_token.erc20_token_symbol.clone(),
                 erc20_withdrawal_amount,
                 to_address: destination,
             },
+            None,
         )
         .await
     {
@@ -618,12 +584,13 @@ async fn withdraw_erc20(
                         erc20_withdrawal_id: native_ledger_burn_index.get(),
                         to_address: destination,
                     },
+                    None,
                 )
                 .await
             {
                 Ok(erc20_ledger_burn_index) => {
                     let withdrawal_request = Erc20WithdrawalRequest {
-                        max_transaction_fee,
+                        max_transaction_fee: erc20_tx_fee,
                         withdrawal_amount: erc20_withdrawal_amount,
                         destination,
                         native_ledger_burn_index,
@@ -634,6 +601,8 @@ async fn withdraw_erc20(
                         from_subaccount: None,
                         created_at: now,
                         l1_fee,
+                        is_wrapped_mint: false,
+                        withdrawal_fee: withdrawal_native_fee,
                     };
                     log!(
                         INFO,
@@ -655,10 +624,10 @@ async fn withdraw_erc20(
                 }
                 Err(erc20_burn_error) => {
                     let reimbursed_amount = match &erc20_burn_error {
-                        LedgerBurnError::TemporarilyUnavailable { .. } => max_transaction_fee, //don't penalize user in case of an error outside of their control
+                        LedgerBurnError::TemporarilyUnavailable { .. } => native_burn_amount, //don't penalize user in case of an error outside of their control
                         LedgerBurnError::InsufficientFunds { .. }
                         | LedgerBurnError::AmountTooLow { .. }
-                        | LedgerBurnError::InsufficientAllowance { .. } => max_transaction_fee
+                        | LedgerBurnError::InsufficientAllowance { .. } => native_burn_amount
                             .checked_sub(native_transfer_fee)
                             .unwrap_or(Wei::ZERO),
                     };
@@ -679,25 +648,6 @@ async fn withdraw_erc20(
                         });
                     }
 
-                    // If by any chance the transaction fails and the withdraw fees are already deducted,
-                    // Refunding withdrawal fee process will start
-                    match withdrawal_native_fee {
-                        Some(withdrawal_fee) => {
-                            // Amount= Withdrawal_fee - (ledger_transfer_fee * 2)
-                            let refund_amount = withdrawal_fee
-                                .checked_sub(
-                                    native_transfer_fee
-                                        .checked_mul(2_u8)
-                                        .unwrap_or(withdrawal_fee),
-                                )
-                                .unwrap_or(Wei::ZERO);
-                            let _refund_result = native_ledger
-                                .refund_withdrawal_fee(caller.into(), refund_amount)
-                                .await;
-                        }
-                        None => {}
-                    };
-
                     Err(WithdrawErc20Error::Erc20LedgerError {
                         native_block_index: Nat::from(native_ledger_burn_index.get()),
                         error: erc20_burn_error.into(),
@@ -705,30 +655,179 @@ async fn withdraw_erc20(
                 }
             }
         }
-        Err(native_burn_error) => {
-            // If by any chance the transaction fails and the withdraw fees are already deducted,
-            // Refunding withdrawal fee process will start
-            match withdrawal_native_fee {
-                Some(withdrawal_fee) => {
-                    // Amount= Withdrawal_fee - (ledger_transfer_fee * 2)
-                    let refund_amount = withdrawal_fee
-                        .checked_sub(
-                            native_transfer_fee
-                                .checked_mul(2_u8)
-                                .unwrap_or(withdrawal_fee),
-                        )
-                        .unwrap_or(Wei::ZERO);
-                    let _refund_result = native_ledger
-                        .refund_withdrawal_fee(caller.into(), refund_amount)
-                        .await;
-                }
-                None => {}
-            };
+        Err(native_burn_error) => Err(WithdrawErc20Error::NativeLedgerError {
+            error: native_burn_error.into(),
+        }),
+    }
+}
 
-            Err(WithdrawErc20Error::NativeLedgerError {
-                error: native_burn_error.into(),
-            })
+// mints wrapped tokens on the evm side corresponding to the locked tokens on the icp side
+#[update]
+async fn wrap_icrc(
+    WrapIcrcArg {
+        amount,
+        icrc_ledger_id,
+        recipient,
+    }: WrapIcrcArg,
+) -> Result<RetrieveWrapIcrcRequest, WrapIcrcError> {
+    let caller = validate_caller_not_anonymous();
+    let _guard = retrieve_withdraw_guard(caller).unwrap_or_else(|e| {
+        ic_cdk::trap(&format!(
+            "Failed retrieving guard for principal {}: {:?}",
+            caller, e
+        ))
+    });
+
+    let destination = validate_address_as_destination(&recipient).map_err(|e| match e {
+        AddressValidationError::Invalid { .. } | AddressValidationError::NotSupported(_) => {
+            WrapIcrcError::InvalidDestination("Invalid destination entered".to_string())
         }
+    })?;
+
+    let lock_amount = Erc20Value::try_from(amount).expect("ERROR: failed to convert Nat to u256");
+
+    let erc20_token = read_state(|s| s.find_wrapped_erc20_token_by_icrc_ledger_id(&icrc_ledger_id))
+        .ok_or_else(|| {
+            let supported_wrapped_icrc_tokens: BTreeSet<_> = read_state(|s| {
+                s.supported_wrapped_icrc_tokens()
+                    .map(|(ledger_id, address)| WrappedIcrcToken {
+                        base_token: ledger_id,
+                        deployed_wrapped_erc20: address.to_string(),
+                    })
+                    .collect()
+            });
+            WrapIcrcError::TokenNotSupported {
+                supported_tokens: Vec::from_iter(supported_wrapped_icrc_tokens),
+            }
+        })?;
+
+    let (withdrawal_native_fee, native_ledger, native_transfer_fee) = read_state(|s| {
+        (
+            s.withdrawal_native_fee,
+            LedgerClient::native_ledger_from_state(s),
+            s.native_ledger_transfer_fee,
+        )
+    });
+
+    let erc20_tx_fee = estimate_icrc_wrap_transaction_fee().await.ok_or_else(|| {
+        WrapIcrcError::TemporarilyUnavailable("Failed to retrieve current gas fee".to_string())
+    })?;
+
+    // Check if l1_fee is required for this network
+    let l1_fee = match read_state(|s| s.evm_network) {
+        EvmNetwork::Base => Some(DEFAULT_L1_BASE_GAS_FEE),
+        _ => None,
+    };
+
+    let now = ic_cdk::api::time();
+
+    // amount that will be burnt to cover transaction_fees plus transaction_signing
+    // cost(native_withdrawal_fee)
+    let native_burn_amount = erc20_tx_fee
+        .checked_add(l1_fee.unwrap_or(Wei::ZERO))
+        .expect("Bug: Tx_fee plus l1_fee should fit in u256")
+        .checked_add(withdrawal_native_fee.unwrap_or(Wei::ZERO))
+        .unwrap_or(Wei::MAX);
+
+    let icrc_ledger_client = LedgerClient::icrc_ledger(icrc_ledger_id);
+
+    log!(INFO, "[wrap_icrc]: burning {:?} native", erc20_tx_fee);
+    match native_ledger
+        .burn_from(
+            caller.into(),
+            native_burn_amount,
+            BurnMemo::WrapIcrcGasFee {
+                wrapped_icrc_base: icrc_ledger_id,
+                wrap_amount: lock_amount,
+                to_address: destination,
+            },
+            None,
+        )
+        .await
+    {
+        Ok(native_ledger_burn_index) => {
+            log!(INFO, "[wrap_icrc]: locking {}", icrc_ledger_id,);
+            match icrc_ledger_client
+                .burn_from(
+                    caller.into(),
+                    lock_amount,
+                    BurnMemo::IcrcLocked {
+                        to_address: destination,
+                    },
+                    None,
+                )
+                .await
+            {
+                Ok(erc20_ledger_burn_index) => {
+                    let withdrawal_request = Erc20WithdrawalRequest {
+                        max_transaction_fee: erc20_tx_fee,
+                        withdrawal_amount: lock_amount,
+                        destination,
+                        native_ledger_burn_index,
+                        erc20_ledger_id: icrc_ledger_id,
+                        erc20_ledger_burn_index,
+                        erc20_contract_address: erc20_token,
+                        from: caller,
+                        from_subaccount: None,
+                        created_at: now,
+                        l1_fee,
+                        is_wrapped_mint: true,
+                        withdrawal_fee: withdrawal_native_fee,
+                    };
+                    log!(
+                        INFO,
+                        "[wrap_icrc]: queuing withdrawal request {:?}",
+                        withdrawal_request
+                    );
+                    mutate_state(|s| {
+                        process_event(
+                            s,
+                            EventType::AcceptedErc20WithdrawalRequest(withdrawal_request.clone()),
+                        );
+                    });
+
+                    ic_cdk_timers::set_timer(Duration::from_secs(0), || {
+                        ic_cdk::spawn(process_retrieve_tokens_requests())
+                    });
+
+                    Ok(RetrieveWrapIcrcRequest::from(withdrawal_request))
+                }
+                Err(icrc_lock_error) => {
+                    let reimbursed_amount = match &icrc_lock_error {
+                        LedgerBurnError::TemporarilyUnavailable { .. } => native_burn_amount, //don't penalize user in case of an error outside of their control
+                        LedgerBurnError::InsufficientFunds { .. }
+                        | LedgerBurnError::AmountTooLow { .. }
+                        | LedgerBurnError::InsufficientAllowance { .. } => native_burn_amount
+                            .checked_sub(native_transfer_fee)
+                            .unwrap_or(Wei::ZERO),
+                    };
+
+                    if reimbursed_amount > Wei::ZERO {
+                        let reimbursement_request = ReimbursementRequest {
+                            ledger_burn_index: native_ledger_burn_index,
+                            reimbursed_amount: reimbursed_amount.change_units(),
+                            to: caller,
+                            to_subaccount: None,
+                            transaction_hash: None,
+                        };
+                        mutate_state(|s| {
+                            process_event(
+                                s,
+                                EventType::FailedIcrcLockRequest(reimbursement_request),
+                            );
+                        });
+                    }
+
+                    Err(WrapIcrcError::IcrcLedgerError {
+                        native_block_index: Nat::from(native_ledger_burn_index.get()),
+                        error: icrc_lock_error.into(),
+                    })
+                }
+            }
+        }
+        Err(native_burn_error) => Err(WrapIcrcError::NativeLedgerError {
+            error: native_burn_error.into(),
+        }),
     }
 }
 
@@ -738,6 +837,16 @@ async fn estimate_erc20_transaction_fee() -> Option<Wei> {
         .map(|gas_fee_estimate| {
             gas_fee_estimate
                 .to_price(ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT)
+                .max_transaction_fee()
+        })
+}
+
+async fn estimate_icrc_wrap_transaction_fee() -> Option<Wei> {
+    lazy_refresh_gas_fee_estimate()
+        .await
+        .map(|gas_fee_estimate| {
+            gas_fee_estimate
+                .to_price(ERC20_MINT_TRANSACTION_GAS_LIMIT)
                 .max_transaction_fee()
         })
 }
@@ -785,11 +894,12 @@ async fn check_new_deposits() {
 
 #[query]
 fn get_events(arg: GetEventsArg) -> GetEventsResult {
-    use evm_minter::endpoints::events::{
+    use evm_minter::candid_types::events::{
         AccessListItem, ReimbursementIndex as CandidReimbursementIndex,
         TransactionReceipt as CandidTransactionReceipt,
         TransactionStatus as CandidTransactionStatus, UnsignedTransaction,
     };
+    //use crate::candid_types::
     use evm_minter::rpc_declarations::TransactionReceipt;
     use evm_minter::tx::Eip1559TransactionRequest;
     use serde_bytes::ByteBuf;
@@ -821,6 +931,15 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                 native_ledger_burn_index: native_ledger_burn_index.get().into(),
                 ledger_id,
                 erc20_ledger_burn_index: erc20_ledger_burn_index.get().into(),
+            },
+            ReimbursementIndex::IcrcWrap {
+                native_ledger_burn_index,
+                icrc_token,
+                icrc_ledger_lock_index,
+            } => CandidReimbursementIndex::IcrcWrap {
+                native_ledger_burn_index: native_ledger_burn_index.get().into(),
+                icrc_token,
+                icrc_ledger_lock_index: icrc_ledger_lock_index.get().into(),
             },
         }
     }
@@ -867,7 +986,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
     }
 
     fn map_event(Event { timestamp, payload }: Event) -> CandidEvent {
-        use evm_minter::endpoints::events::EventPayload as EP;
+        use evm_minter::candid_types::events::EventPayload as EP;
         CandidEvent {
             timestamp,
             payload: match payload {
@@ -926,7 +1045,6 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                 EventType::SyncedToBlock { block_number } => EP::SyncedToBlock {
                     block_number: block_number.into(),
                 },
-
                 EventType::AcceptedNativeWithdrawalRequest(NativeWithdrawalRequest {
                     withdrawal_amount,
                     destination,
@@ -935,6 +1053,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     from_subaccount,
                     created_at,
                     l1_fee,
+                    withdrawal_fee,
                 }) => EP::AcceptedNativeWithdrawalRequest {
                     withdrawal_amount: withdrawal_amount.into(),
                     destination: destination.to_string(),
@@ -943,6 +1062,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     from_subaccount: from_subaccount.map(|s| s.0),
                     created_at,
                     l1_fee: l1_fee.map(|fee| fee.into()),
+                    withdrawal_fee: withdrawal_fee.map(|fee| fee.into()),
                 },
                 EventType::CreatedTransaction {
                     withdrawal_id,
@@ -977,6 +1097,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     reimbursed_in_block,
                     reimbursed_amount,
                     transaction_hash,
+                    transfer_fee: _,
                 }) => EP::ReimbursedNativeWithdrawal {
                     withdrawal_id: withdrawal_id.get().into(),
                     reimbursed_in_block: reimbursed_in_block.get().into(),
@@ -1016,6 +1137,8 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     from_subaccount,
                     created_at,
                     l1_fee,
+                    withdrawal_fee,
+                    is_wrapped_mint,
                 }) => EP::AcceptedErc20WithdrawalRequest {
                     max_transaction_fee: max_transaction_fee.into(),
                     withdrawal_amount: withdrawal_amount.into(),
@@ -1028,6 +1151,8 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     from_subaccount: from_subaccount.map(|s| s.0),
                     created_at,
                     l1_fee: l1_fee.map(|fee| fee.into()),
+                    withdrawal_fee: withdrawal_fee.map(|fee| fee.into()),
+                    is_wrapped_mint,
                 },
                 EventType::MintedErc20 {
                     event_source,
@@ -1058,6 +1183,89 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                 EventType::QuarantinedReimbursement { index } => EP::QuarantinedReimbursement {
                     index: map_reimbursement_index(index),
                 },
+                EventType::AcceptedWrappedIcrcBurn(ReceivedBurnEvent {
+                    transaction_hash,
+                    block_number,
+                    log_index,
+                    from_address,
+                    value,
+                    principal,
+                    wrapped_erc20_contract_address,
+                    icrc_token_principal,
+                    subaccount,
+                }) => EP::AcceptedWrappedIcrcBurn {
+                    transaction_hash: transaction_hash.to_string(),
+                    block_number: block_number.into(),
+                    log_index: log_index.into(),
+                    from_address: from_address.to_string(),
+                    value: value.into(),
+                    principal: principal,
+                    wrapped_erc20_contract_address: wrapped_erc20_contract_address.to_string(),
+                    icrc_token_principal,
+                    subaccount: subaccount.map(|s| s.to_bytes()),
+                },
+                EventType::InvalidEvent {
+                    event_source,
+                    reason,
+                } => EP::InvalidEvent {
+                    event_source: map_event_source(event_source),
+                    reason: reason.to_string(),
+                },
+                EventType::DeployedWrappedIcrcToken(ReceivedWrappedIcrcDeployedEvent {
+                    transaction_hash,
+                    block_number,
+                    log_index,
+                    base_token,
+                    deployed_wrapped_erc20,
+                }) => EP::DeployedWrappedIcrcToken {
+                    transaction_hash: transaction_hash.to_string(),
+                    block_number: block_number.into(),
+                    log_index: log_index.into(),
+                    base_token: base_token,
+                    deployed_wrapped_erc20: deployed_wrapped_erc20.to_string(),
+                },
+                EventType::QuarantinedRelease {
+                    event_source,
+                    release_event: _,
+                } => EP::QuarantinedRelease {
+                    event_source: map_event_source(event_source),
+                },
+                EventType::ReleasedIcrcToken {
+                    event_source,
+                    release_block_index,
+                    released_icrc_token: _,
+                    wrapped_erc20_contract_address: _,
+                    transfer_fee,
+                } => EP::ReleasedIcrcToken {
+                    event_source: map_event_source(event_source),
+                    release_block_index: release_block_index.get().into(),
+                    transfer_fee: transfer_fee.into(),
+                },
+                EventType::FailedIcrcLockRequest(ReimbursementRequest {
+                    ledger_burn_index,
+                    reimbursed_amount,
+                    to,
+                    to_subaccount,
+                    transaction_hash: _,
+                }) => EP::FailedIcrcLockRequest {
+                    withdrawal_id: ledger_burn_index.get().into(),
+                    reimbursed_amount: reimbursed_amount.into(),
+                    to,
+                    to_subaccount: to_subaccount.map(|s| s.0),
+                },
+                EventType::ReimbursedIcrcWrap {
+                    native_ledger_burn_index,
+                    reimbursed_icrc_token,
+                    reimbursed,
+                } => EP::ReimbursedIcrcWrap {
+                    native_ledger_burn_index: native_ledger_burn_index.get().into(),
+                    lock_in_block: reimbursed.burn_in_block.get().into(),
+                    reimbursed_in_block: reimbursed.reimbursed_in_block.get().into(),
+                    reimbursed_icrc_token,
+                    reimbursed_amount: reimbursed.reimbursed_amount.into(),
+                    transaction_hash: reimbursed.transaction_hash.map(|hash| hash.to_string()),
+                    transfer_fee: reimbursed.transfer_fee.map(|fee| fee.into()),
+                },
             },
         }
     }
@@ -1073,6 +1281,51 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
         events,
         total_event_count: storage::total_event_count(),
     }
+}
+
+#[update]
+pub async fn update_chain_data(chain_data: ChainData) {
+    let caller = ic_cdk::caller();
+    let rpc_helper_identity = Principal::from_text(RPC_HELPER_PRINCIPAL).unwrap();
+
+    if caller != rpc_helper_identity {
+        panic!("Access Denied");
+    }
+
+    let now = ic_cdk::api::time();
+    let network = read_state(|s| s.evm_network());
+
+    let latest_block_number = apply_safe_threshold_to_latest_block_numner(
+        network,
+        BlockNumber::try_from(chain_data.latest_block_number)
+            .expect("Failed to parse block number"),
+    );
+
+    let previous_observed_block =
+        read_state(|s| s.last_observed_block_number).unwrap_or(BlockNumber::ZERO);
+
+    if previous_observed_block > latest_block_number {
+        return;
+    }
+
+    let fee_history =
+        parse_fee_history(chain_data.fee_history).expect("Failed to parse fee hisotry");
+
+    match estimate_transaction_fee(&fee_history) {
+        Ok(estimate) => {
+            mutate_state(|s| {
+                s.last_transaction_price_estimate = Some((now, estimate.clone()));
+                s.last_observed_block_number = Some(latest_block_number);
+                s.last_observed_block_time = Some(now);
+            });
+        }
+        Err(e) => {
+            log!(
+                INFO,
+                "[refresh_gas_fee_estimate]: Failed estimating gas fee: {e:?}",
+            );
+        }
+    };
 }
 
 /// Returns the amount of heap memory in bytes that has been allocated.
