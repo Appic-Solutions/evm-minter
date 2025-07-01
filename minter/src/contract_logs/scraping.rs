@@ -32,7 +32,6 @@ pub enum ReceivedEventsLogScraping {}
 impl LogScraping for ReceivedEventsLogScraping {
     type Parser = ReceivedEventsLogParser;
 
-    // TODO: Add contract addresses
     fn next_scrape(state: &State) -> Option<Scrape> {
         let contract_addresses = state
             .helper_contract_addresses
@@ -51,26 +50,23 @@ impl LogScraping for ReceivedEventsLogScraping {
                 .expect("Should not fail converting zero address"),
         );
 
-        let mut topics: Vec<_> = vec![
-            Topic::from(FixedSizeData(
-                RECEIVED_DEPOSITED_AND_BURNT_TOKENS_EVENT_TOPIC_NEW_CONTRACT,
-            )),
-            Topic::from(FixedSizeData(
-                RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT,
-            )),
-            Topic::from(FixedSizeData(
-                RECEIVED_DEPLOYED_WRAPPED_ICRC_TOKEN_EVENT_TOPIC,
-            )),
+        let topics: Vec<_> = vec![
+        //Topic::from(vec![
+        //    FixedSizeData(RECEIVED_DEPOSITED_AND_BURNT_TOKENS_EVENT_TOPIC_NEW_CONTRACT),
+        //    FixedSizeData(RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT),
+        //    FixedSizeData(RECEIVED_DEPLOYED_WRAPPED_ICRC_TOKEN_EVENT_TOPIC),
+        //])
         ];
+
         // We add token contract addresses as additional topics to match.
         // It has a disjunction semantics, so it will match if event matches any one of these addresses.
-        topics.push(
-            token_contract_addresses
-                .iter()
-                .map(|address| FixedSizeData(address.into()))
-                .collect::<Vec<_>>()
-                .into(),
-        );
+        //topics.push(
+        //    token_contract_addresses
+        //        .iter()
+        //        .map(|address| FixedSizeData(address.into()))
+        //        .collect::<Vec<_>>()
+        //        .into(),
+        //);
 
         Some(Scrape {
             contract_addresses,

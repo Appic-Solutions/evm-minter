@@ -328,7 +328,7 @@ impl State {
                 assert!(
                     self.wrapped_icrc_tokens
                         .contains_alt(&received_burn_event.wrapped_erc20_contract_address),
-                    "BUG: unsupported wrapped ICR contract address in event{event:?}"
+                    "BUG: unsupported wrapped ICRC contract address in event{event:?}"
                 );
 
                 self.events_to_release.insert(event_source, event.clone());
