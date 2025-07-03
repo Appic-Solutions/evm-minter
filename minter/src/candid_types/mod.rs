@@ -225,6 +225,7 @@ pub enum DepositStatus {
     Minted,
     Accepted,
     Quarantined,
+    Released,
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug, PartialEq)]

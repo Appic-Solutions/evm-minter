@@ -26,20 +26,12 @@ pub enum MintMemo {
         #[n(0)]
         /// The sender of the ETH or ERC20 token.
         from_address: Address,
-        #[n(1)]
-        /// Hash of the transaction.
-        tx_hash: Hash,
-        #[n(2)]
-        log_index: LogIndex,
     },
     #[n(1)]
     ReimburseTransaction {
         #[n(0)]
         /// The id corresponding to the withdrawal request.
         withdrawal_id: u64,
-        #[n(1)]
-        /// Hash of the failed transaction.
-        tx_hash: Hash,
     },
     /// The minter failed to process a withdrawal request,
     /// so no transaction was issued, but some reimbursement was made.
@@ -135,18 +127,12 @@ impl From<&ReceivedContractEvent> for Memo {
         match event {
             ReceivedContractEvent::NativeDeposit(received_native_event) => MintMemo::Convert {
                 from_address: received_native_event.from_address,
-                tx_hash: received_native_event.transaction_hash,
-                log_index: received_native_event.log_index,
             },
             ReceivedContractEvent::Erc20Deposit(received_erc20_event) => MintMemo::Convert {
                 from_address: received_erc20_event.from_address,
-                tx_hash: received_erc20_event.transaction_hash,
-                log_index: received_erc20_event.log_index,
             },
             ReceivedContractEvent::WrappedIcrcBurn(received_burn_event) => MintMemo::Convert {
                 from_address: received_burn_event.from_address,
-                tx_hash: received_burn_event.transaction_hash,
-                log_index: received_burn_event.log_index,
             },
             ReceivedContractEvent::WrappedIcrcDeployed(_received_wrapped_icrc_deployed_event) => {
                 panic!("Bug: this event is not mintable")
@@ -159,9 +145,8 @@ impl From<&ReceivedContractEvent> for Memo {
 impl From<ReimbursementRequest> for MintMemo {
     fn from(reimbursement_request: ReimbursementRequest) -> Self {
         match reimbursement_request.transaction_hash {
-            Some(tx_hash) => MintMemo::ReimburseTransaction {
+            Some(_tx_hash) => MintMemo::ReimburseTransaction {
                 withdrawal_id: reimbursement_request.ledger_burn_index.get(),
-                tx_hash,
             },
             None => MintMemo::ReimburseWithdrawal {
                 withdrawal_id: reimbursement_request.ledger_burn_index.get(),

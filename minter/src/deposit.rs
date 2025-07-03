@@ -328,6 +328,8 @@ pub async fn scrape_logs() {
         }
     };
 
+    ic_cdk::println!("Last_block_number:{}", last_block_number);
+
     let max_block_spread = read_state(|s| s.max_block_spread_for_logs_scraping());
     scrape_until_block(last_block_number, max_block_spread).await;
 }

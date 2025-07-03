@@ -473,6 +473,22 @@ impl State {
             return Some(DepositStatus::InvalidDeposit);
         }
 
+        if self
+            .released_events
+            .keys()
+            .any(|event_source| event_source.transaction_hash == tx_hash)
+        {
+            return Some(DepositStatus::Released);
+        }
+
+        if self
+            .events_to_release()
+            .iter()
+            .any(|event_source| event_source.transaction_hash() == tx_hash)
+        {
+            return Some(DepositStatus::Accepted);
+        }
+
         None
     }
 

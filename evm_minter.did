@@ -28,7 +28,13 @@ type DefiniteCanisterSettings = record {
   memory_allocation : nat;
   compute_allocation : nat;
 };
-type DepositStatus = variant { Minted; Accepted; InvalidDeposit; Quarantined };
+type DepositStatus = variant {
+  Released;
+  Minted;
+  Accepted;
+  InvalidDeposit;
+  Quarantined;
+};
 type Eip1559TransactionPrice = record {
   max_priority_fee_per_gas : nat;
   max_fee_per_gas : nat;
