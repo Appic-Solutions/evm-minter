@@ -411,7 +411,7 @@ mod get_contract_logs {
 
 #[test]
 fn address_from_pubkey() {
-    use secp256k1::PublicKey;
+    use libsecp256k1::{PublicKey, PublicKeyFormat};
 
     // Examples come from https://mycrypto.tools/sample_ethaddresses.html
     const EXAMPLES: &[(&str, &str)] = &[
@@ -426,7 +426,7 @@ fn address_from_pubkey() {
     ];
     for (pk_bytes, address) in EXAMPLES {
         let sec1_bytes = hex::decode(pk_bytes).unwrap();
-        let pk = PublicKey::from_slice(&sec1_bytes).unwrap();
+        let pk = PublicKey::parse_slice(&sec1_bytes, Some(PublicKeyFormat::Full)).unwrap();
         assert_eq!(&ecdsa_public_key_to_address(&pk).to_string(), address);
     }
 }
@@ -440,8 +440,8 @@ mod rlp_encoding {
         SignedEip1559TransactionRequest,
     };
     use ethnum::u256;
+    use libsecp256k1::{PublicKey, PublicKeyFormat};
     use rlp::Encodable;
-    use secp256k1::PublicKey;
     use std::str::FromStr;
 
     const SEPOLIA_TEST_CHAIN_ID: u64 = 11155111;
@@ -571,11 +571,14 @@ mod rlp_encoding {
 
     #[test]
     fn test_determine_signature_y_parity() {
-        let public_key = PublicKey::from_slice(&[
-            0x02, 0xc6, 0x6e, 0x7d, 0x89, 0x66, 0xb5, 0xc5, 0x55, 0xaf, 0x58, 0x05, 0x98, 0x9d,
-            0xa9, 0xfb, 0xf8, 0xdb, 0x95, 0xe1, 0x56, 0x31, 0xce, 0x35, 0x8c, 0x3a, 0x17, 0x10,
-            0xc9, 0x62, 0x67, 0x90, 0x63,
-        ])
+        let public_key = PublicKey::parse_slice(
+            &[
+                0x02, 0xc6, 0x6e, 0x7d, 0x89, 0x66, 0xb5, 0xc5, 0x55, 0xaf, 0x58, 0x05, 0x98, 0x9d,
+                0xa9, 0xfb, 0xf8, 0xdb, 0x95, 0xe1, 0x56, 0x31, 0xce, 0x35, 0x8c, 0x3a, 0x17, 0x10,
+                0xc9, 0x62, 0x67, 0x90, 0x63,
+            ],
+            Some(PublicKeyFormat::Compressed),
+        )
         .expect("public keys must be 33 or 65 bytes, serialized according to SEC 2");
 
         let message = Hash([

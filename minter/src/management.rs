@@ -1,7 +1,7 @@
 use candid::{CandidType, Principal};
 use ic_cdk::api::call::RejectionCode;
 use ic_management_canister_types::{
-    DerivationPath, EcdsaCurve, EcdsaKeyId, SignWithECDSAArgs, SignWithECDSAReply,
+    EcdsaCurve, EcdsaKeyId, SignWithEcdsaArgs, SignWithEcdsaResult,
 };
 use serde::de::DeserializeOwned;
 use std::fmt;
@@ -116,16 +116,16 @@ where
 /// Signs a message hash using the tECDSA API.
 pub async fn sign_with_ecdsa(
     key_name: String,
-    derivation_path: DerivationPath,
+    derivation_path: Vec<Vec<u8>>,
     message_hash: [u8; 32],
 ) -> Result<[u8; 64], CallError> {
     const CYCLES_PER_SIGNATURE: u64 = 27_000_000_000;
 
-    let reply: SignWithECDSAReply = call(
+    let reply: SignWithEcdsaResult = call(
         "sign_with_ecdsa",
         CYCLES_PER_SIGNATURE,
-        &SignWithECDSAArgs {
-            message_hash,
+        &SignWithEcdsaArgs {
+            message_hash: message_hash.to_vec(),
             derivation_path,
             key_id: EcdsaKeyId {
                 curve: EcdsaCurve::Secp256k1,

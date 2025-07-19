@@ -11,7 +11,10 @@ use icrc_ledger_types::{
     icrc2::approve::{ApproveArgs, ApproveError},
 };
 // For simulating http out calls, we use mock httpout call response.
-use pocket_ic::common::rest::{CanisterHttpReply, CanisterHttpResponse, MockCanisterHttpResponse};
+use pocket_ic::{
+    common::rest::{CanisterHttpReply, CanisterHttpResponse, MockCanisterHttpResponse},
+    RejectResponse,
+};
 
 const MINTER_WASM_BYTES: &[u8] =
     include_bytes!("../../../target/wasm32-unknown-unknown/release/evm_minter.wasm");
@@ -32,7 +35,7 @@ const TWO_TRILLIONS: u64 = 2_000_000_000_000;
 
 use candid::{CandidType, Nat, Principal};
 use evm_rpc_types::InstallArgs;
-use pocket_ic::{PocketIc, PocketIcBuilder, WasmResult};
+use pocket_ic::{PocketIc, PocketIcBuilder};
 
 use super::{
     appic_helper_types::{InitArgs, LoggerArgs, MinterArgs},
@@ -386,14 +389,12 @@ where
     O: CandidType + for<'a> serde::Deserialize<'a>,
     I: CandidType,
 {
-    let wasm_result = pic
-        .query_call(
-            canister_id,
-            sender_principal(),
-            method,
-            encode_call_args(payload).unwrap(),
-        )
-        .unwrap();
+    let wasm_result = pic.query_call(
+        canister_id,
+        sender_principal(),
+        method,
+        encode_call_args(payload).unwrap(),
+    );
 
     decode_wasm_result::<O>(wasm_result).unwrap()
 }
@@ -413,14 +414,12 @@ where
         Some(p_id) => p_id,
         None => sender_principal(),
     };
-    let wasm_result = pic
-        .update_call(
-            canister_id,
-            sender_principal,
-            method,
-            encode_call_args(payload).unwrap(),
-        )
-        .unwrap();
+    let wasm_result = pic.update_call(
+        canister_id,
+        sender_principal,
+        method,
+        encode_call_args(payload).unwrap(),
+    );
 
     decode_wasm_result::<O>(wasm_result).unwrap()
 }
@@ -432,13 +431,13 @@ where
     Ok(candid::encode_one(args).unwrap())
 }
 
-pub fn decode_wasm_result<O>(wasm_result: WasmResult) -> Result<O, ()>
+pub fn decode_wasm_result<O>(result: Result<Vec<u8>, RejectResponse>) -> Result<O, ()>
 where
     O: CandidType + for<'a> serde::Deserialize<'a>,
 {
-    match wasm_result {
-        pocket_ic::WasmResult::Reply(vec) => Ok(candid::decode_one(&vec).unwrap()),
-        pocket_ic::WasmResult::Reject(_) => Err(()),
+    match result {
+        Ok(bytes) => Ok(candid::decode_one(&bytes).unwrap()),
+        Err(e) => panic!("{:?}", e),
     }
 }
 
@@ -603,8 +602,7 @@ fn install_icp_ledger_canister(pic: &PocketIc, canister_id: Principal) {
         },
         max_memo_length: Some(MAX_MEMO_LENGTH),
         feature_flags: Some(ICRC2_FEATURE),
-        maximum_number_of_accounts: None,
-        accounts_overflow_trim_quantity: None,
+        index_principal: None,
     });
 
     pic.install_canister(
@@ -688,8 +686,7 @@ fn install_native_ledger_canister(pic: &PocketIc, canister_id: Principal) {
         },
         max_memo_length: Some(MAX_MEMO_LENGTH),
         feature_flags: Some(ICRC2_FEATURE),
-        maximum_number_of_accounts: None,
-        accounts_overflow_trim_quantity: None,
+        index_principal:None
     });
 
     pic.install_canister(

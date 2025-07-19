@@ -1,5 +1,4 @@
 [workspace]
 members = ["evm_rpc_client", "minter"]
-resolver = "2"
 
 

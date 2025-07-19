@@ -19,16 +19,16 @@ ic-cdk-timers = "0.7.0"
 ic-stable-structures="0.6.5"
 ic-crypto-sha2={ git = "https://github.com/dfinity/ic.git"}
 ic-sha3="1.0.0"
-ic-management-canister-types = { git = "https://github.com/dfinity/ic.git" }
+ic-management-canister-types = {version="0.3.1", default-features = false}
 # ic-crypto-secp256k1 = { git = "https://github.com/dfinity/ic.git" }
 ic-utils-ensure = { git = "https://github.com/dfinity/ic.git" }
 icrc-ledger-client-cdk = { git = "https://github.com/dfinity/ic.git" }
 icrc-ledger-types={ git = "https://github.com/dfinity/ic.git"}
 evm_rpc_types = "1.2.0"
 
-
-
-secp256k1 = { version = "0.30", features=["alloc","recovery"] }
+# secp256k1 = { version = "0.29.1", default-features = false, features = ["alloc", "recovery"] }
+# secp256k1-sys = {version="0.10.1", default-features = false }
+libsecp256k1 = { version = "0.7.2", default-features = false, features= ["hmac","static-context"]}
 
 phantom_newtype={ git = "https://github.com/dfinity/ic.git"}
 hex = { version = "0.4.3", features = ["serde"] }
@@ -75,7 +75,7 @@ getrandom = { version = "0.2" }
 hex = { version = "0.4.3", features = ["serde"] }
 ethers-core="2.0.14"
 ic-crypto-test-utils-reproducible-rng={ git = "https://github.com/dfinity/ic.git"}
-pocket-ic = "6.0.0"
+pocket-ic = "9.0.0"
 
 ic-icrc1-index-ng = { git = "https://github.com/dfinity/ic.git"}
 ic-icrc1-ledger={ git = "https://github.com/dfinity/ic.git"}

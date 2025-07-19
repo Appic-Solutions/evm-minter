@@ -39,9 +39,8 @@ proptest! {
 
         match mint_memo {
             MintMemo::Convert{ .. } => panic!("BUG: unexpected mint memo variant"),
-            MintMemo::ReimburseTransaction{withdrawal_id,tx_hash  } => {
+            MintMemo::ReimburseTransaction{withdrawal_id} => {
                 prop_assert_eq!(withdrawal_id, reimbursement_request.ledger_burn_index.get());
-                prop_assert_eq!(tx_hash, reimbursement_request.transaction_hash.unwrap());
             }
             MintMemo::ReimburseWithdrawal{withdrawal_id } => {
                 prop_assert_eq!(withdrawal_id, reimbursement_request.ledger_burn_index.get());
@@ -130,7 +129,7 @@ mod arbitrary {
     use crate::erc20::ERC20TokenSymbol;
     use crate::eth_types::Address;
     use crate::memo::{BurnMemo, MintMemo};
-    use crate::numeric::{LedgerBurnIndex, LogIndex};
+    use crate::numeric::LedgerBurnIndex;
     use crate::rpc_declarations::Hash;
     use crate::state::transactions::{ReimbursementRequest, Subaccount};
     use candid::Principal;
@@ -168,22 +167,13 @@ mod arbitrary {
     }
 
     fn arb_mint_convert_memo() -> impl Strategy<Value = MintMemo> {
-        (arb_hash(), arb_address(), any::<u8>()).prop_map(|(tx_hash, from_address, log_index)| {
-            MintMemo::Convert {
-                from_address,
-                log_index: LogIndex::from(log_index),
-                tx_hash,
-            }
-        })
+        (arb_hash(), arb_address(), any::<u8>())
+            .prop_map(|(_tx_hash, from_address, _log_index)| MintMemo::Convert { from_address })
     }
 
     fn arb_mint_reimburse_transaction_memo() -> impl Strategy<Value = MintMemo> {
-        (arb_hash(), any::<u64>()).prop_map(|(tx_hash, withdrawal_id)| {
-            MintMemo::ReimburseTransaction {
-                withdrawal_id,
-                tx_hash,
-            }
-        })
+        (arb_hash(), any::<u64>())
+            .prop_map(|(_tx_hash, withdrawal_id)| MintMemo::ReimburseTransaction { withdrawal_id })
     }
 
     fn arb_mint_reimburse_withdrawal_memo() -> impl Strategy<Value = MintMemo> {
@@ -271,10 +261,7 @@ mod arbitrary {
 
     #[test]
     fn should_have_a_strategy_for_each_mint_memo_variant() {
-        let memo_to_match = MintMemo::ReimburseTransaction {
-            withdrawal_id: 0,
-            tx_hash: Hash(Default::default()),
-        };
+        let memo_to_match = MintMemo::ReimburseTransaction { withdrawal_id: 0 };
         let _ = match memo_to_match {
             MintMemo::Convert { .. } => arb_mint_convert_memo().boxed(),
             MintMemo::ReimburseTransaction { .. } => arb_mint_reimburse_transaction_memo().boxed(),

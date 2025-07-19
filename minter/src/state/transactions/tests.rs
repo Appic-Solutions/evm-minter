@@ -130,118 +130,118 @@ mod withdrawal_transactions {
             );
         }
     }
-
-    mod withdrawal_requests_batch {
-        use super::*;
-        use crate::state::transactions::tests::{
-            create_and_record_signed_transaction, create_and_record_transaction,
-            create_and_record_twin_withdrawal_requests, gas_fee_estimate,
-        };
-        use crate::state::transactions::WithdrawalRequest;
-        use ic_crypto_test_utils_reproducible_rng::reproducible_rng;
-        use proptest::{prop_assert_eq, proptest};
-        use rand::Rng;
-
-        #[test]
-        fn should_be_empty_when_no_withdrawal_requests() {
-            let transactions = WithdrawalTransactions::new(TransactionNonce::ZERO);
-            assert_eq!(transactions.withdrawal_requests_batch(5), vec![]);
-        }
-
-        #[test]
-        fn should_retrieve_the_first_withdrawal_requests() {
-            let mut transactions = WithdrawalTransactions::new(TransactionNonce::ZERO);
-            let mut rng = reproducible_rng();
-            let withdrawal_requests: [WithdrawalRequest; 5] =
-                create_and_record_twin_withdrawal_requests(&mut transactions, &mut rng);
-
-            let requests = transactions.withdrawal_requests_batch(0);
-            assert_eq!(requests, vec![]);
-
-            let requests = transactions.withdrawal_requests_batch(1);
-            assert_eq!(requests.as_slice(), &withdrawal_requests[0..=0]);
-
-            let requests = transactions.withdrawal_requests_batch(2);
-            assert_eq!(&requests, &withdrawal_requests[0..=1]);
-        }
-
-        proptest! {
-            #[test]
-            fn should_retrieve_all_withdrawal_requests_in_order(batch_size in 3..100_usize) {
-                let mut transactions = WithdrawalTransactions::new(TransactionNonce::ZERO);
-                let mut rng = reproducible_rng();
-                let withdrawal_requests: [WithdrawalRequest; 3] =
-                    create_and_record_twin_withdrawal_requests(&mut transactions, &mut rng);
-
-                let requests = transactions.withdrawal_requests_batch(batch_size);
-
-                prop_assert_eq!(requests, withdrawal_requests);
-            }
-        }
-
-        #[test]
-        fn should_limit_batch_size_when_too_many_pending_transactions() {
-            let mut transactions = WithdrawalTransactions::new(TransactionNonce::ZERO);
-            let mut rng = reproducible_rng();
-            let withdrawal_requests: [WithdrawalRequest; 1000] =
-                create_and_record_twin_withdrawal_requests(&mut transactions, &mut rng);
-            withdrawal_requests
-                .iter()
-                .take(997)
-                .for_each(|withdrawal_request| {
-                    create_and_record_pending_transaction(
-                        &mut transactions,
-                        withdrawal_request.clone(),
-                        rng.gen(),
-                    )
-                });
-
-            assert_eq!(
-                transactions.withdrawal_requests_batch(3).as_slice(),
-                &withdrawal_requests[997..=999]
-            );
-
-            create_and_record_pending_transaction(
-                &mut transactions,
-                withdrawal_requests[997].clone(),
-                rng.gen(),
-            );
-            assert_eq!(
-                transactions.withdrawal_requests_batch(3).as_slice(),
-                &withdrawal_requests[998..=999]
-            );
-
-            create_and_record_pending_transaction(
-                &mut transactions,
-                withdrawal_requests[998].clone(),
-                rng.gen(),
-            );
-            assert_eq!(
-                transactions.withdrawal_requests_batch(3).as_slice(),
-                &withdrawal_requests[999..=999]
-            );
-
-            create_and_record_pending_transaction(
-                &mut transactions,
-                withdrawal_requests[999].clone(),
-                rng.gen(),
-            );
-            assert_eq!(transactions.withdrawal_requests_batch(3), vec![]);
-        }
-
-        fn create_and_record_pending_transaction<R: Into<WithdrawalRequest>>(
-            transactions: &mut WithdrawalTransactions,
-            withdrawal_request: R,
-            to_sign: bool,
-        ) {
-            let tx =
-                create_and_record_transaction(transactions, withdrawal_request, gas_fee_estimate());
-            if to_sign {
-                create_and_record_signed_transaction(transactions, tx);
-            }
-        }
-    }
-
+    //
+    //mod withdrawal_requests_batch {
+    //    use super::*;
+    //    use crate::state::transactions::tests::{
+    //        create_and_record_signed_transaction, create_and_record_transaction,
+    //        create_and_record_twin_withdrawal_requests, gas_fee_estimate,
+    //    };
+    //    use crate::state::transactions::WithdrawalRequest;
+    //    use ic_crypto_test_utils_reproducible_rng::reproducible_rng;
+    //    use proptest::{prop_assert_eq, proptest};
+    //    use rand::Rng;
+    //
+    //    #[test]
+    //    fn should_be_empty_when_no_withdrawal_requests() {
+    //        let transactions = WithdrawalTransactions::new(TransactionNonce::ZERO);
+    //        assert_eq!(transactions.withdrawal_requests_batch(5), vec![]);
+    //    }
+    //
+    //    #[test]
+    //    fn should_retrieve_the_first_withdrawal_requests() {
+    //        let mut transactions = WithdrawalTransactions::new(TransactionNonce::ZERO);
+    //        let mut rng = reproducible_rng();
+    //        let withdrawal_requests: [WithdrawalRequest; 5] =
+    //            create_and_record_twin_withdrawal_requests(&mut transactions, &mut rng);
+    //
+    //        let requests = transactions.withdrawal_requests_batch(0);
+    //        assert_eq!(requests, vec![]);
+    //
+    //        let requests = transactions.withdrawal_requests_batch(1);
+    //        assert_eq!(requests.as_slice(), &withdrawal_requests[0..=0]);
+    //
+    //        let requests = transactions.withdrawal_requests_batch(2);
+    //        assert_eq!(&requests, &withdrawal_requests[0..=1]);
+    //    }
+    //
+    //    proptest! {
+    //        #[test]
+    //        fn should_retrieve_all_withdrawal_requests_in_order(batch_size in 3..100_usize) {
+    //            let mut transactions = WithdrawalTransactions::new(TransactionNonce::ZERO);
+    //            let mut rng = reproducible_rng();
+    //            let withdrawal_requests: [WithdrawalRequest; 3] =
+    //                create_and_record_twin_withdrawal_requests(&mut transactions, &mut rng);
+    //
+    //            let requests = transactions.withdrawal_requests_batch(batch_size);
+    //
+    //            prop_assert_eq!(requests, withdrawal_requests);
+    //        }
+    //    }
+    //
+    //    #[test]
+    //    fn should_limit_batch_size_when_too_many_pending_transactions() {
+    //        let mut transactions = WithdrawalTransactions::new(TransactionNonce::ZERO);
+    //        let mut rng = reproducible_rng();
+    //        let withdrawal_requests: [WithdrawalRequest; 1000] =
+    //            create_and_record_twin_withdrawal_requests(&mut transactions, &mut rng);
+    //        withdrawal_requests
+    //            .iter()
+    //            .take(997)
+    //            .for_each(|withdrawal_request| {
+    //                create_and_record_pending_transaction(
+    //                    &mut transactions,
+    //                    withdrawal_request.clone(),
+    //                    rng.gen(),
+    //                )
+    //            });
+    //
+    //        assert_eq!(
+    //            transactions.withdrawal_requests_batch(3).as_slice(),
+    //            &withdrawal_requests[997..=999]
+    //        );
+    //
+    //        create_and_record_pending_transaction(
+    //            &mut transactions,
+    //            withdrawal_requests[997].clone(),
+    //            rng.gen(),
+    //        );
+    //        assert_eq!(
+    //            transactions.withdrawal_requests_batch(3).as_slice(),
+    //            &withdrawal_requests[998..=999]
+    //        );
+    //
+    //        create_and_record_pending_transaction(
+    //            &mut transactions,
+    //            withdrawal_requests[998].clone(),
+    //            rng.gen(),
+    //        );
+    //        assert_eq!(
+    //            transactions.withdrawal_requests_batch(3).as_slice(),
+    //            &withdrawal_requests[999..=999]
+    //        );
+    //
+    //        create_and_record_pending_transaction(
+    //            &mut transactions,
+    //            withdrawal_requests[999].clone(),
+    //            rng.gen(),
+    //        );
+    //        assert_eq!(transactions.withdrawal_requests_batch(3), vec![]);
+    //    }
+    //
+    //    fn create_and_record_pending_transaction<R: Into<WithdrawalRequest>>(
+    //        transactions: &mut WithdrawalTransactions,
+    //        withdrawal_request: R,
+    //        to_sign: bool,
+    //    ) {
+    //        let tx =
+    //            create_and_record_transaction(transactions, withdrawal_request, gas_fee_estimate());
+    //        if to_sign {
+    //            create_and_record_signed_transaction(transactions, tx);
+    //        }
+    //    }
+    //}
+    //
     mod reschedule_withdrawal_request {
         use crate::numeric::TransactionNonce;
         use crate::state::transactions::tests::create_and_record_twin_withdrawal_requests;

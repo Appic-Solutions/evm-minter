@@ -367,7 +367,7 @@ fn should_release_and_lock() {
     );
     let expected_transaction_result =
         RetrieveWithdrawalStatus::TxFinalized(TxFinalizedStatus::Success {
-            transaction_hash: "0xe06f75670e6fdc6a7d988cff3227cd1d8b767ad37f9c2bb57b2bcaef7abcef31"
+            transaction_hash: "0x428a0f3575a0fa951224bed61e5665d9358476c474805f4b756fb9f150478f82"
                 .to_string(),
             effective_transaction_fee: Some(Nat::from(63000000000000_u128)),
         });

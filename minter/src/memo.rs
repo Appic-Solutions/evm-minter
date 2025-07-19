@@ -8,7 +8,6 @@ use crate::rpc_declarations::Hash;
 use crate::state::transactions::ReimbursementRequest;
 use candid::Principal;
 use icrc_ledger_types::icrc1::transfer::Memo;
-use minicbor;
 use minicbor::{Decode, Encode, Encoder};
 
 /// Encodes minter memo as a binary blob.

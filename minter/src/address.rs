@@ -1,4 +1,4 @@
-use secp256k1::PublicKey;
+use libsecp256k1::PublicKey;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -9,7 +9,7 @@ use crate::eth_types::Address;
 mod tests;
 
 pub fn ecdsa_public_key_to_address(pubkey: &PublicKey) -> Address {
-    let key_bytes = pubkey.serialize_uncompressed();
+    let key_bytes = pubkey.serialize();
     debug_assert_eq!(key_bytes[0], 0x04);
     let hash = keccak(&key_bytes[1..]);
     let mut addr = [0u8; 20];

@@ -15,7 +15,7 @@ use std::{
 use balances::{Erc20Balances, IcrcBalances, NativeBalance};
 use candid::Principal;
 use ic_canister_log::log;
-use secp256k1::PublicKey;
+use libsecp256k1::{PublicKey, PublicKeyFormat};
 use serde_bytes::ByteBuf;
 use transactions::{
     Erc20WithdrawalRequest, TransactionCallData, WithdrawalRequest, WithdrawalTransactions,
@@ -200,10 +200,13 @@ pub struct State {
 
 impl State {
     pub fn minter_address(&self) -> Option<Address> {
-        let pubkey = PublicKey::from_slice(&self.ecdsa_public_key.as_ref()?.public_key)
-            .unwrap_or_else(|e| {
-                ic_cdk::trap(&format!("failed to decode minter's public key: {:?}", e))
-            });
+        let pubkey = PublicKey::parse_slice(
+            &self.ecdsa_public_key.as_ref()?.public_key,
+            Some(PublicKeyFormat::Compressed),
+        )
+        .unwrap_or_else(|e| {
+            ic_cdk::trap(&format!("failed to decode minter's public key: {:?}", e))
+        });
         Some(ecdsa_public_key_to_address(&pubkey))
     }
 
@@ -667,7 +670,7 @@ impl State {
         wrapped_erc20_address: &Address,
     ) -> Option<Principal> {
         self.wrapped_icrc_tokens
-            get_entry_alt(wrapped_erc20_address)
+            .get_entry_alt(wrapped_erc20_address)
             .map(|(ledger_id, _symbol)| ledger_id.clone())
     }
 
@@ -887,9 +890,10 @@ pub async fn lazy_call_ecdsa_public_key() -> PublicKey {
     };
 
     fn to_public_key(response: &EcdsaPublicKeyResponse) -> PublicKey {
-        PublicKey::from_slice(&response.public_key).unwrap_or_else(|e| {
-            ic_cdk::trap(&format!("failed to decode minter's public key: {:?}", e))
-        })
+        PublicKey::parse_slice(&response.public_key, Some(PublicKeyFormat::Compressed))
+            .unwrap_or_else(|e| {
+                ic_cdk::trap(&format!("failed to decode minter's public key: {:?}", e))
+            })
     }
 
     if let Some(ecdsa_pk_response) = read_state(|s| s.ecdsa_public_key.clone()) {

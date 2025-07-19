@@ -5,7 +5,6 @@ use gas_fees::{GasFeeEstimate, TransactionPrice};
 use minicbor;
 use minicbor::{Decode, Encode};
 use rlp::RlpStream;
-use secp256k1::ecdsa::{RecoverableSignature, RecoveryId};
 
 use crate::rpc_declarations::{Hash, TransactionStatus};
 use crate::state::lazy_call_ecdsa_public_key;
@@ -15,9 +14,9 @@ use crate::{
     numeric::{BlockNumber, GasAmount, TransactionNonce, Wei, WeiPerGas},
     rpc_declarations::TransactionReceipt,
 };
-use ic_management_canister_types::DerivationPath;
+//use ic_management_canister_types::DerivationPath;
 
-use secp256k1::{ecdsa::Signature, Message, PublicKey, Secp256k1};
+use libsecp256k1::{recover, verify, Message, PublicKey, RecoveryId, Signature};
 
 // Constant representing the transaction type identifier for EIP-1559 transactions.
 const EIP1559_TX_ID: u8 = 2;
@@ -537,10 +536,9 @@ impl Eip1559TransactionRequest {
     pub async fn sign(self) -> Result<SignedEip1559TransactionRequest, String> {
         let hash = self.hash(); // Compute the transaction hash.
         let key_name = read_state(|s| s.ecdsa_key_name.clone()); // Retrieve the ECDSA key name.
-        let signature =
-            crate::management::sign_with_ecdsa(key_name, DerivationPath::new(vec![]), hash.0)
-                .await
-                .map_err(|e| format!("failed to sign tx: {}", e))?; // Sign the hash with the ECDSA key.
+        let signature = crate::management::sign_with_ecdsa(key_name, vec![], hash.0)
+            .await
+            .map_err(|e| format!("failed to sign tx: {}", e))?; // Sign the hash with the ECDSA key.
 
         let public_key = verifiy_signature(&hash, &signature).await; // Compute the recovery ID.
         let signature_y_parity = determine_signature_y_parity(&public_key, &hash, &signature)
@@ -576,18 +574,17 @@ impl Eip1559TransactionRequest {
 async fn verifiy_signature(digest: &Hash, signature: &[u8]) -> PublicKey {
     let ecdsa_public_key = lazy_call_ecdsa_public_key().await;
 
-    let secp = Secp256k1::verification_only();
-    let msg = Message::from_digest(digest.0);
-    let sig = Signature::from_compact(signature)
+    let msg = Message::parse(&digest.0);
+    let sig = Signature::parse_standard_slice(signature)
         .expect("compact signatures are 64 bytes; DER signatures are 68-72 bytes");
 
     // Ensure that the signature verification passes.
     debug_assert!(
-        secp.verify_ecdsa(&msg, &sig, &ecdsa_public_key).is_ok(),
+        verify(&msg, &sig, &ecdsa_public_key),
         "failed to verify signature prehashed, digest: {:?}, signature: {:?}, public_key: {:?}",
         hex::encode(digest.0),
         hex::encode(signature),
-        hex::encode(ecdsa_public_key.serialize_uncompressed()),
+        hex::encode(ecdsa_public_key.serialize()),
     );
 
     ecdsa_public_key
@@ -605,17 +602,16 @@ pub fn determine_signature_y_parity(
     digest: &Hash,
     sig: &[u8; 64],
 ) -> Option<bool> {
-    let secp = Secp256k1::new();
+    let msg = Message::parse(&digest.0);
+    let sig = Signature::parse_standard_slice(sig)
+        .expect("compact signatures are 64 bytes; DER signatures are 68-72 bytes");
 
     // Try both possible recovery IDs: 0 (even y) and 1 (odd y)
     for rec in 0..=1 {
-        let recovery_id = RecoveryId::try_from(rec).ok()?;
-        if let Ok(recoverable_sig) = RecoverableSignature::from_compact(sig, recovery_id) {
-            let message = Message::from_digest(digest.0);
-            if let Ok(recovered_pubkey) = secp.recover_ecdsa(&message, &recoverable_sig) {
-                if &recovered_pubkey == public_key {
-                    return Some(rec == 1);
-                }
+        let recovery_id = RecoveryId::parse(rec).ok()?;
+        if let Ok(recovered_pk) = recover(&msg, &sig, &recovery_id) {
+            if recovered_pk == *public_key {
+                return Some(rec == 1);
             }
         }
     }
