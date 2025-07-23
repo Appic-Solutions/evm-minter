@@ -2,7 +2,7 @@ use std::time::Duration;
 
 pub mod address;
 pub mod candid_types;
-mod cbor;
+pub mod cbor;
 pub mod checked_amount;
 pub mod contract_logs;
 pub mod deposit;
@@ -22,6 +22,7 @@ pub mod rpc_client;
 pub mod rpc_declarations;
 pub mod state;
 pub mod storage;
+pub mod swap;
 pub mod tx;
 pub mod withdraw;
 
@@ -37,6 +38,9 @@ pub const PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL: Duration = Duration::fr
 pub const PROCESS_REIMBURSEMENT: Duration = Duration::from_secs(1 * 60);
 pub const PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_RETRY_INTERVAL: Duration = Duration::from_secs(30);
 pub const MINT_RETRY_DELAY: Duration = Duration::from_secs(30);
+
+pub const APPIC_CONTROLLER_PRINCIPAL: &str =
+    "tb3vi-54bcb-4oudm-fmp2s-nntjp-rmhd3-ukvnq-lawfq-vk5vy-mnlc7-pae";
 
 pub const RPC_HELPER_PRINCIPAL: &str =
     "o74ab-rm2co-uhvn6-6ec2d-3kkvk-bwlcw-356yj-lbma2-m4qew-l4ett-wae";

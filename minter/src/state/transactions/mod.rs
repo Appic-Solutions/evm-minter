@@ -6,6 +6,7 @@ use crate::candid_types::{
     withdraw_native::WithdrawalStatus, RetrieveWithdrawalStatus, Transaction, TxFinalizedStatus,
 };
 use crate::evm_config::EvmNetwork;
+use crate::logs::INFO;
 use crate::map::MultiKeyMap;
 use crate::numeric::{GasAmount, LedgerMintIndex, TransactionCount, TransactionNonce};
 use crate::rpc_declarations::{Hash, TransactionReceipt, TransactionStatus};
@@ -19,11 +20,12 @@ use crate::{
     numeric::{Erc20TokenAmount, Erc20Value, LedgerBurnIndex, Wei},
 };
 use candid::Principal;
+use ic_canister_log::log;
 use icrc_ledger_types::icrc1::account::Account;
 use minicbor::{Decode, Encode};
 use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::fmt;
+use std::{fmt, panic};
 
 #[derive(Clone, Eq, PartialEq, Encode, Decode)]
 #[cbor(transparent)]
@@ -114,6 +116,40 @@ pub struct Erc20WithdrawalRequest {
     pub is_wrapped_mint: Option<bool>,
 }
 
+/// ERC-20(both unlocking erc20 tokens, and minting wrappped icrc tokens) withdrawal request issued by the user.
+#[derive(Clone, Eq, PartialEq, Encode, Decode)]
+pub struct Erc20Approve {
+    /// Amount of burn Native token that can be used to pay for the EVM transaction fees.
+    #[n(0)]
+    pub max_transaction_fee: Wei,
+    /// given approval for erc20_contract address
+    #[n(1)]
+    pub erc20_contract_address: Address,
+
+    // approval is given to this address
+    #[n(2)]
+    pub minter_address: Address,
+
+    /// The transaction ID of the Native token burn operation on the native token ledger.
+    #[cbor(n(3), with = "crate::cbor::id")]
+    pub native_ledger_burn_index: LedgerBurnIndex,
+    /// The ERC20 ledger on which the minter burned the ERC20 tokens.
+    #[cbor(n(4), with = "crate::cbor::principal")]
+    pub from: Principal,
+    /// The subaccount from which the minter burned native.
+    #[n(5)]
+    pub from_subaccount: Option<Subaccount>,
+    /// The IC time at which the withdrawal request arrived.
+    #[n(6)]
+    pub created_at: u64,
+    /// Fee consumed for batch l1 submission, only applicable to some l2s like Op, and Base
+    #[n(7)]
+    pub l1_fee: Option<Wei>,
+    /// Fee taken for covering the signing, rpc calls, and other incfraustructure costs
+    #[n(8)]
+    pub withdrawal_fee: Option<Wei>,
+}
+
 struct DebugPrincipal<'a>(&'a Principal);
 
 impl fmt::Debug for DebugPrincipal<'_> {
@@ -182,6 +218,33 @@ impl fmt::Debug for Erc20WithdrawalRequest {
     }
 }
 
+impl fmt::Debug for Erc20Approve {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        let Erc20Approve {
+            max_transaction_fee,
+            native_ledger_burn_index,
+            erc20_contract_address,
+            from,
+            from_subaccount,
+            created_at,
+            l1_fee,
+            withdrawal_fee,
+            minter_address,
+        } = self;
+        f.debug_struct("Erc20Approve")
+            .field("max_transaction_fee", max_transaction_fee)
+            .field("erc20_contract_address", erc20_contract_address)
+            .field("native_ledger_burn_index", native_ledger_burn_index)
+            .field("from", &DebugPrincipal(from))
+            .field("from_subaccount", from_subaccount)
+            .field("created_at", created_at)
+            .field("l1_fee", l1_fee)
+            .field("withdrawal_fee", withdrawal_fee)
+            .field("minter_address", minter_address)
+            .finish()
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum WithdrawalSearchParameter {
     ByWithdrawalId(LedgerBurnIndex),
@@ -193,6 +256,7 @@ pub enum WithdrawalSearchParameter {
 pub enum WithdrawalRequest {
     Native(NativeWithdrawalRequest),
     Erc20(Erc20WithdrawalRequest),
+    Erc20Approve(Erc20Approve),
 }
 
 impl WithdrawalRequest {
@@ -200,6 +264,7 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.ledger_burn_index,
             WithdrawalRequest::Erc20(request) => request.native_ledger_burn_index,
+            WithdrawalRequest::Erc20Approve(request) => request.native_ledger_burn_index,
         }
     }
 
@@ -207,6 +272,7 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.created_at,
             WithdrawalRequest::Erc20(request) => Some(request.created_at),
+            WithdrawalRequest::Erc20Approve(request) => Some(request.created_at),
         }
     }
 
@@ -215,6 +281,9 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.destination,
             WithdrawalRequest::Erc20(request) => request.destination,
+            WithdrawalRequest::Erc20Approve(_request) => {
+                panic!("Bug: Approval tx should not have a payee")
+            }
         }
     }
 
@@ -222,6 +291,7 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.l1_fee,
             WithdrawalRequest::Erc20(request) => request.l1_fee,
+            WithdrawalRequest::Erc20Approve(request) => request.l1_fee,
         }
     }
 
@@ -229,6 +299,7 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.withdrawal_fee,
             WithdrawalRequest::Erc20(request) => request.withdrawal_fee,
+            WithdrawalRequest::Erc20Approve(request) => request.withdrawal_fee,
         }
     }
 
@@ -237,6 +308,9 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.destination,
             WithdrawalRequest::Erc20(request) => request.erc20_contract_address,
+            WithdrawalRequest::Erc20Approve(_request) => {
+                panic!("Bug: Approval tx should not have a destination")
+            }
         }
     }
 
@@ -244,6 +318,7 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.from,
             WithdrawalRequest::Erc20(request) => request.from,
+            WithdrawalRequest::Erc20Approve(request) => request.from,
         }
     }
 
@@ -251,6 +326,7 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => &request.from_subaccount,
             WithdrawalRequest::Erc20(request) => &request.from_subaccount,
+            WithdrawalRequest::Erc20Approve(request) => &request.from_subaccount,
         }
     }
 
@@ -260,6 +336,9 @@ impl WithdrawalRequest {
                 EventType::AcceptedNativeWithdrawalRequest(request)
             }
             WithdrawalRequest::Erc20(request) => EventType::AcceptedErc20WithdrawalRequest(request),
+            WithdrawalRequest::Erc20Approve(_request) => {
+                panic!("Bug: Approval tx is not a withdrawal tx")
+            }
         }
     }
 
@@ -284,6 +363,12 @@ impl From<NativeWithdrawalRequest> for WithdrawalRequest {
 impl From<Erc20WithdrawalRequest> for WithdrawalRequest {
     fn from(value: Erc20WithdrawalRequest) -> Self {
         WithdrawalRequest::Erc20(value)
+    }
+}
+
+impl From<Erc20Approve> for WithdrawalRequest {
+    fn from(value: Erc20Approve) -> Self {
+        WithdrawalRequest::Erc20Approve(value)
     }
 }
 
@@ -341,6 +426,9 @@ impl From<&WithdrawalRequest> for ReimbursementIndex {
                     }
                 }
             }
+            WithdrawalRequest::Erc20Approve(request) => ReimbursementIndex::Native {
+                ledger_burn_index: request.native_ledger_burn_index,
+            },
         }
     }
 }
@@ -599,6 +687,13 @@ impl WithdrawalTransactions {
                     "BUG: ERC-20 transaction amount should be zero"
                 );
             }
+            WithdrawalRequest::Erc20Approve(_req) => {
+                assert_eq!(
+                    Wei::ZERO,
+                    transaction.amount,
+                    "BUG: ERC-20 transaction amount should be zero"
+                );
+            }
         }
         let nonce = self.next_nonce;
         assert_eq!(transaction.nonce, nonce, "BUG: transaction nonce mismatch");
@@ -615,6 +710,9 @@ impl WithdrawalTransactions {
                 },
                 WithdrawalRequest::Erc20(erc20) => ResubmissionStrategy::GuaranteeEthAmount {
                     allowed_max_transaction_fee: erc20.max_transaction_fee,
+                },
+                WithdrawalRequest::Erc20Approve(req) => ResubmissionStrategy::GuaranteeEthAmount {
+                    allowed_max_transaction_fee: req.max_transaction_fee,
                 },
             },
         };
@@ -821,6 +919,11 @@ impl WithdrawalTransactions {
                     );
                 }
             }
+            WithdrawalRequest::Erc20Approve(_request) => {
+                if receipt.status == TransactionStatus::Failure {
+                    log!(INFO,"ERC20 approval failed, and there is no reimbursment for failed erc20 transactions");
+                }
+            }
         }
     }
 
@@ -874,7 +977,7 @@ impl WithdrawalTransactions {
                     reimbursed_in_block,
                     reimbursed_amount: reimbursement_request.reimbursed_amount,
                     transaction_hash: reimbursement_request.transaction_hash,
-                    transfer_fee: transfer_fee
+                    transfer_fee,
                 }),
             ),
             None
@@ -1269,15 +1372,49 @@ pub fn create_transaction(
                 access_list: Default::default(),
             })
         }
+        WithdrawalRequest::Erc20Approve(request) => {
+            let request_max_fee_per_gas = request
+                .max_transaction_fee
+                .into_wei_per_gas(gas_limit)
+                .expect("BUG: gas_limit should be non-zero");
+
+            let actual_min_max_fee_per_gas = gas_fee_estimate.min_max_fee_per_gas();
+            if actual_min_max_fee_per_gas > request_max_fee_per_gas {
+                return Err(CreateTransactionError::InsufficientTransactionFee {
+                    native_ledger_burn_index: request.native_ledger_burn_index,
+                    allowed_max_transaction_fee: request.max_transaction_fee,
+                    actual_max_transaction_fee: actual_min_max_fee_per_gas
+                        .transaction_cost(gas_limit)
+                        .unwrap_or(Wei::MAX),
+                });
+            }
+            Ok(Eip1559TransactionRequest {
+                chain_id: evm_network.chain_id(),
+                nonce,
+                max_priority_fee_per_gas: gas_fee_estimate.max_priority_fee_per_gas,
+                max_fee_per_gas: request_max_fee_per_gas,
+                gas_limit,
+                destination: request.erc20_contract_address,
+                amount: Wei::ZERO,
+                data: TransactionCallData::Erc20Approve {
+                    spender: request.minter_address,
+                    value: Erc20Value::MAX.checked_sub(Erc20Value::from(1_u8)).unwrap(),
+                }
+                .encode(),
+                access_list: Default::default(),
+            })
+        }
     }
 }
 
 // First 4 bytes of keccak256(transfer(address,uint256))
 const ERC_20_TRANSFER_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("a9059cbb");
+const ERC_20_APPROVE_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("095ea7b3");
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TransactionCallData {
     Erc20Transfer { to: Address, value: Erc20Value },
+    Erc20Approve { spender: Address, value: Erc20Value },
 }
 
 impl TransactionCallData {
@@ -1292,28 +1429,49 @@ impl TransactionCallData {
                 data.extend(value.to_be_bytes());
                 data
             }
+            TransactionCallData::Erc20Approve { spender, value } => {
+                let mut data = Vec::with_capacity(68);
+                data.extend(ERC_20_APPROVE_FUNCTION_SELECTOR);
+                data.extend(<[u8; 32]>::from(spender));
+                data.extend(value.to_be_bytes());
+                data
+            }
         }
     }
 
     pub fn decode<T: AsRef<[u8]>>(data: T) -> Result<Self, String> {
         let data = data.as_ref();
         match data.get(0..4) {
-            Some(selector) if selector == ERC_20_TRANSFER_FUNCTION_SELECTOR => {
-                if data.len() != 68 {
-                    return Err("Invalid data length".to_string());
+            Some(selector) => {
+                if selector == ERC_20_TRANSFER_FUNCTION_SELECTOR {
+                    if data.len() != 68 {
+                        return Err("Invalid data length".to_string());
+                    }
+                    let address = <[u8; 32]>::try_from(&data[4..36]).unwrap();
+                    let to = Address::try_from(&address).unwrap();
+
+                    let value = <[u8; 32]>::try_from(&data[36..]).unwrap();
+                    let value = Erc20Value::from_be_bytes(value);
+
+                    Ok(TransactionCallData::Erc20Transfer { to, value })
+                } else if selector == ERC_20_APPROVE_FUNCTION_SELECTOR {
+                    if data.len() != 68 {
+                        return Err("Invalid data length".to_string());
+                    }
+                    let address = <[u8; 32]>::try_from(&data[4..36]).unwrap();
+                    let spender = Address::try_from(&address).unwrap();
+
+                    let value = <[u8; 32]>::try_from(&data[36..]).unwrap();
+                    let value = Erc20Value::from_be_bytes(value);
+
+                    Ok(TransactionCallData::Erc20Approve { spender, value })
+                } else {
+                    Err(format!(
+                        "Unknown function selector 0x{:?}",
+                        hex::encode(selector)
+                    ))
                 }
-                let address = <[u8; 32]>::try_from(&data[4..36]).unwrap();
-                let to = Address::try_from(&address).unwrap();
-
-                let value = <[u8; 32]>::try_from(&data[36..]).unwrap();
-                let value = Erc20Value::from_be_bytes(value);
-
-                Ok(TransactionCallData::Erc20Transfer { to, value })
             }
-            Some(selector) => Err(format!(
-                "Unknown function selector 0x{:?}",
-                hex::encode(selector)
-            )),
             None => Err("missing function selector".to_string()),
         }
     }

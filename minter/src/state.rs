@@ -12,15 +12,6 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use balances::{Erc20Balances, IcrcBalances, NativeBalance};
-use candid::Principal;
-use ic_canister_log::log;
-use libsecp256k1::{PublicKey, PublicKeyFormat};
-use serde_bytes::ByteBuf;
-use transactions::{
-    Erc20WithdrawalRequest, TransactionCallData, WithdrawalRequest, WithdrawalTransactions,
-};
-
 use crate::{
     address::ecdsa_public_key_to_address,
     candid_types::DepositStatus,
@@ -39,7 +30,15 @@ use crate::{
     state::transactions::NativeWithdrawalRequest,
     tx::gas_fees::GasFeeEstimate,
 };
+use balances::{Erc20Balances, IcrcBalances, NativeBalance};
+use candid::Principal;
+use ic_canister_log::log;
+use libsecp256k1::{PublicKey, PublicKeyFormat};
+use serde_bytes::ByteBuf;
 use strum_macros::EnumIter;
+use transactions::{
+    Erc20WithdrawalRequest, TransactionCallData, WithdrawalRequest, WithdrawalTransactions,
+};
 
 use ic_cdk::api::management_canister::ecdsa::EcdsaPublicKeyResponse;
 
@@ -195,7 +194,13 @@ pub struct State {
     pub min_max_priority_fee_per_gas: WeiPerGas,
 
     // Appic swapper canister_id
-    pub swap_canister_id: Option<Principal>,
+    pub dex_canister_id: Option<Principal>,
+    // TWIN USDC address and ledger_id
+    pub ic_usdc_ids: Option<(Address, Principal)>,
+    // swap contract address
+    pub swap_contract_address: Option<Address>,
+    // is the maximum approval given to the swap contract
+    pub is_swapping_active: Option<bool>,
 }
 
 impl State {
@@ -528,9 +533,22 @@ impl State {
         withdrawal_id: &LedgerBurnIndex,
         receipt: &TransactionReceipt,
     ) {
+        let withdrawal_request = self
+            .withdrawal_transactions
+            .get_processed_withdrawal_request(withdrawal_id)
+            .expect("BUG: missing withdrawal request")
+            .clone();
+
+        match withdrawal_request {
+            WithdrawalRequest::Native(_) | WithdrawalRequest::Erc20(_) => {}
+            WithdrawalRequest::Erc20Approve(_) => {
+                self.is_swapping_active = Some(true);
+            }
+        }
+
         self.withdrawal_transactions
             .record_finalized_transaction(*withdrawal_id, receipt.clone());
-        self.update_balance_upon_withdrawal(withdrawal_id, receipt);
+        self.update_balance_upon_withdrawal(withdrawal_id, receipt, withdrawal_request);
     }
 
     fn update_balance_upon_deposit(&mut self, event: &ReceivedContractEvent) {
@@ -567,15 +585,16 @@ impl State {
         &mut self,
         withdrawal_id: &LedgerBurnIndex,
         receipt: &TransactionReceipt,
+        withdrawal_request: WithdrawalRequest,
     ) {
         let tx = self
             .withdrawal_transactions
             .get_finalized_transaction(withdrawal_id)
             .expect("BUG: missing finalized transaction");
-        let withdrawal_request = self
-            .withdrawal_transactions
-            .get_processed_withdrawal_request(withdrawal_id)
-            .expect("BUG: missing withdrawal request");
+        //let withdrawal_request = self
+        //    .withdrawal_transactions
+        //    .get_processed_withdrawal_request(withdrawal_id)
+        //    .expect("BUG: missing withdrawal request");
 
         let l1_fee = withdrawal_request.l1_fee().unwrap_or(Wei::ZERO);
 
@@ -596,8 +615,8 @@ impl State {
                     );
 
                 let charged_tx_fee=total_charged_fees.checked_sub(l1_fee)
-                    .expect("total_charged_fees should be higher than l1_fee")
-                    .checked_sub(withdrawal_fee).expect("Bug: total_charged_fees should be higer than l1_fee and withdrawal_fee combined");
+                            .expect("total_charged_fees should be higher than l1_fee")
+                            .checked_sub(withdrawal_fee).expect("Bug: total_charged_fees should be higer than l1_fee and withdrawal_fee combined");
 
                 (charged_tx_fee, false)
             }
@@ -605,6 +624,7 @@ impl State {
                 req.max_transaction_fee,
                 req.is_wrapped_mint.unwrap_or_default(),
             ),
+            WithdrawalRequest::Erc20Approve(req) => (req.max_transaction_fee, false),
         };
 
         let unspent_tx_fee = charged_tx_fee.checked_sub(tx_fee).expect(
@@ -646,11 +666,18 @@ impl State {
             && !tx.transaction_data().is_empty()
             && is_wrapped_mint == false
         {
-            let TransactionCallData::Erc20Transfer { to: _, value } = TransactionCallData::decode(
-                tx.transaction_data(),
-            )
-            .expect("BUG: failed to decode transaction data from transaction issued by minter");
-            self.erc20_balances.erc20_sub(*tx.destination(), value);
+            let tx_data = TransactionCallData::decode(tx.transaction_data())
+                .expect("BUG: failed to decode transaction data from transaction issued by minter");
+            match tx_data {
+                TransactionCallData::Erc20Transfer { to: _, value } => {
+                    self.erc20_balances.erc20_sub(*tx.destination(), value);
+                }
+
+                TransactionCallData::Erc20Approve {
+                    spender: _,
+                    value: _,
+                } => {}
+            }
         }
     }
 
@@ -726,6 +753,16 @@ impl State {
             Ok(()),
             "ERROR: some ERC20 tokens use the same ERC20 ledger ID or ERC-20 address"
         );
+    }
+
+    pub fn activate_erc20_contract_address(
+        &mut self,
+        ic_usdc_ids: (Address, Principal),
+        swap_contract_address: Address,
+    ) {
+        self.ic_usdc_ids = Some(ic_usdc_ids);
+        self.swap_contract_address = Some(swap_contract_address);
+        self.is_swapping_active = Some(true);
     }
 
     /// Checks whether two states are equivalent.

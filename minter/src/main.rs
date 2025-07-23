@@ -32,6 +32,7 @@ use evm_minter::candid_types::{
 
 use evm_minter::erc20::ERC20Token;
 use evm_minter::eth_types::fee_hisotry_parser::parse_fee_history;
+use evm_minter::eth_types::Address;
 use evm_minter::evm_config::EvmNetwork;
 use evm_minter::guard::retrieve_withdraw_guard;
 use evm_minter::ledger_client::{LedgerBurnError, LedgerClient};
@@ -45,7 +46,7 @@ use evm_minter::rpc_declarations::Hash;
 use evm_minter::state::audit::{process_event, EventType};
 use evm_minter::state::event::Event;
 use evm_minter::state::transactions::{
-    Erc20WithdrawalRequest, NativeWithdrawalRequest, Reimbursed, ReimbursementIndex,
+    Erc20Approve, Erc20WithdrawalRequest, NativeWithdrawalRequest, Reimbursed, ReimbursementIndex,
     ReimbursementRequest,
 };
 use evm_minter::state::{
@@ -56,12 +57,14 @@ use evm_minter::tx::gas_fees::{
     estimate_transaction_fee, lazy_refresh_gas_fee_estimate, DEFAULT_L1_BASE_GAS_FEE,
 };
 use evm_minter::withdraw::{
-    process_reimbursement, process_retrieve_tokens_requests, ERC20_MINT_TRANSACTION_GAS_LIMIT,
-    ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT, NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
+    process_reimbursement, process_retrieve_tokens_requests, ERC20_APPROVAL_TRANSACTION_GAS_LIMIT,
+    ERC20_MINT_TRANSACTION_GAS_LIMIT, ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
+    NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
 };
 use evm_minter::{
-    state, storage, PROCESS_REIMBURSEMENT, PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL,
-    RPC_HELPER_PRINCIPAL, SCRAPING_CONTRACT_LOGS_INTERVAL,
+    state, storage, APPIC_CONTROLLER_PRINCIPAL, PROCESS_REIMBURSEMENT,
+    PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL, RPC_HELPER_PRINCIPAL,
+    SCRAPING_CONTRACT_LOGS_INTERVAL,
 };
 use ic_canister_log::log;
 use ic_cdk::{init, post_upgrade, pre_upgrade, query, update};
@@ -220,8 +223,7 @@ async fn eip_1559_transaction_price(
                         NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT
                     } else {
                         ic_cdk::trap(&format!(
-                            "ERROR: Unsupported ckERC20 token ledger {}",
-                            erc20_ledger_id
+                            "ERROR: Unsupported ckERC20 token ledger {erc20_ledger_id}"
                         ))
                     }
                 }
@@ -258,7 +260,7 @@ async fn get_minter_info() -> MinterInfo {
         );
         let supported_erc20_tokens = Some(
             s.supported_erc20_tokens()
-                .map(|token| candid_types::Erc20Token::from(token))
+                .map(candid_types::Erc20Token::from)
                 .collect(),
         );
 
@@ -293,7 +295,7 @@ async fn get_minter_info() -> MinterInfo {
             helper_smart_contract_addresses: s.helper_contract_addresses.as_ref().map(
                 |addresses| {
                     addresses
-                        .into_iter()
+                        .iter()
                         .map(|address| address.to_string())
                         .collect()
                 },
@@ -316,7 +318,7 @@ async fn get_minter_info() -> MinterInfo {
             last_scraped_block_number: Some(s.last_scraped_block_number.into()),
             native_twin_token_ledger_id: Some(s.native_ledger_id),
             ledger_suite_manager_id: s.ledger_suite_manager_id,
-            swap_canister_id: s.swap_canister_id,
+            swap_canister_id: s.dex_canister_id,
             total_collected_operation_fee: Some(
                 s.native_balance.total_collected_operation_native_fee.into(),
             ),
@@ -359,10 +361,8 @@ async fn withdraw_native_token(
 ) -> Result<RetrieveNativeRequest, WithdrawalError> {
     let caller = validate_caller_not_anonymous();
     let _guard = retrieve_withdraw_guard(caller).unwrap_or_else(|e| {
-        println!("{:?}", e);
         ic_cdk::trap(&format!(
-            "Failed retrieving guard for principal {}: {:?}",
-            caller, e
+            "Failed retrieving guard for principal {caller}: {e:?}"
         ))
     });
 
@@ -467,10 +467,12 @@ async fn withdrawal_status(parameter: WithdrawalSearchParameter) -> Vec<Withdraw
                         .get_alt(&r.erc20_contract_address)
                         .unwrap()
                         .to_string(),
+                    Erc20Approve(_erc20_approve) => "USDC".to_string(),
                 },
                 withdrawal_amount: match request {
                     Native(r) => r.withdrawal_amount.into(),
                     Erc20(r) => r.withdrawal_amount.into(),
+                    Erc20Approve(_erc20_approve) => Nat::from(0_u8),
                 },
                 max_transaction_fee: match (request, tx) {
                     (Native(_), None) => None,
@@ -478,6 +480,7 @@ async fn withdrawal_status(parameter: WithdrawalSearchParameter) -> Vec<Withdraw
                         r.withdrawal_amount.checked_sub(tx.amount).map(|x| x.into())
                     }
                     (Erc20(r), _) => Some(r.max_transaction_fee.into()),
+                    (Erc20Approve(r), _) => Some(r.max_transaction_fee.into()),
                 },
                 from: request.from(),
                 from_subaccount: request
@@ -501,8 +504,7 @@ async fn withdraw_erc20(
     let caller = validate_caller_not_anonymous();
     let _guard = retrieve_withdraw_guard(caller).unwrap_or_else(|e| {
         ic_cdk::trap(&format!(
-            "Failed retrieving guard for principal {}: {:?}",
-            caller, e
+            "Failed retrieving guard for principal {caller}: {e:?}"
         ))
     });
 
@@ -678,8 +680,7 @@ async fn wrap_icrc(
     let caller = validate_caller_not_anonymous();
     let _guard = retrieve_withdraw_guard(caller).unwrap_or_else(|e| {
         ic_cdk::trap(&format!(
-            "Failed retrieving guard for principal {}: {:?}",
-            caller, e
+            "Failed retrieving guard for principal {caller}: {e:?}"
         ))
     });
 
@@ -836,6 +837,107 @@ async fn wrap_icrc(
     }
 }
 
+#[update]
+async fn activate_swap_feature(ic_usdc_ledger_id: Principal, swap_contract_address: String) -> Nat {
+    let caller = validate_caller_not_anonymous();
+    if caller != Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap() {
+        panic!("ONLY appic controller can activate swap_feature");
+    }
+
+    let erc20_token = read_state(|s| s.find_erc20_token_by_ledger_id(&ic_usdc_ledger_id))
+        .expect("could not find icUSDC tokens with provided principal");
+
+    let (withdrawal_native_fee, native_ledger, minter_address) = read_state(|s| {
+        (
+            s.withdrawal_native_fee,
+            LedgerClient::native_ledger_from_state(s),
+            s.minter_address()
+                .expect("expextd minter address to be presented"),
+        )
+    });
+
+    let tx_fee = estimate_usdc_approval_fee()
+        .await
+        .expect("Failed to retrieve current gas fee");
+
+    // Check if l1_fee is required for this network
+    let l1_fee = match read_state(|s| s.evm_network) {
+        EvmNetwork::Base => Some(DEFAULT_L1_BASE_GAS_FEE),
+        _ => None,
+    };
+
+    let swap_contract_address =
+        Address::from_str(&swap_contract_address).expect("Invalid swap contract address");
+
+    let now = ic_cdk::api::time();
+
+    // amount that will be burnt to cover transaction_fees plus transaction_signing
+    // cost(native_withdrawal_fee)
+    let native_burn_amount = tx_fee
+        .checked_add(l1_fee.unwrap_or(Wei::ZERO))
+        .expect("Bug: Tx_fee plus l1_fee should fit in u256")
+        .checked_add(withdrawal_native_fee.unwrap_or(Wei::ZERO))
+        .unwrap_or(Wei::MAX);
+
+    log!(
+        INFO,
+        "[withdraw_erc20]: burning {:?} native",
+        native_burn_amount
+    );
+    mutate_state(|s| {
+        process_event(
+            s,
+            EventType::SwapContractActivated {
+                swap_contract_address,
+                usdc_contract_address: erc20_token.erc20_contract_address,
+                ic_usdc_ledger_id,
+            },
+        );
+    });
+
+    match native_ledger
+        .burn_from(
+            caller.into(),
+            native_burn_amount,
+            BurnMemo::Erc20GasFee {
+                erc20_token_symbol: erc20_token.erc20_token_symbol.clone(),
+                erc20_withdrawal_amount: Erc20Value::ZERO,
+                to_address: Address::ZERO,
+            },
+            None,
+        )
+        .await
+    {
+        Ok(native_ledger_burn_index) => {
+            let approval_request = Erc20Approve {
+                max_transaction_fee: tx_fee,
+                minter_address,
+                native_ledger_burn_index,
+                erc20_contract_address: erc20_token.erc20_contract_address,
+                from: caller,
+                from_subaccount: None,
+                created_at: now,
+                l1_fee,
+                withdrawal_fee: withdrawal_native_fee,
+            };
+
+            mutate_state(|s| {
+                process_event(
+                    s,
+                    EventType::AcceptedSwapActivationRequest(approval_request.clone()),
+                );
+            });
+
+            ic_cdk_timers::set_timer(Duration::from_secs(0), || {
+                ic_cdk::spawn(process_retrieve_tokens_requests())
+            });
+
+            native_ledger_burn_index.get().into()
+        }
+        Err(_native_burn_error) => panic!("Failed to burn native token to cover transaction fee"),
+    }
+}
+
 async fn estimate_erc20_transaction_fee() -> Option<Wei> {
     lazy_refresh_gas_fee_estimate()
         .await
@@ -856,18 +958,27 @@ async fn estimate_icrc_wrap_transaction_fee() -> Option<Wei> {
         })
 }
 
+async fn estimate_usdc_approval_fee() -> Option<Wei> {
+    lazy_refresh_gas_fee_estimate()
+        .await
+        .map(|gas_fee_estimate| {
+            gas_fee_estimate
+                .to_price(ERC20_APPROVAL_TRANSACTION_GAS_LIMIT)
+                .max_transaction_fee()
+        })
+}
+
 #[update]
 async fn add_erc20_token(erc20_token: AddErc20Token) {
     let orchestrator_id = read_state(|s| s.ledger_suite_manager_id)
         .unwrap_or_else(|| ic_cdk::trap("ERROR: ERC-20 feature is not activated"));
     if orchestrator_id != ic_cdk::caller() {
         ic_cdk::trap(&format!(
-            "ERROR: only the orchestrator {} can add ERC-20 tokens",
-            orchestrator_id
+            "ERROR: only the orchestrator {orchestrator_id} can add ERC-20 tokens"
         ));
     }
-    let erc20_token = ERC20Token::try_from(erc20_token)
-        .unwrap_or_else(|e| ic_cdk::trap(&format!("ERROR: {}", e)));
+    let erc20_token =
+        ERC20Token::try_from(erc20_token).unwrap_or_else(|e| ic_cdk::trap(&format!("ERROR: {e}")));
     mutate_state(|s| process_event(s, EventType::AddedErc20Token(erc20_token)));
 }
 
@@ -881,20 +992,6 @@ async fn get_canister_status() -> ic_cdk::api::management_canister::main::Canist
     .await
     .expect("failed to fetch canister status")
     .0
-}
-
-// Only the swap canister can call this function to make the process of swapping faster
-#[update]
-async fn check_new_deposits() {
-    let swap_canister_id = read_state(|s| s.swap_canister_id)
-        .unwrap_or_else(|| ic_cdk::trap("ERROR: swap feature not activated"));
-    if swap_canister_id != ic_cdk::caller() {
-        ic_cdk::trap(&format!(
-            "ERROR: only the swap canister id {} can add request for early deposit check",
-            swap_canister_id
-        ));
-    }
-    scrape_logs().await;
 }
 
 #[query]
@@ -1204,7 +1301,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     log_index: log_index.into(),
                     from_address: from_address.to_string(),
                     value: value.into(),
-                    principal: principal,
+                    principal,
                     wrapped_erc20_contract_address: wrapped_erc20_contract_address.to_string(),
                     icrc_token_principal,
                     subaccount: subaccount.map(|s| s.to_bytes()),
@@ -1226,7 +1323,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     transaction_hash: transaction_hash.to_string(),
                     block_number: block_number.into(),
                     log_index: log_index.into(),
-                    base_token: base_token,
+                    base_token,
                     deployed_wrapped_erc20: deployed_wrapped_erc20.to_string(),
                 },
                 EventType::QuarantinedRelease {
@@ -1271,6 +1368,18 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     transaction_hash: reimbursed.transaction_hash.map(|hash| hash.to_string()),
                     transfer_fee: reimbursed.transfer_fee.map(|fee| fee.into()),
                 },
+                EventType::SwapContractActivated {
+                    swap_contract_address,
+                    usdc_contract_address,
+                    ic_usdc_ledger_id,
+                } => EP::SwapContractActivated {
+                    swap_contract_address: swap_contract_address.to_string(),
+                    usdc_contract_address: usdc_contract_address.to_string(),
+                    ic_usdc_ledger_id,
+                },
+                EventType::AcceptedSwapActivationRequest(_erc20_approve) => {
+                    EP::AcceptedSwapActivationRequest
+                }
             },
         }
     }
@@ -1333,13 +1442,6 @@ pub async fn update_chain_data(chain_data: ChainData) {
     };
 }
 
-/// Returns the amount of heap memory in bytes that has been allocated.
-//#[cfg(target_arch = "wasm32")]
-//pub fn heap_memory_size_bytes() -> usize {
-//    const WASM_PAGE_SIZE_BYTES: usize = 65536;
-//    core::arch::wasm32::memory_size(0) * WASM_PAGE_SIZE_BYTES
-//}
-
 #[cfg(not(any(target_arch = "wasm32")))]
 pub fn heap_memory_size_bytes() -> usize {
     0
@@ -1365,7 +1467,7 @@ fn icrc28_trusted_origins() -> Icrc28TrustedOriginsResponse {
         String::from("https://test.appicdao.com"),
     ];
 
-    return Icrc28TrustedOriginsResponse { trusted_origins };
+    Icrc28TrustedOriginsResponse { trusted_origins }
 }
 
 fn main() {}

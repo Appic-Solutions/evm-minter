@@ -159,7 +159,7 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
             event_source,
             reason,
         } => {
-            state.record_invalid_event(event_source.clone(), reason.clone());
+            state.record_invalid_event(*event_source, reason.clone());
         }
         EventType::DeployedWrappedIcrcToken(received_wrapped_icrc_deployed_event) => {
             state.record_contract_events(&received_wrapped_icrc_deployed_event.clone().into());
@@ -169,7 +169,7 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
             release_event,
         } => {
             state.record_quarantined_release(
-                event_source.clone(),
+                *event_source,
                 ReceivedContractEvent::WrappedIcrcBurn(release_event.clone()),
             );
         }
@@ -212,6 +212,22 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
                     reimbursed.reimbursed_in_block,
                     reimbursed.transfer_fee,
                 );
+        }
+        EventType::AcceptedSwapActivationRequest(erc20_approve) => {
+            state
+                .withdrawal_transactions
+                .record_withdrawal_request(erc20_approve.clone());
+        }
+
+        EventType::SwapContractActivated {
+            swap_contract_address,
+            usdc_contract_address,
+            ic_usdc_ledger_id,
+        } => {
+            state.activate_erc20_contract_address(
+                (*usdc_contract_address, *ic_usdc_ledger_id),
+                *swap_contract_address,
+            );
         }
     }
 }

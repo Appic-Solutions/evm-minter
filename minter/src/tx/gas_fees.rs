@@ -239,10 +239,7 @@ pub enum TransactionFeeEstimationError {
     Overflow(String),
 }
 
-/// Estimates
-
-/// the transaction fee based on fee history.
-
+/// Estimates the transaction fee based on fee history.
 /// Determines the base fee per gas for the next block and computes the maximum priority fee based on historic values.
 /// Returns an estimate of the gas fee.
 ///

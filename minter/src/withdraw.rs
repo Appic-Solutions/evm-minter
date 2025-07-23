@@ -33,6 +33,8 @@ const TRANSACTIONS_TO_SEND_BATCH_SIZE: usize = 5;
 pub const NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(21_000);
 pub const ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(66_000);
 
+pub const ERC20_APPROVAL_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(50_000);
+
 // used for mining wrapped icrc transactions
 pub const ERC20_MINT_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(100_000);
 
@@ -521,5 +523,6 @@ pub fn estimate_gas_limit(withdrawal_request: &WithdrawalRequest) -> GasAmount {
                 ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT
             }
         }
+        WithdrawalRequest::Erc20Approve(_) => ERC20_APPROVAL_TRANSACTION_GAS_LIMIT,
     }
 }

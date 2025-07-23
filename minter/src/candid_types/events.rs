@@ -246,4 +246,10 @@ pub enum EventPayload {
         transaction_hash: Option<String>,
         transfer_fee: Option<Nat>,
     },
+    AcceptedSwapActivationRequest,
+    SwapContractActivated {
+        swap_contract_address: String,
+        usdc_contract_address: String,
+        ic_usdc_ledger_id: Principal,
+    },
 }

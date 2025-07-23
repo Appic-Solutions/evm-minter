@@ -164,7 +164,7 @@ impl TryFrom<InitArg> for State {
             erc20_balances: Default::default(),
             evm_canister_id: Principal::from_text("sosge-5iaaa-aaaag-alcla-cai").unwrap(),
             min_max_priority_fee_per_gas,
-            swap_canister_id: None,
+            dex_canister_id: None,
             withdrawal_native_fee,
             events_to_release: Default::default(),
             released_events: Default::default(),
@@ -172,6 +172,9 @@ impl TryFrom<InitArg> for State {
             icrc_balances: Default::default(),
             wrapped_icrc_tokens: Default::default(),
             last_log_scraping_time: None,
+            ic_usdc_ids: None,
+            swap_contract_address: None,
+            is_swapping_active: None,
         };
         state.validate_config()?;
         Ok(state)

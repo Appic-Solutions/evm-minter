@@ -12,8 +12,9 @@ use crate::{
     erc20::ERC20Token,
     eth_types::Address,
     lifecycle::{InitArg, UpgradeArg},
-    numeric::{BlockNumber, IcrcValue, LedgerBurnIndex, LedgerMintIndex, LedgerReleaseIndex, Wei},
+    numeric::{BlockNumber, IcrcValue, LedgerBurnIndex, LedgerMintIndex, LedgerReleaseIndex},
     rpc_declarations::TransactionReceipt,
+    state::transactions::Erc20Approve,
     tx::{Eip1559TransactionRequest, SignedEip1559TransactionRequest},
 };
 
@@ -217,6 +218,17 @@ pub enum EventType {
         reimbursed_icrc_token: Principal,
         #[n(2)]
         reimbursed: Reimbursed,
+    },
+    #[n(31)]
+    AcceptedSwapActivationRequest(#[n(0)] Erc20Approve),
+    #[n(32)]
+    SwapContractActivated {
+        #[n(0)]
+        swap_contract_address: Address,
+        #[n(1)]
+        usdc_contract_address: Address,
+        #[cbor(n(2), with = "crate::cbor::principal")]
+        ic_usdc_ledger_id: Principal,
     },
 }
 

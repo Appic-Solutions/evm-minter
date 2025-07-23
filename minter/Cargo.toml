@@ -6,7 +6,6 @@ edition = "2021"
 
 
 [dependencies]
-
 evm_rpc_client = { path = "../evm_rpc_client" }
 askama = { version = "0.12.1", features = ["serde-json"] }
 candid = "0.10.6"
