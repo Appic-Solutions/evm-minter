@@ -240,9 +240,7 @@ pub enum TransactionFeeEstimationError {
 }
 
 /// Estimates
-
 /// the transaction fee based on fee history.
-
 /// Determines the base fee per gas for the next block and computes the maximum priority fee based on historic values.
 /// Returns an estimate of the gas fee.
 ///
@@ -316,6 +314,14 @@ fn median<T: Ord>(values: &mut [T]) -> Option<&T> {
 // ERC-20 Transfer (EIP-1559):
 // Typical Size: 172–180 bytes.
 
+const ORACLE_ADDRESS: &str = "0xb528D11cC114E026F138fE568744c6D45ce6Da7A";
+
+const GET_L1_GAS_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("49948e0e");
+
+const SAMPLE_ERC20_TRANSFER_TX:&str="02f86c0185059682f008503b9aca00825208946b175474e89094c44da98b954eedeac495271d0f80b844a9059cbb0000000000000000000000005a3c9f349cbf0d6b4c7a5671e3d06ce72c826b6b000000000000000000000000000000000000000000000000000000000016345785d8a0000c080a09d14d0d3aabc124ff0c6875b1d6db7a632a53cd0b62e94942be6b850a05af21a074bc3c2cf34378480b44843544f3d0430c8131f64cbaec99a256468e00dbf5d6";
+
+const SAMPLE_CALLDATA_FOR_GET_L1_FEE:&str="49948e0e000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000b602f86c0185059682f008503b9aca00825208946b175474e89094c44da98b954eedeac495271d0f80b844a9059cbb0000000000000000000000005a3c9f349cbf0d6b4c7a5671e3d06ce72c826b6b000000000000000000000000000000000000000000000000000000000016345785d8a0000c080a09d14d0d3aabc124ff0c6875b1d6db7a632a53cd0b62e94942be6b850a05af21a074bc3c2cf34378480b44843544f3d0430c8131f64cbaec99a256468e00dbf5d600000000000000000000";
+
 // Components of the Transaction
 // Transaction Type: 0x02 (EIP-1559).
 // Chain ID: 0x2119 (Base).
@@ -332,14 +338,6 @@ fn median<T: Ord>(values: &mut [T]) -> Option<&T> {
 // Sample erc20 tx is slightly longer than native transfer, so we choose erc20 transfer for both of
 // them to add some buffer for native transfer as well
 
-const SAMPLE_ERC20_TRANSFER_TX:&str="02f86c0185059682f008503b9aca00825208946b175474e89094c44da98b954eedeac495271d0f80b844a9059cbb0000000000000000000000005a3c9f349cbf0d6b4c7a5671e3d06ce72c826b6b000000000000000000000000000000000000000000000000000000000016345785d8a0000c080a09d14d0d3aabc124ff0c6875b1d6db7a632a53cd0b62e94942be6b850a05af21a074bc3c2cf34378480b44843544f3d0430c8131f64cbaec99a256468e00dbf5d6";
-
-const ORACLE_ADDRESS: &str = "0xb528D11cC114E026F138fE568744c6D45ce6Da7A";
-
-const GET_L1_GAS_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("49948e0e");
-
-const SAMPLE_CALLDATA_FOR_GET_L1_FEE:&str="49948e0e000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000b602f86c0185059682f008503b9aca00825208946b175474e89094c44da98b954eedeac495271d0f80b844a9059cbb0000000000000000000000005a3c9f349cbf0d6b4c7a5671e3d06ce72c826b6b000000000000000000000000000000000000000000000000000000000016345785d8a0000c080a09d14d0d3aabc124ff0c6875b1d6db7a632a53cd0b62e94942be6b850a05af21a074bc3c2cf34378480b44843544f3d0430c8131f64cbaec99a256468e00dbf5d600000000000000000000";
-
 /// Asynchronously refreshes the l1 fee estimate.
 ///
 /// fetches the latest l1_fee from gas_fee oracle.
@@ -347,7 +345,6 @@ const SAMPLE_CALLDATA_FOR_GET_L1_FEE:&str="49948e0e00000000000000000000000000000
 ///
 /// # Returns
 /// An `Option` containing the new  l1 fee estimate in `Wei` if successful, or `None` if the fetch fails.
-
 // we se default l1 fee instead of fetching it on-chain becuase its high enough to cover the any
 // sort of transaction cost.
 pub const DEFAULT_L1_BASE_GAS_FEE: Wei = Wei::new(10000000000000_u128);
@@ -421,7 +418,8 @@ fn parse_l1_fee_resposne(l1_fee_string: String) -> Wei {
 #[test]
 fn check_inpts() {
     use ethnum::U256;
-    use evm_rpc_types::Hex;
+    use evm_rpc_client::evm_rpc_types::Hex;
+
     let generated_tx_call_data = {
         let tx_bytes =
             hex::decode(SAMPLE_ERC20_TRANSFER_TX).expect("Failed to decode tx_data into bytes");

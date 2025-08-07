@@ -9,6 +9,7 @@ mod tests;
 
 use std::fmt::{Debug, Display, Formatter};
 
+use crate::icrc_client::runtime::IcrcBoundedRuntime;
 use crate::logs::INFO;
 use crate::management::Reason;
 use crate::state::{read_state, State};
@@ -16,7 +17,7 @@ use crate::{logs::DEBUG, management::CallError};
 use candid::{self, CandidType, Nat, Principal};
 use ic_canister_log::log;
 use ic_cdk;
-use icrc_ledger_client_cdk::{CdkRuntime, ICRC1Client};
+use icrc_ledger_client::ICRC1Client;
 use icrc_ledger_types::icrc::generic_metadata_value::MetadataValue;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_bytes::ByteArray;
@@ -151,7 +152,7 @@ impl LSMClient {
         let chain_id = state.evm_network.chain_id();
 
         let icrc_client = ICRC1Client {
-            runtime: CdkRuntime,
+            runtime: IcrcBoundedRuntime,
             ledger_canister_id: state.native_ledger_id,
         };
 
@@ -198,7 +199,7 @@ impl LSMClient {
         &self,
         canister_id: Principal,
         method: &str,
-        args: I,
+        arg: I,
     ) -> Result<O, CallError>
     where
         I: CandidType + Debug + Send + 'static,
@@ -209,23 +210,31 @@ impl LSMClient {
             "Calling canister '{}' with method '{}' and payload '{:?}'",
             canister_id,
             method,
-            args
+            arg
         );
-        let res: Result<(O,), _> = ic_cdk::api::call::call(canister_id, method, (&args,)).await;
+        let res = ic_cdk::call::Call::unbounded_wait(canister_id, method)
+            .with_arg(&arg)
+            .await
+            .map_err(|err| CallError {
+                reason: Reason::from_call_failed(err),
+                method: method.to_string(),
+            })?
+            .candid();
+
         log!(
             DEBUG,
             "Result of calling canister '{}' with method '{}' and payload '{:?}': {:?}",
             canister_id,
             method,
-            args,
+            arg,
             res
         );
 
         match res {
-            Ok((output,)) => Ok(output),
-            Err((code, msg)) => Err(CallError {
+            Ok(output) => Ok(output),
+            Err(_err) => Err(CallError {
                 method: method.to_string(),
-                reason: Reason::from_reject(code, msg),
+                reason: Reason::DecodingFailed,
             }),
         }
     }

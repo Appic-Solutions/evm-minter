@@ -4,7 +4,7 @@ use crate::eth_types::Address;
 use crate::numeric::TransactionNonce;
 use crate::numeric::WeiPerBlobGas;
 use crate::numeric::{BlockNumber, GasAmount, LogIndex, Wei, WeiPerGas};
-use evm_rpc_types::SendRawTransactionStatus as EvmSendRawTransactionStatus;
+use evm_rpc_client::evm_rpc_types::SendRawTransactionStatus as EvmSendRawTransactionStatus;
 use minicbor::{Decode, Encode};
 use serde;
 use serde::{Deserialize, Serialize};

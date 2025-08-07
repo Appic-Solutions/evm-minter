@@ -32,12 +32,12 @@ pub mod arb {
         Block, Data, FeeHistory, FixedSizeData, Hash, LogEntry, TransactionReceipt,
         TransactionStatus,
     };
+    use evm_rpc_client::evm_rpc_types::RejectionCode;
     use evm_rpc_client::{
         Hex, Hex20, Hex256, Hex32, HexByte, HttpOutcallError as EvmHttpOutcallError,
         JsonRpcError as EvmJsonRpcError, Nat256, ProviderError as EvmProviderError,
         RpcError as EvmRpcError, ValidationError as EvmValidationError,
     };
-    use ic_cdk::api::call::RejectionCode;
     use proptest::{
         array::{uniform20, uniform32},
         collection::vec,

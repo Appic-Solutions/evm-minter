@@ -5,7 +5,6 @@
 
 use candid::Nat;
 use candid::{CandidType, Deserialize};
-use evm_rpc_types::FeeHistory;
 
 #[derive(CandidType, Deserialize, Clone, Debug, PartialEq)]
 pub struct ChainData {

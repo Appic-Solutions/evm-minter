@@ -34,7 +34,7 @@ use evm_minter::erc20::ERC20Token;
 use evm_minter::eth_types::fee_hisotry_parser::parse_fee_history;
 use evm_minter::evm_config::EvmNetwork;
 use evm_minter::guard::retrieve_withdraw_guard;
-use evm_minter::ledger_client::{LedgerBurnError, LedgerClient};
+use evm_minter::icrc_client::{LedgerBurnError, LedgerClient};
 use evm_minter::lifecycle::MinterArg;
 use evm_minter::logs::INFO;
 use evm_minter::lsm_client::lazy_add_native_ls_to_lsm_canister;
@@ -77,7 +77,7 @@ const DRPC_API_KEY: Option<&'static str> = option_env!("DRPC_Api_Key");
 const ALCHEMY_API_KEY: Option<&'static str> = option_env!("Alchemy_Api_Key");
 
 fn validate_caller_not_anonymous() -> candid::Principal {
-    let principal = ic_cdk::caller();
+    let principal = ic_cdk::api::msg_caller();
     if principal == candid::Principal::anonymous() {
         panic!("anonymous principal is not allowed");
     }
@@ -87,28 +87,30 @@ fn validate_caller_not_anonymous() -> candid::Principal {
 fn setup_timers() {
     ic_cdk_timers::set_timer(Duration::from_secs(0), || {
         // Initialize the minter's public key to make the address known.
-        ic_cdk::spawn(async {
+        ic_cdk::futures::spawn_017_compat(async {
             let _ = lazy_call_ecdsa_public_key().await;
         })
     });
 
     ic_cdk_timers::set_timer(Duration::from_secs(0), || {
         // Initialize the Gas fee estimate for eip1559 transaction price
-        ic_cdk::spawn(async {
+        ic_cdk::futures::spawn_017_compat(async {
             let _ = lazy_refresh_gas_fee_estimate().await;
         })
     });
 
     // Start scraping logs immediately after the install, then repeat with the interval.
-    ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(scrape_logs()));
+    ic_cdk_timers::set_timer(Duration::from_secs(0), || {
+        ic_cdk::futures::spawn_017_compat(scrape_logs())
+    });
     ic_cdk_timers::set_timer_interval(SCRAPING_CONTRACT_LOGS_INTERVAL, || {
-        ic_cdk::spawn(scrape_logs())
+        ic_cdk::futures::spawn_017_compat(scrape_logs())
     });
     ic_cdk_timers::set_timer_interval(PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL, || {
-        ic_cdk::spawn(process_retrieve_tokens_requests())
+        ic_cdk::futures::spawn_017_compat(process_retrieve_tokens_requests())
     });
     ic_cdk_timers::set_timer_interval(PROCESS_REIMBURSEMENT, || {
-        ic_cdk::spawn(process_reimbursement())
+        ic_cdk::futures::spawn_017_compat(process_reimbursement())
     });
 }
 
@@ -142,7 +144,7 @@ async fn init(arg: MinterArg) {
 
     // Add native ledger suite to the lsm canister.
     ic_cdk_timers::set_timer(Duration::from_secs(0), || {
-        ic_cdk::spawn(async {
+        ic_cdk::futures::spawn_017_compat(async {
             let _ = lazy_add_native_ls_to_lsm_canister().await;
         })
     });
@@ -219,9 +221,8 @@ async fn eip_1559_transaction_price(
                     if erc20_ledger_id == read_state(|s| s.native_ledger_id) {
                         NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT
                     } else {
-                        ic_cdk::trap(&format!(
-                            "ERROR: Unsupported ckERC20 token ledger {}",
-                            erc20_ledger_id
+                        ic_cdk::trap(format!(
+                            r#"ERROR: Unsupported ckERC20 token ledger {erc20_ledger_id}"#
                         ))
                     }
                 }
@@ -258,7 +259,7 @@ async fn get_minter_info() -> MinterInfo {
         );
         let supported_erc20_tokens = Some(
             s.supported_erc20_tokens()
-                .map(|token| candid_types::Erc20Token::from(token))
+                .map(candid_types::Erc20Token::from)
                 .collect(),
         );
 
@@ -293,7 +294,7 @@ async fn get_minter_info() -> MinterInfo {
             helper_smart_contract_addresses: s.helper_contract_addresses.as_ref().map(
                 |addresses| {
                     addresses
-                        .into_iter()
+                        .iter()
                         .map(|address| address.to_string())
                         .collect()
                 },
@@ -341,7 +342,9 @@ async fn request_scraping_logs() -> Result<(), RequestScrapingError> {
 
     validate_log_scraping_request(last_log_scraping_time, now_ns)?;
 
-    ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(scrape_logs()));
+    ic_cdk_timers::set_timer(Duration::from_secs(0), || {
+        ic_cdk::futures::spawn_017_compat(scrape_logs())
+    });
 
     Ok(())
 }
@@ -359,10 +362,8 @@ async fn withdraw_native_token(
 ) -> Result<RetrieveNativeRequest, WithdrawalError> {
     let caller = validate_caller_not_anonymous();
     let _guard = retrieve_withdraw_guard(caller).unwrap_or_else(|e| {
-        println!("{:?}", e);
-        ic_cdk::trap(&format!(
-            "Failed retrieving guard for principal {}: {:?}",
-            caller, e
+        ic_cdk::trap(format!(
+            "Failed retrieving guard for principal {caller}: {e:?}"
         ))
     });
 
@@ -431,7 +432,7 @@ async fn withdraw_native_token(
             });
 
             ic_cdk_timers::set_timer(Duration::from_secs(0), || {
-                ic_cdk::spawn(process_retrieve_tokens_requests())
+                ic_cdk::futures::spawn_017_compat(process_retrieve_tokens_requests())
             });
 
             Ok(RetrieveNativeRequest::from(withdrawal_request))
@@ -500,9 +501,8 @@ async fn withdraw_erc20(
 ) -> Result<RetrieveErc20Request, WithdrawErc20Error> {
     let caller = validate_caller_not_anonymous();
     let _guard = retrieve_withdraw_guard(caller).unwrap_or_else(|e| {
-        ic_cdk::trap(&format!(
-            "Failed retrieving guard for principal {}: {:?}",
-            caller, e
+        ic_cdk::trap(format!(
+            "Failed retrieving guard for principal {caller}: {e:?}"
         ))
     });
 
@@ -622,7 +622,7 @@ async fn withdraw_erc20(
                     });
 
                     ic_cdk_timers::set_timer(Duration::from_secs(0), || {
-                        ic_cdk::spawn(process_retrieve_tokens_requests())
+                        ic_cdk::futures::spawn_017_compat(process_retrieve_tokens_requests())
                     });
 
                     Ok(RetrieveErc20Request::from(withdrawal_request))
@@ -677,9 +677,8 @@ async fn wrap_icrc(
 ) -> Result<RetrieveWrapIcrcRequest, WrapIcrcError> {
     let caller = validate_caller_not_anonymous();
     let _guard = retrieve_withdraw_guard(caller).unwrap_or_else(|e| {
-        ic_cdk::trap(&format!(
-            "Failed retrieving guard for principal {}: {:?}",
-            caller, e
+        ic_cdk::trap(format!(
+            "Failed retrieving guard for principal {caller}: {e:?}"
         ))
     });
 
@@ -792,7 +791,7 @@ async fn wrap_icrc(
                     });
 
                     ic_cdk_timers::set_timer(Duration::from_secs(0), || {
-                        ic_cdk::spawn(process_retrieve_tokens_requests())
+                        ic_cdk::futures::spawn_017_compat(process_retrieve_tokens_requests())
                     });
 
                     Ok(RetrieveWrapIcrcRequest::from(withdrawal_request))
@@ -860,14 +859,13 @@ async fn estimate_icrc_wrap_transaction_fee() -> Option<Wei> {
 async fn add_erc20_token(erc20_token: AddErc20Token) {
     let orchestrator_id = read_state(|s| s.ledger_suite_manager_id)
         .unwrap_or_else(|| ic_cdk::trap("ERROR: ERC-20 feature is not activated"));
-    if orchestrator_id != ic_cdk::caller() {
-        ic_cdk::trap(&format!(
-            "ERROR: only the orchestrator {} can add ERC-20 tokens",
-            orchestrator_id
+    if orchestrator_id != ic_cdk::api::msg_caller() {
+        ic_cdk::trap(format!(
+            "ERROR: only the orchestrator {orchestrator_id} can add ERC-20 tokens"
         ));
     }
-    let erc20_token = ERC20Token::try_from(erc20_token)
-        .unwrap_or_else(|e| ic_cdk::trap(&format!("ERROR: {}", e)));
+    let erc20_token =
+        ERC20Token::try_from(erc20_token).unwrap_or_else(|e| ic_cdk::trap(format!("ERROR: {e}")));
     mutate_state(|s| process_event(s, EventType::AddedErc20Token(erc20_token)));
 }
 
@@ -888,10 +886,9 @@ async fn get_canister_status() -> ic_cdk::api::management_canister::main::Canist
 async fn check_new_deposits() {
     let swap_canister_id = read_state(|s| s.swap_canister_id)
         .unwrap_or_else(|| ic_cdk::trap("ERROR: swap feature not activated"));
-    if swap_canister_id != ic_cdk::caller() {
-        ic_cdk::trap(&format!(
-            "ERROR: only the swap canister id {} can add request for early deposit check",
-            swap_canister_id
+    if swap_canister_id != ic_cdk::api::msg_caller() {
+        ic_cdk::trap(format!(
+            "ERROR: only the swap canister id {swap_canister_id} can add request for early deposit check"
         ));
     }
     scrape_logs().await;
@@ -1204,7 +1201,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     log_index: log_index.into(),
                     from_address: from_address.to_string(),
                     value: value.into(),
-                    principal: principal,
+                    principal,
                     wrapped_erc20_contract_address: wrapped_erc20_contract_address.to_string(),
                     icrc_token_principal,
                     subaccount: subaccount.map(|s| s.to_bytes()),
@@ -1226,7 +1223,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     transaction_hash: transaction_hash.to_string(),
                     block_number: block_number.into(),
                     log_index: log_index.into(),
-                    base_token: base_token,
+                    base_token,
                     deployed_wrapped_erc20: deployed_wrapped_erc20.to_string(),
                 },
                 EventType::QuarantinedRelease {
@@ -1290,7 +1287,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
 
 #[update]
 pub async fn update_chain_data(chain_data: ChainData) {
-    let caller = ic_cdk::caller();
+    let caller = ic_cdk::api::msg_caller();
     let rpc_helper_identity = Principal::from_text(RPC_HELPER_PRINCIPAL).unwrap();
 
     if caller != rpc_helper_identity {
@@ -1333,18 +1330,6 @@ pub async fn update_chain_data(chain_data: ChainData) {
     };
 }
 
-/// Returns the amount of heap memory in bytes that has been allocated.
-//#[cfg(target_arch = "wasm32")]
-//pub fn heap_memory_size_bytes() -> usize {
-//    const WASM_PAGE_SIZE_BYTES: usize = 65536;
-//    core::arch::wasm32::memory_size(0) * WASM_PAGE_SIZE_BYTES
-//}
-
-#[cfg(not(any(target_arch = "wasm32")))]
-pub fn heap_memory_size_bytes() -> usize {
-    0
-}
-
 // list every base URL that users will authenticate to your app from
 #[update]
 fn icrc28_trusted_origins() -> Icrc28TrustedOriginsResponse {
@@ -1365,7 +1350,7 @@ fn icrc28_trusted_origins() -> Icrc28TrustedOriginsResponse {
         String::from("https://test.appicdao.com"),
     ];
 
-    return Icrc28TrustedOriginsResponse { trusted_origins };
+    Icrc28TrustedOriginsResponse { trusted_origins }
 }
 
 fn main() {}

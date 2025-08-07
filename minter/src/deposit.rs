@@ -15,6 +15,7 @@ use crate::contract_logs::{
 use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
 use crate::guard::TimerGuard;
+use crate::icrc_client::runtime::IcrcBoundedRuntime;
 use crate::logs::{DEBUG, INFO};
 use crate::numeric::{BlockNumber, BlockRangeInclusive, IcrcValue, LedgerMintIndex};
 use crate::rpc_client::providers::Provider;
@@ -29,7 +30,7 @@ use num_traits::ToPrimitive;
 pub(crate) const TEN_SEC: u64 = 10_000_000_000_u64; // 10 seconds
 
 async fn mint_and_release() {
-    use icrc_ledger_client_cdk::{CdkRuntime, ICRC1Client};
+    use icrc_ledger_client::ICRC1Client;
     use icrc_ledger_types::icrc1::transfer::TransferArg;
 
     let _guard = match TimerGuard::new(TaskType::Mint) {
@@ -91,7 +92,7 @@ async fn mint_and_release() {
         };
 
         let client = ICRC1Client {
-            runtime: CdkRuntime,
+            runtime: IcrcBoundedRuntime,
             ledger_canister_id,
         };
 
@@ -168,7 +169,7 @@ async fn mint_and_release() {
         };
 
         let client = ICRC1Client {
-            runtime: CdkRuntime,
+            runtime: IcrcBoundedRuntime,
             ledger_canister_id: received_burn_event.icrc_token_principal,
         };
 
@@ -287,10 +288,9 @@ async fn mint_and_release() {
             INFO,
             "Failed to mint or release {error_count} events, rescheduling the minting and releasing"
         );
-        ic_cdk_timers::set_timer(
-            crate::MINT_RETRY_DELAY,
-            || ic_cdk::spawn(mint_and_release()),
-        );
+        ic_cdk_timers::set_timer(crate::MINT_RETRY_DELAY, || {
+            ic_cdk::futures::spawn_017_compat(mint_and_release())
+        });
     }
 }
 
@@ -532,7 +532,9 @@ pub fn register_deposit_events(
         mutate_state(|s| process_event(s, event.into_event_type()));
     }
     if read_state(|s| s.has_events_to_mint() || s.has_events_to_release()) {
-        ic_cdk_timers::set_timer(Duration::from_secs(0), || ic_cdk::spawn(mint_and_release()));
+        ic_cdk_timers::set_timer(Duration::from_secs(0), || {
+            ic_cdk::futures::spawn_017_compat(mint_and_release())
+        });
     }
     for error in errors {
         if let ReceivedContractEventError::InvalidEventSource { source, error } = &error {

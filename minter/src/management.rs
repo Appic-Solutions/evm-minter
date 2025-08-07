@@ -1,10 +1,10 @@
 use candid::{CandidType, Principal};
-use ic_cdk::api::call::RejectionCode;
+use ic_cdk::call::CallFailed;
 use ic_management_canister_types::{
     EcdsaCurve, EcdsaKeyId, SignWithEcdsaArgs, SignWithEcdsaResult,
 };
 use serde::de::DeserializeOwned;
-use std::fmt;
+use std::fmt::{self};
 
 /// Represents an error from a management canister call, such as
 /// `sign_with_ecdsa`.
@@ -50,6 +50,9 @@ pub enum Reason {
     TransientInternalError(String),
     /// The call failed with a non-transient error. Retrying will not help.
     InternalError(String),
+
+    /// Decoding Failed most probably a bug
+    DecodingFailed,
 }
 
 impl fmt::Display for Reason {
@@ -62,33 +65,46 @@ impl fmt::Display for Reason {
             }
             Reason::TransientInternalError(msg) => write!(fmt, "transient internal error: {}", msg),
             Reason::InternalError(msg) => write!(fmt, "internal error: {}", msg),
+            Reason::DecodingFailed => write!(fmt, "Decoding failed most probably a bug"),
         }
     }
 }
 
 impl Reason {
-    pub fn from_reject(reject_code: RejectionCode, reject_message: String) -> Self {
-        match reject_code {
-            RejectionCode::SysTransient => Self::TransientInternalError(reject_message),
-            RejectionCode::CanisterError => Self::CanisterError(reject_message),
-            RejectionCode::CanisterReject => Self::Rejected(reject_message),
-            RejectionCode::NoError
-            | RejectionCode::SysFatal
-            | RejectionCode::DestinationInvalid
-            | RejectionCode::Unknown => Self::InternalError(format!(
-                "rejection code: {:?}, rejection message: {}",
-                reject_code, reject_message
-            )),
+    pub fn from_call_failed(err: CallFailed) -> Self {
+        match err {
+            CallFailed::InsufficientLiquidCycleBalance(_insufficient_liquid_cycle_balance) => {
+                Self::OutOfCycles
+            }
+            CallFailed::CallPerformFailed(_call_perform_failed) => {
+                Self::TransientInternalError("Failed to perform call".to_string())
+            }
+            CallFailed::CallRejected(call_rejected) => {
+                let reject_message = call_rejected.reject_message().to_string();
+                match call_rejected
+                    .reject_code()
+                    .unwrap_or(ic_cdk::call::RejectCode::SysUnknown)
+                {
+                    ic_cdk::call::RejectCode::SysFatal
+                    | ic_cdk::call::RejectCode::DestinationInvalid
+                    | ic_cdk::call::RejectCode::SysUnknown => Self::InternalError(reject_message),
+                    ic_cdk::call::RejectCode::SysTransient => {
+                        Self::TransientInternalError(reject_message)
+                    }
+                    ic_cdk::call::RejectCode::CanisterReject => Self::Rejected(reject_message),
+                    ic_cdk::call::RejectCode::CanisterError => Self::CanisterError(reject_message),
+                }
+            }
         }
     }
 }
 
-async fn call<I, O>(method: &str, payment: u64, input: &I) -> Result<O, CallError>
+async fn call<I, O>(method: &str, payment: u128, input: &I) -> Result<O, CallError>
 where
     I: CandidType,
     O: CandidType + DeserializeOwned,
 {
-    let balance = ic_cdk::api::canister_balance128();
+    let balance = ic_cdk::api::canister_cycle_balance();
     if balance < payment as u128 {
         return Err(CallError {
             method: method.to_string(),
@@ -96,19 +112,21 @@ where
         });
     }
 
-    let res: Result<(O,), _> = ic_cdk::api::call::call_with_payment(
-        Principal::management_canister(),
-        method,
-        (input,),
-        payment,
-    )
-    .await;
+    let res = ic_cdk::call::Call::unbounded_wait(Principal::management_canister(), method)
+        .with_cycles(payment)
+        .with_arg(input)
+        .await
+        .map_err(|e| CallError {
+            reason: Reason::from_call_failed(e),
+            method: method.to_string(),
+        })?
+        .candid();
 
     match res {
-        Ok((output,)) => Ok(output),
-        Err((code, msg)) => Err(CallError {
+        Ok(output) => Ok(output),
+        Err(_err) => Err(CallError {
             method: method.to_string(),
-            reason: Reason::from_reject(code, msg),
+            reason: Reason::DecodingFailed,
         }),
     }
 }
@@ -119,7 +137,7 @@ pub async fn sign_with_ecdsa(
     derivation_path: Vec<Vec<u8>>,
     message_hash: [u8; 32],
 ) -> Result<[u8; 64], CallError> {
-    const CYCLES_PER_SIGNATURE: u64 = 27_000_000_000;
+    const CYCLES_PER_SIGNATURE: u128 = 27_000_000_000;
 
     let reply: SignWithEcdsaResult = call(
         "sign_with_ecdsa",

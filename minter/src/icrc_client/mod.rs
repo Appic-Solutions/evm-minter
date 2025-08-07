@@ -1,5 +1,6 @@
 use crate::{
     erc20::ERC20Token,
+    icrc_client::runtime::IcrcBoundedRuntime,
     logs::DEBUG,
     memo::BurnMemo,
     numeric::{LedgerBurnIndex, LedgerLockIndex},
@@ -9,18 +10,19 @@ use crate::{
 use candid::{Nat, Principal};
 use ic_canister_log::log;
 // use ic_canister_log::log;
-use icrc_ledger_client_cdk::{CdkRuntime, ICRC1Client};
+use crate::erc20::ERC20TokenSymbol;
+use icrc_ledger_client::ICRC1Client;
 use icrc_ledger_types::{
     icrc1::{account::Account, transfer::Memo},
     icrc2::transfer_from::{TransferFromArgs, TransferFromError},
 };
 use num_traits::ToPrimitive;
 
-use crate::erc20::ERC20TokenSymbol;
+pub mod runtime;
 
 pub struct LedgerClient {
     token_symbol: ERC20TokenSymbol,
-    client: ICRC1Client<CdkRuntime>,
+    client: ICRC1Client<IcrcBoundedRuntime>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -57,7 +59,7 @@ impl LedgerClient {
         Self {
             token_symbol: state.native_symbol.clone(),
             client: ICRC1Client {
-                runtime: CdkRuntime,
+                runtime: IcrcBoundedRuntime,
                 ledger_canister_id: state.native_ledger_id,
             },
         }
@@ -67,7 +69,7 @@ impl LedgerClient {
         Self {
             token_symbol: token.erc20_token_symbol.clone(),
             client: ICRC1Client {
-                runtime: CdkRuntime,
+                runtime: IcrcBoundedRuntime,
                 ledger_canister_id: token.erc20_ledger_id,
             },
         }
@@ -86,7 +88,7 @@ impl LedgerClient {
             .transfer_from(TransferFromArgs {
                 spender_subaccount: None,
                 from,
-                to: ic_cdk::id().into(),
+                to: ic_cdk::api::canister_self().into(),
                 amount: amount.clone(),
                 fee: fee.map(|fee| fee.into()),
                 memo: Some(Memo::from(memo)),
@@ -184,7 +186,7 @@ impl LedgerClient {
                 spender_subaccount: None,
                 from,
                 to: Account {
-                    owner: ic_cdk::id(),
+                    owner: ic_cdk::api::canister_self(),
                     subaccount: Some(FEES_SUBACCOUNT),
                 },
                 amount: amount.clone(),
@@ -278,7 +280,7 @@ impl LedgerClient {
         Self {
             token_symbol: ERC20TokenSymbol("".to_string()),
             client: ICRC1Client {
-                runtime: CdkRuntime,
+                runtime: IcrcBoundedRuntime,
                 ledger_canister_id: icrc_ledger_id,
             },
         }

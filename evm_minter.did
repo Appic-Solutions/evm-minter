@@ -307,7 +307,11 @@ type LedgerError_1 = variant {
     failed_burn_amount : nat;
   };
 };
-type LogVisibility = variant { controllers; public };
+type LogVisibility = variant {
+  controllers;
+  public;
+  allowed_viewers : vec principal;
+};
 type MinterArg = variant { UpgradeArg : UpgradeArg; InitArg : InitArg };
 type MinterInfo = record {
   icrc_balances : opt vec IcrcBalance;

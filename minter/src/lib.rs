@@ -10,7 +10,7 @@ pub mod erc20;
 pub mod eth_types;
 pub mod evm_config;
 pub mod guard;
-pub mod ledger_client;
+pub mod icrc_client;
 pub mod lifecycle;
 pub mod logs;
 pub mod lsm_client;
