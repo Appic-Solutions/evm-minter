@@ -25,6 +25,7 @@ use crate::tx::{
 };
 use candid::{Nat, Principal};
 use ethnum::u256;
+use ic_management_canister_types::EcdsaPublicKeyResult;
 use proptest::array::uniform32;
 use proptest::collection::vec as pvec;
 use proptest::prelude::*;
@@ -780,7 +781,6 @@ pub fn state_equivalence() {
     use crate::tx::{
         Eip1559Signature, Eip1559TransactionRequest, SignedTransactionRequest, TransactionRequest,
     };
-    use ic_cdk::api::management_canister::ecdsa::EcdsaPublicKeyResponse;
     use maplit::{btreemap, btreeset};
 
     pub fn source(txhash: &str, index: u64) -> EventSource {
@@ -969,7 +969,7 @@ pub fn state_equivalence() {
         helper_contract_addresses: Some(vec!["0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34"
             .parse()
             .unwrap()]),
-        ecdsa_public_key: Some(EcdsaPublicKeyResponse {
+        ecdsa_public_key: Some(EcdsaPublicKeyResult {
             public_key: vec![1; 32],
             chain_code: vec![2; 32],
         }),

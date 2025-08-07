@@ -1,6 +1,8 @@
 #[cfg(test)]
 pub mod appic_helper_types;
 #[cfg(test)]
+pub mod ledger_arguments;
+#[cfg(test)]
 pub mod lsm_types;
 #[cfg(test)]
 mod minter_flow_tets;
@@ -10,7 +12,7 @@ pub mod pocket_ic_helpers;
 #[cfg(test)]
 pub mod lock_release;
 
-use ic_cdk::api::management_canister::ecdsa::EcdsaPublicKeyResponse;
+use ic_management_canister_types::EcdsaPublicKeyResult;
 use maplit::btreemap;
 
 use crate::{
@@ -1095,7 +1097,7 @@ fn test_state() -> State {
         helper_contract_addresses: Some(vec!["0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34"
             .parse()
             .unwrap()]),
-        ecdsa_public_key: Some(EcdsaPublicKeyResponse {
+        ecdsa_public_key: Some(EcdsaPublicKeyResult {
             public_key: vec![1; 32],
             chain_code: vec![2; 32],
         }),

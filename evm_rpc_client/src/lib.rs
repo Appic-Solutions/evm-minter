@@ -6,15 +6,17 @@ use candid::utils::ArgumentEncoder;
 use candid::{CandidType, Principal};
 use evm_rpc_types::CallArgs;
 use ic_canister_log::{log, Sink};
-use ic_cdk::api::call::RejectionCode;
+use ic_cdk::call::RejectCode;
 use serde::de::DeserializeOwned;
 use std::fmt::Debug;
+pub mod evm_rpc_types;
 
 pub use evm_rpc_types::{
     Block, BlockTag, ConsensusStrategy, EthMainnetService, FeeHistory, FeeHistoryArgs, GetLogsArgs,
     GetTransactionCountArgs, Hex, Hex20, Hex256, Hex32, HexByte, HttpOutcallError, JsonRpcError,
-    LogEntry, MultiRpcResult, Nat256, ProviderError, RpcApi, RpcConfig, RpcError, RpcResult,
-    RpcService, RpcServices, SendRawTransactionStatus, TransactionReceipt, ValidationError,
+    LogEntry, MultiRpcResult, Nat256, ProviderError, RejectionCode, RpcApi, RpcConfig, RpcError,
+    RpcResult, RpcService, RpcServices, SendRawTransactionStatus, TransactionReceipt,
+    ValidationError,
 };
 
 #[async_trait]
@@ -47,9 +49,35 @@ impl InterCanisterCall for CallerService {
         In: ArgumentEncoder + Send + 'static,
         Out: CandidType + DeserializeOwned + 'static,
     {
-        ic_cdk::api::call::call_with_payment128(id, method, args, cycles)
+        let res = ic_cdk::call::Call::unbounded_wait(id, method)
+            .with_cycles(cycles)
+            .with_args(&args)
             .await
-            .map(|(res,)| res)
+            .map_err(|e| match e {
+                ic_cdk::call::CallFailed::InsufficientLiquidCycleBalance(
+                    _insufficient_liquid_cycle_balance,
+                ) => (
+                    RejectionCode::CanisterError,
+                    "Not enough cycles to make the call".to_string(),
+                ),
+                ic_cdk::call::CallFailed::CallPerformFailed(_call_perform_failed) => (
+                    RejectionCode::Unknown,
+                    "Failed to perfom the call, a retry should help".to_string(),
+                ),
+                ic_cdk::call::CallFailed::CallRejected(call_rejected) => (
+                    call_rejected
+                        .reject_code()
+                        .unwrap_or(RejectCode::SysUnknown)
+                        .into(),
+                    call_rejected.reject_message().to_string(),
+                ),
+            })?
+            .candid();
+
+        match res {
+            Ok(output) => Ok(output),
+            Err(_err) => Err((RejectionCode::Unknown, "Decoding Failed".to_string())),
+        }
     }
 }
 

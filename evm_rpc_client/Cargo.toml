@@ -9,10 +9,13 @@ edition = "2021"
 async-trait = "0.1.74"
 candid = "0.10.6"
 ic-canister-log = "0.2.0"
-ic-cdk = "0.16.0"
+ic-cdk = "0.18.5"
 serde = "1.0.23"
 thiserror ="1.0.62"
-evm_rpc_types = "1.2.0"
+url = "2.5.4"
+num-bigint="0.4.6"
+hex = { version = "0.4.3", features = ["serde"] }
+
 
 
 [dev-dependencies]

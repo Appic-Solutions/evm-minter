@@ -1,3 +1,5 @@
+use crate::icrc_client::LedgerBurnError;
+
 use super::*;
 
 #[derive(CandidType, Deserialize)]

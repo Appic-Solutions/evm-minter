@@ -2,6 +2,7 @@
 mod tests;
 
 pub mod providers;
+
 use providers::{get_one_provider, get_providers, Provider};
 use std::{collections::BTreeMap, convert::Infallible, fmt::Display};
 
@@ -18,21 +19,22 @@ use crate::{
     state::State,
 };
 use candid::Nat;
-use evm_rpc_client::{CallerService, EvmRpcClient, OverrideRpcConfig};
-use evm_rpc_types::{
-    AccessList as EvmAccessList, AccessListEntry as EvmAccessListEntry, Block as EvmBlock,
-    BlockTag as EvmBlockTag, CallArgs, FeeHistory as EvmFeeHistory,
-    FeeHistoryArgs as EvmFeeHistoryArgs, GetLogsArgs as EvmGetLogsArgs,
-    GetTransactionCountArgs as EvmGetTransactionCountArgs, Hex, Hex20, Hex32, HexByte,
-    HttpOutcallError, LogEntry as EvmLogEntry, MultiRpcResult as EvmMultiRpcResult, Nat256,
-    RpcConfig as EvmRpcConfig, RpcError as EvmRpcError, RpcService as EvmRpcService,
-    SendRawTransactionStatus as EvmSendRawTransactionStatus,
-    TransactionReceipt as EvmTransactionReceipt, TransactionRequest,
+use evm_rpc_client::{
+    evm_rpc_types::{
+        self, AccessList as EvmAccessList, AccessListEntry as EvmAccessListEntry,
+        Block as EvmBlock, BlockTag as EvmBlockTag, CallArgs, FeeHistory as EvmFeeHistory,
+        FeeHistoryArgs as EvmFeeHistoryArgs, GetLogsArgs as EvmGetLogsArgs,
+        GetTransactionCountArgs as EvmGetTransactionCountArgs, Hex, Hex20, Hex32, HexByte,
+        HttpOutcallError, LogEntry as EvmLogEntry, MultiRpcResult as EvmMultiRpcResult, Nat256,
+        RpcConfig as EvmRpcConfig, RpcError as EvmRpcError, RpcService as EvmRpcService,
+        SendRawTransactionStatus as EvmSendRawTransactionStatus,
+        TransactionReceipt as EvmTransactionReceipt, TransactionRequest,
+    },
+    RejectionCode,
 };
+use evm_rpc_client::{CallerService, EvmRpcClient, OverrideRpcConfig};
 use ic_canister_log::log;
 use num_traits::ToPrimitive;
-
-use ic_cdk::api::call::RejectionCode;
 
 // We expect most of the calls to contain zero events.
 const ETH_GET_LOGS_INITIAL_RESPONSE_SIZE_ESTIMATE: u64 = 100;
@@ -382,7 +384,6 @@ impl<T> From<ReducedResult<T>> for Result<T, MultiCallError<T>> {
 impl<T: std::fmt::Debug + std::cmp::PartialEq + Clone> ReducedResult<T> {
     /// Transform a `ReducedResult<T>` into a `ReducedResult<U>` by applying a mapping function `F`.
     /// The mapping function is also applied to the elements contained in the error `MultiCallError::InconsistentResults`.
-
     pub fn map_reduce<U, E: Display, F: Fn(T) -> Result<U, E>>(
         self,
         fallible_op: &F,

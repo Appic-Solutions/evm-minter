@@ -1,8 +1,5 @@
 use crate::candid_types::wrapped_icrc::WrappedIcrcToken;
 use crate::eth_types::Address;
-use crate::ledger_client::LedgerBurnError;
-// // use crate::rpc_client::responses::TransactionReceipt;
-// // use crate::ledger_client::LedgerBurnError;
 use crate::numeric::LedgerBurnIndex;
 use crate::rpc_declarations::TransactionReceipt;
 use crate::state::transactions::NativeWithdrawalRequest;

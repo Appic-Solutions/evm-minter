@@ -1,6 +1,6 @@
 use crate::evm_config::EvmNetwork;
 use crate::storage::get_rpc_api_key;
-use evm_rpc_types::{RpcApi, RpcServices};
+use evm_rpc_client::evm_rpc_types::{RpcApi, RpcServices};
 use minicbor::{Decode, Encode};
 
 #[derive(Encode, Decode, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]

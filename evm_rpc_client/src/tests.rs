@@ -1,5 +1,7 @@
 pub use evm_rpc_types::{MultiRpcResult, ProviderError, RpcApi, RpcError, RpcService};
 
+use crate::evm_rpc_types;
+
 mod max_expected_too_few_cycles_error {
     use super::*;
     use crate::max_expected_too_few_cycles_error;

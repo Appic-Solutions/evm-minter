@@ -40,7 +40,7 @@ use transactions::{
     Erc20WithdrawalRequest, TransactionCallData, WithdrawalRequest, WithdrawalTransactions,
 };
 
-use ic_cdk::api::management_canister::ecdsa::EcdsaPublicKeyResponse;
+use ic_cdk::management_canister::EcdsaPublicKeyResult;
 
 thread_local! {
     pub static STATE:RefCell<Option<State>>=RefCell::default();
@@ -123,7 +123,7 @@ pub struct State {
 
     // Principal id of EVM_RPC_CANISTER
     pub evm_canister_id: Principal,
-    pub ecdsa_public_key: Option<EcdsaPublicKeyResponse>,
+    pub ecdsa_public_key: Option<EcdsaPublicKeyResult>,
 
     pub native_ledger_transfer_fee: Wei,
     pub native_minimum_withdrawal_amount: Wei,
@@ -922,11 +922,11 @@ pub enum TaskType {
 }
 
 pub async fn lazy_call_ecdsa_public_key() -> PublicKey {
-    use ic_cdk::api::management_canister::ecdsa::{
-        ecdsa_public_key, EcdsaCurve, EcdsaKeyId, EcdsaPublicKeyArgument,
+    use ic_cdk::management_canister::{
+        ecdsa_public_key, EcdsaCurve, EcdsaKeyId, EcdsaPublicKeyArgs,
     };
 
-    fn to_public_key(response: &EcdsaPublicKeyResponse) -> PublicKey {
+    fn to_public_key(response: &EcdsaPublicKeyResult) -> PublicKey {
         PublicKey::parse_slice(&response.public_key, Some(PublicKeyFormat::Compressed))
             .unwrap_or_else(|e| {
                 ic_cdk::trap(&format!("failed to decode minter's public key: {:?}", e))
@@ -938,7 +938,7 @@ pub async fn lazy_call_ecdsa_public_key() -> PublicKey {
     }
     let key_name = read_state(|s| s.ecdsa_key_name.clone());
     log!(DEBUG, "Fetching the ECDSA public key {key_name}");
-    let (response,) = ecdsa_public_key(EcdsaPublicKeyArgument {
+    let response = ecdsa_public_key(&EcdsaPublicKeyArgs {
         canister_id: None,
         derivation_path: MAIN_DERIVATION_PATH
             .into_iter()
@@ -950,12 +950,7 @@ pub async fn lazy_call_ecdsa_public_key() -> PublicKey {
         },
     })
     .await
-    .unwrap_or_else(|(error_code, message)| {
-        ic_cdk::trap(&format!(
-            "failed to get minter's public key: {} (error code = {:?})",
-            message, error_code,
-        ))
-    });
+    .unwrap_or_else(|err| ic_cdk::trap(&format!("failed to get minter's public key:{} ", err)));
     mutate_state(|s| s.ecdsa_public_key = Some(response.clone()));
     to_public_key(&response)
 }

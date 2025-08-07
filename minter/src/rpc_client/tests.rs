@@ -1,5 +1,5 @@
 mod providers {
-    use evm_rpc_types::{RpcApi, RpcServices};
+    use evm_rpc_client::evm_rpc_types::{RpcApi, RpcServices};
     use strum::IntoEnumIterator;
 
     use crate::{
@@ -45,7 +45,7 @@ mod providers {
     fn should_retrieve_at_least_four_providers() {
         for network in EvmNetwork::iter() {
             match get_providers(network) {
-                evm_rpc_types::RpcServices::Custom {
+                evm_rpc_client::evm_rpc_types::RpcServices::Custom {
                     chain_id: _,
                     services,
                 } => {
@@ -373,7 +373,7 @@ mod providers {
 }
 
 mod multi_rpc_results {
-    use evm_rpc_types::{
+    use evm_rpc_client::evm_rpc_types::{
         EthSepoliaService, HttpOutcallError, MultiRpcResult as EvmMultiRpcResult,
         RpcError as EvmRpcError, RpcService as EvmRpcService,
     };
@@ -381,8 +381,7 @@ mod multi_rpc_results {
         use super::*;
         use crate::rpc_client::{MultiCallError, ReducedResult, SingleCallError};
 
-        use evm_rpc_types::JsonRpcError;
-        use ic_cdk::api::call::RejectionCode;
+        use evm_rpc_client::evm_rpc_types::{JsonRpcError, RejectionCode};
 
         #[test]
         fn should_be_inconsistent_single_call_error() {
@@ -601,6 +600,8 @@ mod multi_rpc_results {
     }
 
     mod reduce_with_stable_majority_by_key {
+        use evm_rpc_client::RejectionCode;
+
         use super::*;
 
         use crate::{
@@ -608,7 +609,6 @@ mod multi_rpc_results {
             rpc_client::{MultiCallError, ReducedResult},
             rpc_declarations::FeeHistory,
         };
-        use ic_cdk::api::call::RejectionCode;
 
         #[test]
         fn should_get_unanimous_fee_history() {
@@ -912,8 +912,7 @@ mod multi_rpc_results {
     mod has_http_outcall_error_matching {
         use super::*;
         use crate::rpc_client::{MultiCallError, ReducedResult};
-        use evm_rpc_types::{HttpOutcallError, JsonRpcError};
-        use ic_cdk::api::call::RejectionCode;
+        use evm_rpc_client::evm_rpc_types::{JsonRpcError, RejectionCode};
         use proptest::prelude::any;
         use proptest::proptest;
 
@@ -1085,7 +1084,7 @@ mod evm_rpc_conversion {
         arb_log_entry, arb_nat_256, arb_transaction_receipt,
     };
 
-    use evm_rpc_types::{
+    use evm_rpc_client::evm_rpc_types::{
         Block as EvmBlock, EthMainnetService as EvmEthMainnetService, EthSepoliaService, Hex,
         Hex20, Hex32, LogEntry as EvmLogEntry, MultiRpcResult as EvmMultiRpcResult, Nat256,
         RpcError as EvmRpcError, RpcResult as EvmRpcResult, RpcService as EvmRpcService,

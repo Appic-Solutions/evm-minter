@@ -1,5 +1,6 @@
 use crate::evm_config::EvmNetwork;
 use crate::guard::TimerGuard;
+use crate::icrc_client::runtime::IcrcBoundedRuntime;
 use crate::logs::{DEBUG, INFO};
 use crate::numeric::{Erc20TokenAmount, GasAmount, LedgerBurnIndex, LedgerMintIndex};
 use crate::rpc_client::{MultiCallError, RpcClient};
@@ -15,7 +16,7 @@ use crate::{numeric::TransactionCount, state::read_state};
 use candid::Nat;
 use futures::future::join_all;
 use ic_canister_log::log;
-use icrc_ledger_client_cdk::{CdkRuntime, ICRC1Client};
+use icrc_ledger_client::ICRC1Client;
 use icrc_ledger_types::icrc1::account::Account;
 use icrc_ledger_types::icrc1::transfer::TransferArg;
 use num_traits::ToPrimitive;
@@ -75,7 +76,7 @@ pub async fn process_reimbursement() {
             } => (icrc_token, true),
         };
         let client = ICRC1Client {
-            runtime: CdkRuntime,
+            runtime: IcrcBoundedRuntime,
             ledger_canister_id,
         };
         let transfer_fee = if should_transfer_fetch_fee {
@@ -229,7 +230,7 @@ pub async fn process_retrieve_tokens_requests() {
     if read_state(|s| s.withdrawal_transactions.has_pending_requests()) {
         ic_cdk_timers::set_timer(
             crate::PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_RETRY_INTERVAL,
-            || ic_cdk::spawn(process_retrieve_tokens_requests()),
+            || ic_cdk::futures::spawn_017_compat(process_retrieve_tokens_requests()),
         );
     }
 }
