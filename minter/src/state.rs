@@ -66,7 +66,7 @@ impl Display for InvalidEventReason {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             InvalidEventReason::InvalidEvent(reason) => {
-                write!(f, "Invalid event: {}", reason)
+                write!(f, "Invalid event: {reason}")
             }
             InvalidEventReason::QuarantinedDeposit => {
                 write!(f, "Quarantined deposit")
@@ -197,10 +197,14 @@ pub struct State {
     pub dex_canister_id: Option<Principal>,
     // TWIN USDC address and ledger_id
     pub ic_usdc_ids: Option<(Address, Principal)>,
+
     // swap contract address
     pub swap_contract_address: Option<Address>,
     // is the maximum approval given to the swap contract
     pub is_swapping_active: Option<bool>,
+
+    // received swap events to be minted to appic dex to start a crosschain swap
+    pub swap_event_to_mint_to_appic_dex: BTreeMap<EventSource, ReceivedContractEvent>,
 }
 
 impl State {
@@ -209,9 +213,7 @@ impl State {
             &self.ecdsa_public_key.as_ref()?.public_key,
             Some(PublicKeyFormat::Compressed),
         )
-        .unwrap_or_else(|e| {
-            ic_cdk::trap(&format!("failed to decode minter's public key: {:?}", e))
-        });
+        .unwrap_or_else(|e| ic_cdk::trap(format!("failed to decode minter's public key: {e:?}")));
         Some(ecdsa_public_key_to_address(&pubkey))
     }
 
@@ -357,14 +359,25 @@ impl State {
                     )
                     .expect("Bug: duplicate wrapped icp token should've been detected before");
             }
+            ReceivedContractEvent::ReceivedSwapOrder(received_swap_event) => {
+                assert!(self.is_swapping_active.unwrap_or(false), "BUG: There should be no swap event fetched if swap feature is not yet activated");
+                assert!(self.dex_canister_id.is_some(), "BUG: Swap events can not be minted to appic dex if appic dex canister id is not represented");
+                assert!(received_swap_event.bridged_to_minter, "BUG: Events with bridged_to_minter=false should have already been filtered out");
+                assert!(
+                    !received_swap_event.encoded_swap_data.0.is_empty(),
+                    "BUG: Swap events with empty encoded data should've alread been filtered out"
+                );
+
+                self.swap_event_to_mint_to_appic_dex
+                    .insert(event_source, event.clone());
+            }
         };
     }
 
     pub fn record_skipped_block(&mut self, block_number: BlockNumber) {
         assert!(
             self.skipped_blocks.insert(block_number),
-            "BUG: block {} was already skipped ",
-            block_number,
+            "BUG: block {block_number} was already skipped ",
         );
     }
 
@@ -598,8 +611,6 @@ impl State {
 
         let l1_fee = withdrawal_request.l1_fee().unwrap_or(Wei::ZERO);
 
-        println!("l1_fee: {:?}", l1_fee);
-
         let withdrawal_fee = withdrawal_request.withdrawal_fee().unwrap_or(Wei::ZERO);
 
         let tx_fee = receipt.effective_transaction_fee();
@@ -664,7 +675,7 @@ impl State {
         // tokens
         if receipt.status == TransactionStatus::Success
             && !tx.transaction_data().is_empty()
-            && is_wrapped_mint == false
+            && !is_wrapped_mint
         {
             let tx_data = TransactionCallData::decode(tx.transaction_data())
                 .expect("BUG: failed to decode transaction data from transaction issued by minter");
@@ -698,7 +709,7 @@ impl State {
     ) -> Option<Principal> {
         self.wrapped_icrc_tokens
             .get_entry_alt(wrapped_erc20_address)
-            .map(|(ledger_id, _symbol)| ledger_id.clone())
+            .map(|(ledger_id, _symbol)| *ledger_id)
     }
 
     pub fn find_wrapped_erc20_token_by_icrc_ledger_id(
@@ -824,19 +835,19 @@ impl State {
         } = upgrade_args;
         if let Some(nonce) = next_transaction_nonce {
             let nonce = TransactionNonce::try_from(nonce)
-                .map_err(|e| InvalidStateError::InvalidTransactionNonce(format!("ERROR: {}", e)))?;
+                .map_err(|e| InvalidStateError::InvalidTransactionNonce(format!("ERROR: {e}")))?;
             self.withdrawal_transactions
                 .update_next_transaction_nonce(nonce);
         }
         if let Some(amount) = native_minimum_withdrawal_amount {
             let minimum_withdrawal_amount = Wei::try_from(amount).map_err(|e| {
-                InvalidStateError::InvalidMinimumWithdrawalAmount(format!("ERROR: {}", e))
+                InvalidStateError::InvalidMinimumWithdrawalAmount(format!("ERROR: {e}"))
             })?;
             self.native_minimum_withdrawal_amount = minimum_withdrawal_amount;
         }
         if let Some(minimum_amount) = native_ledger_transfer_fee {
             let native_ledger_transfer_fee = Wei::try_from(minimum_amount).map_err(|e| {
-                InvalidStateError::InvalidMinimumLedgerTransferFee(format!("ERROR: {}", e))
+                InvalidStateError::InvalidMinimumLedgerTransferFee(format!("ERROR: {e}"))
             })?;
             self.native_ledger_transfer_fee = native_ledger_transfer_fee;
         }
@@ -844,26 +855,23 @@ impl State {
         if let Some(min_max_priority_per_gas) = min_max_priority_fee_per_gas {
             let min_max_priority_fee_per_gas = WeiPerGas::try_from(min_max_priority_per_gas)
                 .map_err(|e| {
-                    InvalidStateError::InvalidMinimumMaximumPriorityFeePerGas(format!(
-                        "ERROR: {}",
-                        e
-                    ))
+                    InvalidStateError::InvalidMinimumMaximumPriorityFeePerGas(format!("ERROR: {e}"))
                 })?;
             self.min_max_priority_fee_per_gas = min_max_priority_fee_per_gas;
         }
 
         if let Some(addr) = helper_contract_address {
-            let contract_address = Address::from_str(&addr).map_err(|e| {
-                InvalidStateError::InvalidHelperContractAddress(format!("Invalid address: {}", e))
+            let contract_address = Address::from_str(&addr).map_err(|e| -> InvalidStateError {
+                InvalidStateError::InvalidHelperContractAddress(format!("Invalid address: {e}"))
             })?;
             self.helper_contract_addresses
-                .get_or_insert_with(|| vec![])
+                .get_or_insert_with(std::vec::Vec::new)
                 .push(contract_address);
         }
 
         if let Some(block_number) = last_scraped_block_number {
             self.last_scraped_block_number = BlockNumber::try_from(block_number).map_err(|e| {
-                InvalidStateError::InvalidLastScrapedBlockNumber(format!("ERROR: {}", e))
+                InvalidStateError::InvalidLastScrapedBlockNumber(format!("ERROR: {e}"))
             })?;
         }
         if let Some(block_height) = block_height {
@@ -877,7 +885,7 @@ impl State {
         if let Some(withdrawal_native_fee) = withdrawal_native_fee {
             // Conversion to Wei tag
             let withdrawal_native_fee_converted = Wei::try_from(withdrawal_native_fee)
-                .map_err(|e| InvalidStateError::InvalidFeeInput(format!("ERROR: {}", e)))?;
+                .map_err(|e| InvalidStateError::InvalidFeeInput(format!("ERROR: {e}")))?;
 
             // If fee is set to zero it should be remapped to None
             let withdrawal_native_fee = if withdrawal_native_fee_converted == Wei::ZERO {
@@ -929,7 +937,7 @@ pub async fn lazy_call_ecdsa_public_key() -> PublicKey {
     fn to_public_key(response: &EcdsaPublicKeyResult) -> PublicKey {
         PublicKey::parse_slice(&response.public_key, Some(PublicKeyFormat::Compressed))
             .unwrap_or_else(|e| {
-                ic_cdk::trap(&format!("failed to decode minter's public key: {:?}", e))
+                ic_cdk::trap(format!("failed to decode minter's public key: {e:?}"))
             })
     }
 
@@ -950,7 +958,7 @@ pub async fn lazy_call_ecdsa_public_key() -> PublicKey {
         },
     })
     .await
-    .unwrap_or_else(|err| ic_cdk::trap(&format!("failed to get minter's public key:{} ", err)));
+    .unwrap_or_else(|err| ic_cdk::trap(format!("failed to get minter's public key:{err} ")));
     mutate_state(|s| s.ecdsa_public_key = Some(response.clone()));
     to_public_key(&response)
 }

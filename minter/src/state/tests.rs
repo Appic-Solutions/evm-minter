@@ -1021,7 +1021,7 @@ pub fn state_equivalence() {
         native_ledger_transfer_fee: Wei::new(2_000_000_000_000_000),
         min_max_priority_fee_per_gas: WeiPerGas::new(1000),
         ledger_suite_manager_id: None,
-        swap_canister_id: None,
+        dex_canister_id: None,
         last_observed_block_time: None,
         withdrawal_native_fee: None,
         events_to_release: Default::default(),
@@ -1030,6 +1030,10 @@ pub fn state_equivalence() {
         icrc_balances: Default::default(),
         wrapped_icrc_tokens: Default::default(),
         last_log_scraping_time: None,
+        ic_usdc_ids: None,
+        swap_contract_address: None,
+        is_swapping_active: None,
+        swap_event_to_mint_to_appic_dex: Default::default(),
     };
 
     assert_eq!(
@@ -1589,6 +1593,9 @@ mod native_balance {
                 }
                 WithdrawalRequest::Erc20(erc20_request) => {
                     EventType::AcceptedErc20WithdrawalRequest(erc20_request.clone())
+                }
+                WithdrawalRequest::Erc20Approve(erc20_approve) => {
+                    EventType::AcceptedSwapActivationRequest(erc20_approve.clone())
                 }
             };
             apply_state_transition(state, &accepted_withdrawal_request_event);

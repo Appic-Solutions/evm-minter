@@ -3,6 +3,7 @@ use minicbor::{Decode, Encode};
 
 use crate::{
     contract_logs::{
+        swap::swap_logs::ReceivedSwapEvent,
         types::{
             ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent,
             ReceivedWrappedIcrcDeployedEvent,
@@ -230,6 +231,8 @@ pub enum EventType {
         #[cbor(n(2), with = "crate::cbor::principal")]
         ic_usdc_ledger_id: Principal,
     },
+    #[n(33)]
+    ReceivedSwapOrder(#[n(0)] ReceivedSwapEvent),
 }
 
 impl ReceivedContractEvent {
@@ -242,6 +245,9 @@ impl ReceivedContractEvent {
             }
             ReceivedContractEvent::WrappedIcrcDeployed(event) => {
                 EventType::DeployedWrappedIcrcToken(event)
+            }
+            ReceivedContractEvent::ReceivedSwapOrder(received_swap_event) => {
+                EventType::ReceivedSwapOrder(received_swap_event)
             }
         }
     }

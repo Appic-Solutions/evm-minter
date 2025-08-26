@@ -1,4 +1,6 @@
 [workspace]
 members = ["evm_rpc_client", "minter"]
 
+workspace.resolver = "2"
+
 

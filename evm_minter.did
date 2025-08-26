@@ -7,27 +7,7 @@ type AddErc20Token = record {
   address : text;
 };
 type CandidBlockTag = variant { Safe; Finalized; Latest };
-type CanisterStatusResponse = record {
-  status : CanisterStatusType;
-  memory_size : nat;
-  cycles : nat;
-  settings : DefiniteCanisterSettings;
-  query_stats : QueryStats;
-  idle_cycles_burned_per_day : nat;
-  module_hash : opt blob;
-  reserved_cycles : nat;
-};
-type CanisterStatusType = variant { stopped; stopping; running };
 type ChainData = record { fee_history : text; latest_block_number : nat };
-type DefiniteCanisterSettings = record {
-  freezing_threshold : nat;
-  controllers : vec principal;
-  reserved_cycles_limit : nat;
-  log_visibility : LogVisibility;
-  wasm_memory_limit : nat;
-  memory_allocation : nat;
-  compute_allocation : nat;
-};
 type DepositStatus = variant {
   Released;
   Minted;
@@ -73,6 +53,11 @@ type EventPayload = variant {
     transfer_fee : nat;
     release_block_index : nat;
     event_source : EventSource;
+  };
+  SwapContractActivated : record {
+    usdc_contract_address : text;
+    swap_contract_address : text;
+    ic_usdc_ledger_id : principal;
   };
   Upgrade : UpgradeArg;
   Init : InitArg;
@@ -182,6 +167,7 @@ type EventPayload = variant {
     icrc_token_principal : principal;
     from_address : text;
   };
+  AcceptedSwapActivationRequest;
   MintedNative : record { event_source : EventSource; mint_block_index : nat };
 };
 type EventSource = record { transaction_hash : text; log_index : nat };
@@ -307,11 +293,6 @@ type LedgerError_1 = variant {
     failed_burn_amount : nat;
   };
 };
-type LogVisibility = variant {
-  controllers;
-  public;
-  allowed_viewers : vec principal;
-};
 type MinterArg = variant { UpgradeArg : UpgradeArg; InitArg : InitArg };
 type MinterInfo = record {
   icrc_balances : opt vec IcrcBalance;
@@ -333,12 +314,6 @@ type MinterInfo = record {
   total_collected_operation_fee : opt nat;
   native_balance : opt nat;
   ledger_suite_manager_id : opt principal;
-};
-type QueryStats = record {
-  response_payload_bytes_total : nat;
-  num_instructions_total : nat;
-  num_calls_total : nat;
-  request_payload_bytes_total : nat;
 };
 type ReimbursementIndex = variant {
   Erc20 : record {
@@ -485,12 +460,12 @@ type WrappedIcrcToken = record {
   base_token : principal;
 };
 service : (MinterArg) -> {
+  activate_swap_feature : (principal, text) -> (nat);
   add_erc20_token : (AddErc20Token) -> ();
   check_new_deposits : () -> ();
   eip_1559_transaction_price : (opt Eip1559TransactionPriceArg) -> (
       Eip1559TransactionPrice,
     ) query;
-  get_canister_status : () -> (CanisterStatusResponse);
   get_events : (GetEventsArg) -> (GetEventsResult) query;
   get_minter_info : () -> (MinterInfo) query;
   icrc28_trusted_origins : () -> (Icrc28TrustedOriginsResponse);

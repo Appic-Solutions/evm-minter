@@ -1385,6 +1385,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                 EventType::AcceptedSwapActivationRequest(_erc20_approve) => {
                     EP::AcceptedSwapActivationRequest
                 }
+                EventType::ReceivedSwapOrder(received_swap_event) => todo!(),
             },
         }
     }

@@ -1149,7 +1149,6 @@ fn test_state() -> State {
         native_ledger_transfer_fee: Wei::new(2_000_000_000_000_000),
         min_max_priority_fee_per_gas: WeiPerGas::new(1000),
         ledger_suite_manager_id: None,
-        swap_canister_id: None,
         last_observed_block_time: None,
         withdrawal_native_fee: None,
         events_to_release: Default::default(),
@@ -1158,6 +1157,11 @@ fn test_state() -> State {
         icrc_balances: Default::default(),
         wrapped_icrc_tokens,
         last_log_scraping_time: None,
+        dex_canister_id: None,
+        ic_usdc_ids: None,
+        swap_contract_address: None,
+        is_swapping_active: None,
+        swap_event_to_mint_to_appic_dex: Default::default(),
     }
 }
 

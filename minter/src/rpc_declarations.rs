@@ -19,16 +19,20 @@ pub fn into_nat(quantity: Quantity) -> candid::Nat {
     candid::Nat::from(BigUint::from_bytes_be(&quantity.to_be_bytes()))
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialOrd, Ord, Deserialize, Serialize, PartialEq, Eq, Encode, Decode)]
 #[serde(transparent)]
-pub struct Data(#[serde(with = "serde_data")] pub Vec<u8>);
+pub struct Data(
+    #[serde(with = "serde_data")]
+    #[cbor(n(0), with = "minicbor::bytes")]
+    pub Vec<u8>,
+);
 
 impl std::str::FromStr for Data {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         serde_json::from_value(Value::String(s.to_string()))
-            .map_err(|e| format!("failed to parse data from string: {}", e))
+            .map_err(|e| format!("failed to parse data from string: {e}"))
     }
 }
 
@@ -38,9 +42,13 @@ impl AsRef<[u8]> for Data {
     }
 }
 
-#[derive(Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Deserialize, PartialOrd, Ord, Serialize, PartialEq, Eq, Hash, Encode, Decode)]
 #[serde(transparent)]
-pub struct FixedSizeData(#[serde(with = "serde_data")] pub [u8; 32]);
+pub struct FixedSizeData(
+    #[serde(with = "serde_data")]
+    #[cbor(n(0), with = "minicbor::bytes")]
+    pub [u8; 32],
+);
 
 impl AsRef<[u8]> for FixedSizeData {
     fn as_ref(&self) -> &[u8] {
@@ -57,20 +65,20 @@ impl std::str::FromStr for FixedSizeData {
         }
         let mut bytes = [0u8; 32];
         hex::decode_to_slice(&s[2..], &mut bytes)
-            .map_err(|e| format!("failed to decode hash from hex: {}", e))?;
+            .map_err(|e| format!("failed to decode hash from hex: {e}"))?;
         Ok(Self(bytes))
     }
 }
 
 impl Debug for FixedSizeData {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:x}", self)
+        write!(f, "{self:x}")
     }
 }
 
 impl Display for FixedSizeData {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:x}", self)
+        write!(f, "{self:x}")
     }
 }
 
@@ -99,13 +107,13 @@ pub struct Hash(
 
 impl Debug for Hash {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:x}", self)
+        write!(f, "{self:x}")
     }
 }
 
 impl Display for Hash {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:x}", self)
+        write!(f, "{self:x}")
     }
 }
 
@@ -130,7 +138,7 @@ impl std::str::FromStr for Hash {
         }
         let mut bytes = [0u8; 32];
         hex::decode_to_slice(&s[2..], &mut bytes)
-            .map_err(|e| format!("failed to decode hash from hex: {}", e))?;
+            .map_err(|e| format!("failed to decode hash from hex: {e}"))?;
         Ok(Self(bytes))
     }
 }
@@ -454,7 +462,7 @@ impl TryFrom<u8> for TransactionStatus {
         match value {
             0 => Ok(TransactionStatus::Failure),
             1 => Ok(TransactionStatus::Success),
-            _ => Err(format!("invalid transaction status: {}", value)),
+            _ => Err(format!("invalid transaction status: {value}")),
         }
     }
 }
@@ -465,7 +473,7 @@ impl TryFrom<ethnum::u256> for TransactionStatus {
     fn try_from(value: ethnum::u256) -> Result<Self, Self::Error> {
         match value {
             ethnum::u256::ZERO | ethnum::u256::ONE => TransactionStatus::try_from(value.as_u8()),
-            _ => Err(format!("invalid transaction status: {}", value)),
+            _ => Err(format!("invalid transaction status: {value}")),
         }
     }
 }

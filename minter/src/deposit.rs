@@ -376,7 +376,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
 }
 
 async fn scrape_until_block(last_block_number: BlockNumber, max_block_spread: u16) {
-    let scrape = match read_state(|state| ReceivedEventsLogScraping::next_scrape(state)) {
+    let scrape = match read_state(ReceivedEventsLogScraping::next_scrape) {
         Some(s) => s,
         None => {
             log!(
@@ -527,6 +527,10 @@ pub fn register_deposit_events(
                     wrapped_icrc_deployed.base_token.to_text()
                 );
             }
+            ReceivedContractEvent::ReceivedSwapOrder(received_swap_event) => {
+                log!(INFO,
+            "Received swap evnet {received_swap_event:?}, will send the event to the appic dex")
+            }
         }
 
         mutate_state(|s| process_event(s, event.into_event_type()));
@@ -577,7 +581,7 @@ pub fn apply_safe_threshold_to_latest_block_numner(
             // Waiting for 12 blocks means the transaction is practically safe on BSC
             // So we go 12 blocks before the latest block
             latest_block
-                .checked_sub(BlockNumber::try_from(3_u32).unwrap())
+                .checked_sub(BlockNumber::from(3_u32))
                 .expect("Removing 5 blocks from latest block should never fail")
         }
         EvmNetwork::ArbitrumOne => {
@@ -585,7 +589,7 @@ pub fn apply_safe_threshold_to_latest_block_numner(
             // considering it to be finalized and safe from reorgs. This waiting period provides a buffer to account for potential fork scenarios
             //  or other unexpected events.
             latest_block
-                .checked_sub(BlockNumber::try_from(6_u32).unwrap())
+                .checked_sub(BlockNumber::from(6_u32))
                 .expect("Removing 12 blocks from latest block should never fail")
         }
         EvmNetwork::Base => {
@@ -594,7 +598,7 @@ pub fn apply_safe_threshold_to_latest_block_numner(
             // typically considered sufficient for most applications.
 
             latest_block
-                .checked_sub(BlockNumber::try_from(3_u32).unwrap())
+                .checked_sub(BlockNumber::from(3_u32))
                 .expect("Removing 12 blocks from latest block should never fail")
         }
         EvmNetwork::Optimism => {
@@ -602,7 +606,7 @@ pub fn apply_safe_threshold_to_latest_block_numner(
             // ensure finality and minimize the risk of reorgs. A waiting period of 6-12 blocks is typically considered sufficient.
 
             latest_block
-                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .checked_sub(BlockNumber::from(12_u32))
                 .expect("Removing 12 blocks from latest block should never fail")
         }
         EvmNetwork::Avalanche => {
@@ -611,7 +615,7 @@ pub fn apply_safe_threshold_to_latest_block_numner(
             // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
 
             latest_block
-                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .checked_sub(BlockNumber::from(12_u32))
                 .expect("Removing 12 blocks from latest block should never fail")
         }
         EvmNetwork::Fantom => {
@@ -620,7 +624,7 @@ pub fn apply_safe_threshold_to_latest_block_numner(
             // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
 
             latest_block
-                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .checked_sub(BlockNumber::from(12_u32))
                 .expect("Removing 12 blocks from latest block should never fail")
         }
         EvmNetwork::Ethereum =>
@@ -629,7 +633,7 @@ pub fn apply_safe_threshold_to_latest_block_numner(
         // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
         {
             latest_block
-                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .checked_sub(BlockNumber::from(12_u32))
                 .expect("Removing 12 blocks from latest block should never fail")
         }
         EvmNetwork::Sepolia =>
@@ -638,7 +642,7 @@ pub fn apply_safe_threshold_to_latest_block_numner(
         // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
         {
             latest_block
-                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .checked_sub(BlockNumber::from(12_u32))
                 .expect("Removing 12 blocks from latest block should never fail")
         }
         EvmNetwork::BSCTestnet =>
@@ -647,7 +651,7 @@ pub fn apply_safe_threshold_to_latest_block_numner(
         // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
         {
             latest_block
-                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .checked_sub(BlockNumber::from(12_u32))
                 .expect("Removing 12 blocks from latest block should never fail")
         }
         EvmNetwork::Polygon =>
@@ -656,7 +660,7 @@ pub fn apply_safe_threshold_to_latest_block_numner(
         // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
         {
             latest_block
-                .checked_sub(BlockNumber::try_from(12_u32).unwrap())
+                .checked_sub(BlockNumber::from(12_u32))
                 .expect("Removing 12 blocks from latest block should never fail")
         }
     }

@@ -60,6 +60,7 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
         EventType::SyncedToBlock { block_number } => {
             state.last_scraped_block_number = *block_number;
         }
+
         EventType::AcceptedNativeWithdrawalRequest(request) => {
             state.record_native_withdrawal_request(request.clone());
         }
@@ -218,7 +219,6 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
                 .withdrawal_transactions
                 .record_withdrawal_request(erc20_approve.clone());
         }
-
         EventType::SwapContractActivated {
             swap_contract_address,
             usdc_contract_address,
@@ -228,6 +228,9 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
                 (*usdc_contract_address, *ic_usdc_ledger_id),
                 *swap_contract_address,
             );
+        }
+        EventType::ReceivedSwapOrder(received_swap_event) => {
+            state.record_contract_events(&received_swap_event.clone().into());
         }
     }
 }

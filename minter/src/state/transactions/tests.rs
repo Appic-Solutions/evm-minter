@@ -880,6 +880,7 @@ mod withdrawal_transactions {
                         .checked_sub(test.resubmitted_native_tx_amount_deduction)
                         .unwrap(),
                     WithdrawalRequest::Erc20(_) => initial_tx.amount,
+                    WithdrawalRequest::Erc20Approve(_) => initial_tx.amount,
                 };
                 let expected_resubmitted_tx = Eip1559TransactionRequest {
                     max_fee_per_gas: test.resubmitted_tx_max_fee_per_gas,
@@ -2225,6 +2226,7 @@ mod oldest_incomplete_withdrawal_timestamp {
         match withdrawal_request {
             WithdrawalRequest::Native(request) => request.created_at = Some(created_at),
             WithdrawalRequest::Erc20(request) => request.created_at = created_at,
+            WithdrawalRequest::Erc20Approve(request) => request.created_at = created_at,
         }
     }
 }

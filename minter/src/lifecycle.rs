@@ -74,14 +74,14 @@ impl TryFrom<InitArg> for State {
         use std::str::FromStr;
 
         let initial_nonce = TransactionNonce::try_from(next_transaction_nonce)
-            .map_err(|e| InvalidStateError::InvalidTransactionNonce(format!("ERROR: {}", e)))?;
+            .map_err(|e| InvalidStateError::InvalidTransactionNonce(format!("ERROR: {e}")))?;
         let native_minimum_withdrawal_amount = Wei::try_from(native_minimum_withdrawal_amount)
             .map_err(|e| {
-                InvalidStateError::InvalidMinimumWithdrawalAmount(format!("ERROR: {}", e))
+                InvalidStateError::InvalidMinimumWithdrawalAmount(format!("ERROR: {e}"))
             })?;
         let native_ledger_transfer_fee =
             Wei::try_from(native_ledger_transfer_fee).map_err(|e| {
-                InvalidStateError::InvalidMinimumLedgerTransferFee(format!("ERROR: {}", e))
+                InvalidStateError::InvalidMinimumLedgerTransferFee(format!("ERROR: {e}"))
             })?;
         let native_symbol = ERC20TokenSymbol::new(native_symbol);
 
@@ -89,20 +89,17 @@ impl TryFrom<InitArg> for State {
             Some(address_string) => match Address::from_str(&address_string) {
                 Ok(address) => Ok(Some(vec![address])),
                 Err(e) => Err(InvalidStateError::InvalidHelperContractAddress(format!(
-                    "ERROR: {}",
-                    e
+                    "ERROR: {e}"
                 ))),
             },
             None => Ok(None),
         }?;
 
-        let last_scraped_block_number =
-            BlockNumber::try_from(last_scraped_block_number).map_err(|e| {
-                InvalidStateError::InvalidLastScrapedBlockNumber(format!("ERROR: {}", e))
-            })?;
+        let last_scraped_block_number = BlockNumber::try_from(last_scraped_block_number)
+            .map_err(|e| InvalidStateError::InvalidLastScrapedBlockNumber(format!("ERROR: {e}")))?;
         let min_max_priority_fee_per_gas: WeiPerGas =
             WeiPerGas::try_from(min_max_priority_fee_per_gas).map_err(|e| {
-                InvalidStateError::InvalidMinimumMaximumPriorityFeePerGas(format!("ERROR: {}", e))
+                InvalidStateError::InvalidMinimumMaximumPriorityFeePerGas(format!("ERROR: {e}"))
             })?;
         let first_scraped_block_number =
             last_scraped_block_number
@@ -115,7 +112,7 @@ impl TryFrom<InitArg> for State {
 
         // Conversion to Wei tag
         let deposit_native_fee_converted = Wei::try_from(deposit_native_fee)
-            .map_err(|e| InvalidStateError::InvalidFeeInput(format!("ERROR: {}", e)))?;
+            .map_err(|e| InvalidStateError::InvalidFeeInput(format!("ERROR: {e}")))?;
 
         // If fee is set to zero it should be remapped to None
         let _deposit_native_fee = if deposit_native_fee_converted == Wei::ZERO {
@@ -126,7 +123,7 @@ impl TryFrom<InitArg> for State {
 
         // Conversion to Wei tag
         let withdrawal_native_fee_converted = Wei::try_from(withdrawal_native_fee)
-            .map_err(|e| InvalidStateError::InvalidFeeInput(format!("ERROR: {}", e)))?;
+            .map_err(|e| InvalidStateError::InvalidFeeInput(format!("ERROR: {e}")))?;
 
         // If fee is set to zero it should be remapped to None
         let withdrawal_native_fee = if withdrawal_native_fee_converted == Wei::ZERO {
@@ -175,6 +172,7 @@ impl TryFrom<InitArg> for State {
             ic_usdc_ids: None,
             swap_contract_address: None,
             is_swapping_active: None,
+            swap_event_to_mint_to_appic_dex: Default::default(),
         };
         state.validate_config()?;
         Ok(state)

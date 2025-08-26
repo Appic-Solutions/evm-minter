@@ -135,6 +135,9 @@ impl From<&ReceivedContractEvent> for Memo {
             ReceivedContractEvent::WrappedIcrcDeployed(_received_wrapped_icrc_deployed_event) => {
                 panic!("Bug: this event is not mintable")
             }
+            ReceivedContractEvent::ReceivedSwapOrder(received_swap_event) => MintMemo::Convert {
+                from_address: received_swap_event.from_address,
+            },
         }
         .into()
     }
