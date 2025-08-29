@@ -6,6 +6,7 @@ pub mod balances;
 pub mod event;
 pub mod transactions;
 
+use crate::state::transactions::data::TransactionCallData;
 use std::{
     cell::RefCell,
     collections::{btree_map, BTreeMap, BTreeSet, HashSet},
@@ -36,9 +37,7 @@ use ic_canister_log::log;
 use libsecp256k1::{PublicKey, PublicKeyFormat};
 use serde_bytes::ByteBuf;
 use strum_macros::EnumIter;
-use transactions::{
-    Erc20WithdrawalRequest, TransactionCallData, WithdrawalRequest, WithdrawalTransactions,
-};
+use transactions::{Erc20WithdrawalRequest, WithdrawalRequest, WithdrawalTransactions};
 
 use ic_cdk::management_canister::EcdsaPublicKeyResult;
 
@@ -683,11 +682,21 @@ impl State {
                 TransactionCallData::Erc20Transfer { to: _, value } => {
                     self.erc20_balances.erc20_sub(*tx.destination(), value);
                 }
-
                 TransactionCallData::Erc20Approve {
                     spender: _,
                     value: _,
                 } => {}
+                TransactionCallData::ExecuteSwap {
+                    commands,
+                    data,
+                    token_in,
+                    amount_in,
+                    min_amount_out,
+                    deadline,
+                    encoded_data,
+                    recipient,
+                    bridge_to_minter,
+                } => todo!(),
             }
         }
     }
