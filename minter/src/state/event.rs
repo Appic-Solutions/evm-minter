@@ -229,7 +229,9 @@ pub enum EventType {
         #[n(1)]
         usdc_contract_address: Address,
         #[cbor(n(2), with = "crate::cbor::principal")]
-        ic_usdc_ledger_id: Principal,
+        twin_usdc_ledger_id: Principal,
+        #[n(3)]
+        twin_usdc_decimals: u8,
     },
     #[n(33)]
     ReceivedSwapOrder(#[n(0)] ReceivedSwapEvent),

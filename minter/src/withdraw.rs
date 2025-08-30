@@ -525,5 +525,6 @@ pub fn estimate_gas_limit(withdrawal_request: &WithdrawalRequest) -> GasAmount {
             }
         }
         WithdrawalRequest::Erc20Approve(_) => ERC20_APPROVAL_TRANSACTION_GAS_LIMIT,
+        WithdrawalRequest::Swap(request) => request.gas_estimate,
     }
 }

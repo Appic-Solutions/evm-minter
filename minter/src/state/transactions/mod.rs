@@ -184,40 +184,38 @@ pub struct ExecuteSwapRequest {
     #[n(9)]
     pub swap_contract: Address,
 
+    #[n(10)]
+    pub gas_estimate: GasAmount,
+
     /// The transaction ID of the Native token burn operation on the native token ledger.
-    #[cbor(n(10), with = "crate::cbor::id")]
+    #[cbor(n(11), with = "crate::cbor::id")]
     pub native_ledger_burn_index: LedgerBurnIndex,
 
     /// The ERC20 ledger on which the minter burned the ERC20 tokens (USDC ledger in most cases).
-    #[cbor(n(11), with = "crate::cbor::principal")]
+    #[cbor(n(12), with = "crate::cbor::principal")]
     pub erc20_ledger_id: Principal,
     /// The transaction ID of the ERC20 burn operation on the ERC20 ledger.
-    #[cbor(n(12), with = "crate::cbor::id")]
+    #[cbor(n(13), with = "crate::cbor::id")]
     pub erc20_ledger_burn_index: LedgerBurnIndex,
     /// The owner of the account from which the minter burned native.
 
-    #[cbor(n(13), with = "crate::cbor::principal")]
+    #[cbor(n(14), with = "crate::cbor::principal")]
     pub from: Principal,
     /// The subaccount from which the minter burned native.
 
-    #[n(14)]
+    #[n(15)]
     pub from_subaccount: Option<Subaccount>,
     /// The IC time at which the withdrawal request arrived.
-    #[n(15)]
+    #[n(16)]
     pub created_at: u64,
 
     /// Fee consumed for batch l1 submission, only applicable to some l2s like Op, and Base
-    #[n(16)]
+    #[n(17)]
     pub l1_fee: Option<Wei>,
 
     /// Fee taken for covering the signing, rpc calls, and other incfraustructure costs
-    #[n(17)]
-    pub withdrawal_fee: Option<Wei>,
-
-    /// if the transaction mint new wrapped erc20 tokens on the evm side after icrc tokens got
-    /// locked on the icp side     
     #[n(18)]
-    pub is_wrapped_mint: Option<bool>,
+    pub withdrawal_fee: Option<Wei>,
 }
 
 struct DebugPrincipal<'a>(&'a Principal);
@@ -328,6 +326,7 @@ impl fmt::Debug for ExecuteSwapRequest {
             commands_data,
             encoded_data,
             swap_contract,
+            gas_estimate,
             native_ledger_burn_index,
             erc20_ledger_id,
             erc20_ledger_burn_index,
@@ -336,7 +335,6 @@ impl fmt::Debug for ExecuteSwapRequest {
             created_at,
             l1_fee,
             withdrawal_fee,
-            is_wrapped_mint,
         } = self;
         f.debug_struct("ExecuteSwapRequest")
             .field("max_transaction_fee", max_transaction_fee)
@@ -348,7 +346,8 @@ impl fmt::Debug for ExecuteSwapRequest {
             .field("commands", commands)
             .field("commands_data", commands_data)
             .field("encoded_data", encoded_data)
-            .field("encoded_data", swap_contract)
+            .field("swap_contract", swap_contract)
+            .field("gas_estimate", gas_estimate)
             .field("native_ledger_burn_index", native_ledger_burn_index)
             .field("erc20_ledger_id", &DebugPrincipal(erc20_ledger_id))
             .field("erc20_ledger_burn_index", erc20_ledger_burn_index)
@@ -357,7 +356,6 @@ impl fmt::Debug for ExecuteSwapRequest {
             .field("created_at", created_at)
             .field("l1_fee", l1_fee)
             .field("withdrawal_fee", withdrawal_fee)
-            .field("is_wrapped_mint", is_wrapped_mint)
             .finish()
     }
 }

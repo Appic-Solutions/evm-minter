@@ -222,11 +222,13 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
         EventType::SwapContractActivated {
             swap_contract_address,
             usdc_contract_address,
-            ic_usdc_ledger_id,
+            twin_usdc_ledger_id,
+            twin_usdc_decimals,
         } => {
             state.activate_erc20_contract_address(
-                (*usdc_contract_address, *ic_usdc_ledger_id),
+                (*usdc_contract_address, *twin_usdc_ledger_id),
                 *swap_contract_address,
+                *twin_usdc_decimals,
             );
         }
         EventType::ReceivedSwapOrder(received_swap_event) => {

@@ -6,7 +6,7 @@ pub mod balances;
 pub mod event;
 pub mod transactions;
 
-use crate::state::transactions::data::TransactionCallData;
+use crate::state::{balances::GasTank, transactions::data::TransactionCallData};
 use std::{
     cell::RefCell,
     collections::{btree_map, BTreeMap, BTreeSet, HashSet},
@@ -105,6 +105,13 @@ pub struct ReleasedEvent {
     pub erc20_contract_address: Address,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TwinUSDCInfo {
+    pub address: Address,
+    pub ledger_id: Principal,
+    pub decimlas: u8,
+}
+
 impl MintedEvent {
     pub fn source(&self) -> EventSource {
         self.event.source()
@@ -195,8 +202,7 @@ pub struct State {
     // Appic swapper canister_id
     pub dex_canister_id: Option<Principal>,
     // TWIN USDC address and ledger_id
-    pub ic_usdc_ids: Option<(Address, Principal)>,
-
+    pub twin_usdc_info: Option<TwinUSDCInfo>,
     // swap contract address
     pub swap_contract_address: Option<Address>,
     // is the maximum approval given to the swap contract
@@ -204,6 +210,9 @@ pub struct State {
 
     // received swap events to be minted to appic dex to start a crosschain swap
     pub swap_event_to_mint_to_appic_dex: BTreeMap<EventSource, ReceivedContractEvent>,
+
+    // gas tank
+    pub gas_tank: GasTank,
 }
 
 impl State {
@@ -269,6 +278,13 @@ impl State {
 
     pub fn events_to_mint(&self) -> Vec<ReceivedContractEvent> {
         self.events_to_mint.values().cloned().collect()
+    }
+
+    pub fn swap_event_to_mint_to_appic_dex(&self) -> Vec<ReceivedContractEvent> {
+        self.swap_event_to_mint_to_appic_dex
+            .values()
+            .cloned()
+            .collect()
     }
 
     pub fn has_events_to_mint(&self) -> bool {
@@ -556,6 +572,7 @@ impl State {
             WithdrawalRequest::Erc20Approve(_) => {
                 self.is_swapping_active = Some(true);
             }
+            WithdrawalRequest::Swap(execute_swap_request) => todo!(),
         }
 
         self.withdrawal_transactions
@@ -625,8 +642,8 @@ impl State {
                     );
 
                 let charged_tx_fee=total_charged_fees.checked_sub(l1_fee)
-                            .expect("total_charged_fees should be higher than l1_fee")
-                            .checked_sub(withdrawal_fee).expect("Bug: total_charged_fees should be higer than l1_fee and withdrawal_fee combined");
+                                    .expect("total_charged_fees should be higher than l1_fee")
+                                    .checked_sub(withdrawal_fee).expect("Bug: total_charged_fees should be higer than l1_fee and withdrawal_fee combined");
 
                 (charged_tx_fee, false)
             }
@@ -635,6 +652,7 @@ impl State {
                 req.is_wrapped_mint.unwrap_or_default(),
             ),
             WithdrawalRequest::Erc20Approve(req) => (req.max_transaction_fee, false),
+            WithdrawalRequest::Swap(execute_swap_request) => todo!(),
         };
 
         let unspent_tx_fee = charged_tx_fee.checked_sub(tx_fee).expect(
@@ -663,12 +681,13 @@ impl State {
 
         self.native_balance.eth_balance_sub(debited_amount);
         self.native_balance.total_effective_tx_fees_add(tx_fee);
-        self.native_balance
-            .total_unspent_tx_fees_add(unspent_tx_fee);
 
-        // whether if transactions fails or not the minter paid for the signing cost
-        self.native_balance
-            .total_collected_operation_native_fee_add(withdrawal_fee);
+        // we add the unspent transaction fee to the gas tank to be sued for later
+        self.gas_tank.native_balance_add(unspent_tx_fee);
+
+        // whether if transactions fails or not the minter paid for the signing cost and we add it
+        // to the gas tank to be used later
+        self.gas_tank.native_balance_add(withdrawal_fee);
 
         // update erc20 balances only if request is erc20 and tx is not a wrapped_mint for icrc
         // tokens
@@ -777,10 +796,15 @@ impl State {
 
     pub fn activate_erc20_contract_address(
         &mut self,
-        ic_usdc_ids: (Address, Principal),
+        twin_usdc_ids: (Address, Principal),
         swap_contract_address: Address,
+        twin_usdc_decimals: u8,
     ) {
-        self.ic_usdc_ids = Some(ic_usdc_ids);
+        self.twin_usdc_info = Some(TwinUSDCInfo {
+            address: twin_usdc_ids.0,
+            ledger_id: twin_usdc_ids.1,
+            decimlas: twin_usdc_decimals,
+        });
         self.swap_contract_address = Some(swap_contract_address);
         self.is_swapping_active = Some(true);
     }

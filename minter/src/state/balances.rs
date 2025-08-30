@@ -107,7 +107,6 @@ impl NativeBalance {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-
 pub struct Erc20Balances {
     pub balance_by_erc20_contract: BTreeMap<Address, Erc20Value>,
 }
@@ -204,5 +203,60 @@ impl IcrcBalances {
             });
         self.balance_by_icrc_ledger
             .insert(token_principal, new_value);
+    }
+}
+
+//  tank for collecting un-used transaction fees to be used for next swap-bridge transactions sent
+//  by the appic dex(User paying usdc to cover fees)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GasTank {
+    pub usdc_balance: Erc20Value,
+    pub native_balance: Wei,
+}
+
+impl GasTank {
+    pub fn usdc_balance_add(&mut self, value: Erc20Value) {
+        self.usdc_balance = self.usdc_balance.checked_add(value).unwrap_or_else(|| {
+            panic!(
+                "BUG: overflow when adding {} to {}",
+                value, self.usdc_balance
+            )
+        })
+    }
+
+    pub fn usdc_balance_sub(&mut self, value: Erc20Value) {
+        self.usdc_balance = self.usdc_balance.checked_sub(value).unwrap_or_else(|| {
+            panic!(
+                "BUG: underflow when subtracting {} from {}",
+                value, self.usdc_balance
+            )
+        })
+    }
+
+    pub fn native_balance_add(&mut self, value: Wei) {
+        self.native_balance = self.native_balance.checked_add(value).unwrap_or_else(|| {
+            panic!(
+                "BUG: overflow when adding {} to {}",
+                value, self.native_balance
+            )
+        })
+    }
+
+    pub fn native_balance_sub(&mut self, value: Wei) {
+        self.native_balance = self.native_balance.checked_sub(value).unwrap_or_else(|| {
+            panic!(
+                "BUG: underflow when subtracting {} from {}",
+                value, self.native_balance
+            )
+        })
+    }
+}
+
+impl Default for GasTank {
+    fn default() -> Self {
+        Self {
+            native_balance: Wei::ZERO,
+            usdc_balance: Erc20Value::ZERO,
+        }
     }
 }
