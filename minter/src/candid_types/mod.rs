@@ -14,6 +14,7 @@ use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
 pub mod chain_data;
+pub mod dex_orders;
 pub mod events;
 pub mod withdraw_erc20;
 pub mod withdraw_native;
@@ -198,7 +199,7 @@ impl Display for RetrieveWithdrawalStatus {
             RetrieveWithdrawalStatus::TxFinalized(tx_status) => match tx_status {
                 TxFinalizedStatus::Success {
                     transaction_hash, ..
-                } => write!(f, "Confirmed({})", transaction_hash),
+                } => write!(f, "Confirmed({transaction_hash})"),
                 TxFinalizedStatus::PendingReimbursement(tx) => {
                     write!(f, "PendingReimbursement({})", tx.transaction_hash)
                 }
@@ -208,8 +209,7 @@ impl Display for RetrieveWithdrawalStatus {
                     reimbursed_amount,
                 } => write!(
                     f,
-                    "Failure({}, reimbursed: {} Wei in block: {})",
-                    transaction_hash, reimbursed_amount, reimbursed_in_block
+                    "Failure({transaction_hash}, reimbursed: {reimbursed_amount} Wei in block: {reimbursed_in_block})"
                 ),
             },
         }

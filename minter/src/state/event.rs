@@ -2,6 +2,7 @@ use candid::Principal;
 use minicbor::{Decode, Encode};
 
 use crate::{
+    candid_types::dex_orders::DexOrderArgs,
     contract_logs::{
         swap::swap_logs::ReceivedSwapEvent,
         types::{
@@ -13,9 +14,12 @@ use crate::{
     erc20::ERC20Token,
     eth_types::Address,
     lifecycle::{InitArg, UpgradeArg},
-    numeric::{BlockNumber, IcrcValue, LedgerBurnIndex, LedgerMintIndex, LedgerReleaseIndex},
+    numeric::{
+        BlockNumber, Erc20Value, IcrcValue, LedgerBurnIndex, LedgerMintIndex, LedgerReleaseIndex,
+        Wei,
+    },
     rpc_declarations::TransactionReceipt,
-    state::transactions::Erc20Approve,
+    state::transactions::{Erc20Approve, ExecuteSwapRequest},
     tx::{Eip1559TransactionRequest, SignedEip1559TransactionRequest},
 };
 
@@ -232,9 +236,22 @@ pub enum EventType {
         twin_usdc_ledger_id: Principal,
         #[n(3)]
         twin_usdc_decimals: u8,
+        #[n(4)]
+        canister_signing_fee_twin_usdc_value: Erc20Value,
     },
     #[n(33)]
     ReceivedSwapOrder(#[n(0)] ReceivedSwapEvent),
+    #[n(34)]
+    ReleasedGasFromGasTankWithUsdc {
+        #[n(0)]
+        usdc_amount: Erc20Value,
+        #[n(1)]
+        gas_amount: Wei,
+    },
+    #[n(35)]
+    AcceptedSwapRequest(#[n(0)] ExecuteSwapRequest),
+    #[n(36)]
+    QuarantinedSwap(#[n(0)] DexOrderArgs),
 }
 
 impl ReceivedContractEvent {

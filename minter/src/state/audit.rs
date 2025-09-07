@@ -60,7 +60,6 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
         EventType::SyncedToBlock { block_number } => {
             state.last_scraped_block_number = *block_number;
         }
-
         EventType::AcceptedNativeWithdrawalRequest(request) => {
             state.record_native_withdrawal_request(request.clone());
         }
@@ -224,15 +223,27 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
             usdc_contract_address,
             twin_usdc_ledger_id,
             twin_usdc_decimals,
+            canister_signing_fee_twin_usdc_value,
         } => {
             state.activate_erc20_contract_address(
                 (*usdc_contract_address, *twin_usdc_ledger_id),
                 *swap_contract_address,
                 *twin_usdc_decimals,
+                *canister_signing_fee_twin_usdc_value,
             );
         }
         EventType::ReceivedSwapOrder(received_swap_event) => {
             state.record_contract_events(&received_swap_event.clone().into());
+        }
+        EventType::ReleasedGasFromGasTankWithUsdc {
+            usdc_amount,
+            gas_amount,
+        } => state.release_gas_from_tank_with_usdc(*usdc_amount, *gas_amount),
+        EventType::AcceptedSwapRequest(execute_swap_request) => {
+            state.record_swap_request(execute_swap_request.clone())
+        }
+        EventType::QuarantinedSwap(dex_order_args) => {
+            state.record_quarantined_swap_request(dex_order_args.clone())
         }
     }
 }

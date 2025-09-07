@@ -116,6 +116,10 @@ pub struct Erc20WithdrawalRequest {
     /// locked on the icp side     
     #[n(12)]
     pub is_wrapped_mint: Option<bool>,
+
+    // In case swap failed and then the minter converted the swap into a bridge transaction
+    #[n(13)]
+    pub swap_tx_id: Option<String>,
 }
 
 /// ERC-20(both unlocking erc20 tokens, and minting wrappped icrc tokens) withdrawal request issued by the user.
@@ -216,6 +220,9 @@ pub struct ExecuteSwapRequest {
     /// Fee taken for covering the signing, rpc calls, and other incfraustructure costs
     #[n(18)]
     pub withdrawal_fee: Option<Wei>,
+
+    #[n(19)]
+    pub swap_tx_id: Option<String>,
 }
 
 struct DebugPrincipal<'a>(&'a Principal);
@@ -267,6 +274,7 @@ impl fmt::Debug for Erc20WithdrawalRequest {
             l1_fee,
             withdrawal_fee,
             is_wrapped_mint,
+            swap_tx_id,
         } = self;
         f.debug_struct("Erc20WithdrawalRequest")
             .field("max_transaction_fee", max_transaction_fee)
@@ -282,6 +290,7 @@ impl fmt::Debug for Erc20WithdrawalRequest {
             .field("l1_fee", l1_fee)
             .field("withdrawal_fee", withdrawal_fee)
             .field("is_wrapped_mint", is_wrapped_mint)
+            .field("swap_tx_id", swap_tx_id)
             .finish()
     }
 }
@@ -335,6 +344,7 @@ impl fmt::Debug for ExecuteSwapRequest {
             created_at,
             l1_fee,
             withdrawal_fee,
+            swap_tx_id,
         } = self;
         f.debug_struct("ExecuteSwapRequest")
             .field("max_transaction_fee", max_transaction_fee)
@@ -356,6 +366,7 @@ impl fmt::Debug for ExecuteSwapRequest {
             .field("created_at", created_at)
             .field("l1_fee", l1_fee)
             .field("withdrawal_fee", withdrawal_fee)
+            .field("swap_tx_id", swap_tx_id)
             .finish()
     }
 }
@@ -488,6 +499,12 @@ impl From<NativeWithdrawalRequest> for WithdrawalRequest {
 impl From<Erc20WithdrawalRequest> for WithdrawalRequest {
     fn from(value: Erc20WithdrawalRequest) -> Self {
         WithdrawalRequest::Erc20(value)
+    }
+}
+
+impl From<ExecuteSwapRequest> for WithdrawalRequest {
+    fn from(value: ExecuteSwapRequest) -> Self {
+        WithdrawalRequest::Swap(value)
     }
 }
 

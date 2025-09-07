@@ -293,105 +293,105 @@ async fn mint_and_release() {
     }
 }
 
-pub async fn mint_to_appic_dex_and_swap() {
-    let (swap_events_to_mint, native_ledger_canister_id, dex_canister_id) = read_state(|s| {
-        (
-            s.swap_event_to_mint_to_appic_dex(),
-            s.native_ledger_id,
-            s.dex_canister_id,
-        )
-    });
-
-    let mut error_count = 0;
-
-    for event in swap_events_to_mint {
-        // Ensure that even if we were to panic in the callback, after having contacted the ledger to mint the tokens,
-        // this event will not be processed again.
-        let prevent_double_minting_guard = scopeguard::guard(event.clone(), |event| {
-            mutate_state(|s| {
-                process_event(
-                    s,
-                    EventType::QuarantinedDeposit {
-                        event_source: event.source(),
-                    },
-                )
-            });
-        });
-        let (token_symbol, ledger_canister_id, amount, recepient) = match &event {
-            ReceivedContractEvent::ReceivedSwapOrder(swap_order) => {}
-            _ => panic!("BUG: Only deposit events should be in the minting list"),
-        };
-
-        let client = ICRC1Client {
-            runtime: IcrcBoundedRuntime,
-            ledger_canister_id,
-        };
-
-        // Mint tokens for the user
-        let block_index = match client
-            .transfer(TransferArg {
-                from_subaccount: None,
-                to: Account {
-                    owner: recepient,
-                    subaccount: None,
-                },
-                fee: None,
-                created_at_time: None,
-                memo: Some((&event).into()),
-                amount: amount.clone(),
-            })
-            .await
-        {
-            Ok(Ok(block_index)) => block_index.0.to_u64().expect("nat does not fit into u64"),
-            Ok(Err(err)) => {
-                log!(INFO, "Failed to mint {token_symbol}: {event:?} {err}");
-                error_count += 1;
-                // minting failed, defuse guard
-                ScopeGuard::into_inner(prevent_double_minting_guard);
-                continue;
-            }
-            Err(err) => {
-                log!(
-                    INFO,
-                    "Failed to send a message to the ledger ({ledger_canister_id}): {err:?}"
-                );
-                error_count += 1;
-                // minting failed, defuse guard
-                ScopeGuard::into_inner(prevent_double_minting_guard);
-                continue;
-            }
-        };
-
-        // Record event
-        mutate_state(|s| {
-            process_event(
-                s,
-                match &event {
-                    ReceivedContractEvent::NativeDeposit(event) => EventType::MintedNative {
-                        event_source: event.source(),
-                        mint_block_index: LedgerMintIndex::new(block_index),
-                    },
-
-                    ReceivedContractEvent::Erc20Deposit(event) => EventType::MintedErc20 {
-                        event_source: event.source(),
-                        mint_block_index: LedgerMintIndex::new(block_index),
-                        erc20_contract_address: event.erc20_contract_address,
-                        erc20_token_symbol: token_symbol.clone(),
-                    },
-                    _ => panic!("BUG: Only deposit events should be in the minting list"),
-                },
-            )
-        });
-        log!(
-            INFO,
-            "Minted {} {token_symbol} to {} in block {block_index} ",
-            amount,
-            recepient.to_text(),
-        );
-        // minting succeeded, defuse guard
-        ScopeGuard::into_inner(prevent_double_minting_guard);
-    }
-}
+//pub async fn mint_to_appic_dex_and_swap() {
+//    let (swap_events_to_mint, native_ledger_canister_id, dex_canister_id) = read_state(|s| {
+//        (
+//            s.swap_event_to_mint_to_appic_dex(),
+//            s.native_ledger_id,
+//            s.dex_canister_id,
+//        )
+//    });
+//
+//    let mut error_count = 0;
+//
+//    for event in swap_events_to_mint {
+//        // Ensure that even if we were to panic in the callback, after having contacted the ledger to mint the tokens,
+//        // this event will not be processed again.
+//        let prevent_double_minting_guard = scopeguard::guard(event.clone(), |event| {
+//            mutate_state(|s| {
+//                process_event(
+//                    s,
+//                    EventType::QuarantinedDeposit {
+//                        event_source: event.source(),
+//                    },
+//                )
+//            });
+//        });
+//        let (token_symbol, ledger_canister_id, amount, recepient) = match &event {
+//            ReceivedContractEvent::ReceivedSwapOrder(swap_order) => {}
+//            _ => panic!("BUG: Only deposit events should be in the minting list"),
+//        };
+//
+//        let client = ICRC1Client {
+//            runtime: IcrcBoundedRuntime,
+//            ledger_canister_id,
+//        };
+//
+//        // Mint tokens for the user
+//        let block_index = match client
+//            .transfer(TransferArg {
+//                from_subaccount: None,
+//                to: Account {
+//                    owner: recepient,
+//                    subaccount: None,
+//                },
+//                fee: None,
+//                created_at_time: None,
+//                memo: Some((&event).into()),
+//                amount: amount.clone(),
+//            })
+//            .await
+//        {
+//            Ok(Ok(block_index)) => block_index.0.to_u64().expect("nat does not fit into u64"),
+//            Ok(Err(err)) => {
+//                log!(INFO, "Failed to mint {token_symbol}: {event:?} {err}");
+//                error_count += 1;
+//                // minting failed, defuse guard
+//                ScopeGuard::into_inner(prevent_double_minting_guard);
+//                continue;
+//            }
+//            Err(err) => {
+//                log!(
+//                    INFO,
+//                    "Failed to send a message to the ledger ({ledger_canister_id}): {err:?}"
+//                );
+//                error_count += 1;
+//                // minting failed, defuse guard
+//                ScopeGuard::into_inner(prevent_double_minting_guard);
+//                continue;
+//            }
+//        };
+//
+//        // Record event
+//        mutate_state(|s| {
+//            process_event(
+//                s,
+//                match &event {
+//                    ReceivedContractEvent::NativeDeposit(event) => EventType::MintedNative {
+//                        event_source: event.source(),
+//                        mint_block_index: LedgerMintIndex::new(block_index),
+//                    },
+//
+//                    ReceivedContractEvent::Erc20Deposit(event) => EventType::MintedErc20 {
+//                        event_source: event.source(),
+//                        mint_block_index: LedgerMintIndex::new(block_index),
+//                        erc20_contract_address: event.erc20_contract_address,
+//                        erc20_token_symbol: token_symbol.clone(),
+//                    },
+//                    _ => panic!("BUG: Only deposit events should be in the minting list"),
+//                },
+//            )
+//        });
+//        log!(
+//            INFO,
+//            "Minted {} {token_symbol} to {} in block {block_index} ",
+//            amount,
+//            recepient.to_text(),
+//        );
+//        // minting succeeded, defuse guard
+//        ScopeGuard::into_inner(prevent_double_minting_guard);
+//    }
+//}
 
 pub async fn scrape_logs() {
     let _guard = match TimerGuard::new(TaskType::ScrapLogs) {

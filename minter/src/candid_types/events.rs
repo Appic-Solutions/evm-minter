@@ -177,6 +177,7 @@ pub enum EventPayload {
         l1_fee: Option<Nat>,
         withdrawal_fee: Option<Nat>,
         is_wrapped_mint: bool,
+        swap_tx_id: Option<String>,
     },
     FailedErc20WithdrawalRequest {
         withdrawal_id: Nat,
@@ -248,6 +249,8 @@ pub enum EventPayload {
     SwapContractActivated {
         swap_contract_address: String,
         usdc_contract_address: String,
-        ic_usdc_ledger_id: Principal,
+        twin_usdc_ledger_id: Principal,
+        twin_usdc_decimals: Nat,
+        canister_signing_fee_twin_usdc_value: Nat,
     },
 }

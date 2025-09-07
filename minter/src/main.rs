@@ -1,6 +1,9 @@
 use candid::{Nat, Principal};
 use evm_minter::address::{validate_address_as_destination, AddressValidationError};
 use evm_minter::candid_types::chain_data::ChainData;
+use evm_minter::candid_types::dex_orders::{
+    DexBridgeOrderArgs, DexOrderArgs, DexOrderError, DexSwapOrderArgs,
+};
 use evm_minter::candid_types::events::{
     Event as CandidEvent, EventSource as CandidEventSource, GetEventsArg, GetEventsResult,
 };
@@ -44,22 +47,30 @@ use evm_minter::numeric::{BlockNumber, Erc20Value, LedgerBurnIndex, Wei};
 use evm_minter::rpc_client::providers::Provider;
 use evm_minter::rpc_declarations::Hash;
 use evm_minter::state::audit::{process_event, EventType};
+use evm_minter::state::balances::{release_gas_from_tank_with_usdc, ReleaseGasFromTankError};
 use evm_minter::state::event::Event;
+use evm_minter::state::transactions::data::Command;
 use evm_minter::state::transactions::{
-    Erc20Approve, Erc20WithdrawalRequest, NativeWithdrawalRequest, Reimbursed, ReimbursementIndex,
-    ReimbursementRequest,
+    Erc20Approve, Erc20WithdrawalRequest, ExecuteSwapRequest, NativeWithdrawalRequest, Reimbursed,
+    ReimbursementIndex, ReimbursementRequest,
 };
 use evm_minter::state::{
     lazy_call_ecdsa_public_key, mutate_state, read_state, transactions, State, STATE,
 };
 use evm_minter::storage::set_rpc_api_key;
-use evm_minter::tx::gas_fees::{
-    estimate_transaction_fee, lazy_refresh_gas_fee_estimate, DEFAULT_L1_BASE_GAS_FEE,
+use evm_minter::swap::command_data::decode_commands_data;
+use evm_minter::swap::{
+    build_dex_swap_refund_request, build_dex_swap_request, is_quarantine_error,
 };
+use evm_minter::tx::gas_fees::{
+    estimate_dex_order_fee, estimate_erc20_transaction_fee, estimate_icrc_wrap_transaction_fee,
+    estimate_transaction_fee, estimate_usdc_approval_fee, lazy_refresh_gas_fee_estimate,
+    DEFAULT_L1_BASE_GAS_FEE,
+};
+use evm_minter::tx::gas_usd::MaxFeeUsd;
 use evm_minter::withdraw::{
-    process_reimbursement, process_retrieve_tokens_requests, ERC20_APPROVAL_TRANSACTION_GAS_LIMIT,
-    ERC20_MINT_TRANSACTION_GAS_LIMIT, ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
-    NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
+    process_reimbursement, process_retrieve_tokens_requests,
+    ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT, NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
 };
 use evm_minter::{
     state, storage, APPIC_CONTROLLER_PRINCIPAL, PROCESS_REIMBURSEMENT,
@@ -202,7 +213,7 @@ async fn smart_contract_address() -> Option<Vec<String>> {
     read_state(|s| {
         s.helper_contract_addresses.as_ref().map(|addresses| {
             addresses
-                .into_iter()
+                .iter()
                 .map(|address| address.to_string())
                 .collect()
         })
@@ -472,11 +483,13 @@ async fn withdrawal_status(parameter: WithdrawalSearchParameter) -> Vec<Withdraw
                         .unwrap()
                         .to_string(),
                     Erc20Approve(_erc20_approve) => "USDC".to_string(),
+                    Swap(execute_swap_request) => todo!(),
                 },
                 withdrawal_amount: match request {
                     Native(r) => r.withdrawal_amount.into(),
                     Erc20(r) => r.withdrawal_amount.into(),
                     Erc20Approve(_erc20_approve) => Nat::from(0_u8),
+                    Swap(execute_swap_request) => todo!(),
                 },
                 max_transaction_fee: match (request, tx) {
                     (Native(_), None) => None,
@@ -485,6 +498,8 @@ async fn withdrawal_status(parameter: WithdrawalSearchParameter) -> Vec<Withdraw
                     }
                     (Erc20(r), _) => Some(r.max_transaction_fee.into()),
                     (Erc20Approve(r), _) => Some(r.max_transaction_fee.into()),
+                    (Swap(execute_swap_request), None) => todo!(),
+                    (Swap(execute_swap_request), Some(_)) => todo!(),
                 },
                 from: request.from(),
                 from_subaccount: request
@@ -614,6 +629,7 @@ async fn withdraw_erc20(
                         l1_fee,
                         is_wrapped_mint: Some(false),
                         withdrawal_fee: withdrawal_native_fee,
+                        swap_tx_id: None,
                     };
                     log!(
                         INFO,
@@ -783,6 +799,7 @@ async fn wrap_icrc(
                         l1_fee,
                         is_wrapped_mint: Some(true),
                         withdrawal_fee: withdrawal_native_fee,
+                        swap_tx_id: None,
                     };
                     log!(
                         INFO,
@@ -842,13 +859,18 @@ async fn wrap_icrc(
 }
 
 #[update]
-async fn activate_swap_feature(ic_usdc_ledger_id: Principal, swap_contract_address: String) -> Nat {
+async fn activate_swap_feature(
+    twin_usdc_ledger_id: Principal,
+    swap_contract_address: String,
+    twin_usdc_decimals: u8,
+    canister_signing_fee_twin_usdc_value: Nat,
+) -> Nat {
     let caller = validate_caller_not_anonymous();
     if caller != Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap() {
         panic!("ONLY appic controller can activate swap_feature");
     }
 
-    let erc20_token = read_state(|s| s.find_erc20_token_by_ledger_id(&ic_usdc_ledger_id))
+    let erc20_token = read_state(|s| s.find_erc20_token_by_ledger_id(&twin_usdc_ledger_id))
         .expect("could not find icUSDC tokens with provided principal");
 
     let (withdrawal_native_fee, native_ledger, minter_address) = read_state(|s| {
@@ -873,6 +895,10 @@ async fn activate_swap_feature(ic_usdc_ledger_id: Principal, swap_contract_addre
     let swap_contract_address =
         Address::from_str(&swap_contract_address).expect("Invalid swap contract address");
 
+    let canister_signing_fee_twin_usdc_value =
+        Erc20Value::try_from(canister_signing_fee_twin_usdc_value)
+            .expect("Invalid canister signing fee twin usdc value");
+
     let now = ic_cdk::api::time();
 
     // amount that will be burnt to cover transaction_fees plus transaction_signing
@@ -894,7 +920,9 @@ async fn activate_swap_feature(ic_usdc_ledger_id: Principal, swap_contract_addre
             EventType::SwapContractActivated {
                 swap_contract_address,
                 usdc_contract_address: erc20_token.erc20_contract_address,
-                ic_usdc_ledger_id,
+                twin_usdc_ledger_id,
+                twin_usdc_decimals,
+                canister_signing_fee_twin_usdc_value,
             },
         );
     });
@@ -933,43 +961,13 @@ async fn activate_swap_feature(ic_usdc_ledger_id: Principal, swap_contract_addre
             });
 
             ic_cdk_timers::set_timer(Duration::from_secs(0), || {
-                ic_cdk::spawn(process_retrieve_tokens_requests())
+                ic_cdk::futures::spawn_017_compat(process_retrieve_tokens_requests())
             });
 
             native_ledger_burn_index.get().into()
         }
         Err(_native_burn_error) => panic!("Failed to burn native token to cover transaction fee"),
     }
-}
-
-async fn estimate_erc20_transaction_fee() -> Option<Wei> {
-    lazy_refresh_gas_fee_estimate()
-        .await
-        .map(|gas_fee_estimate| {
-            gas_fee_estimate
-                .to_price(ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT)
-                .max_transaction_fee()
-        })
-}
-
-async fn estimate_icrc_wrap_transaction_fee() -> Option<Wei> {
-    lazy_refresh_gas_fee_estimate()
-        .await
-        .map(|gas_fee_estimate| {
-            gas_fee_estimate
-                .to_price(ERC20_MINT_TRANSACTION_GAS_LIMIT)
-                .max_transaction_fee()
-        })
-}
-
-async fn estimate_usdc_approval_fee() -> Option<Wei> {
-    lazy_refresh_gas_fee_estimate()
-        .await
-        .map(|gas_fee_estimate| {
-            gas_fee_estimate
-                .to_price(ERC20_APPROVAL_TRANSACTION_GAS_LIMIT)
-                .max_transaction_fee()
-        })
 }
 
 #[update]
@@ -997,6 +995,103 @@ async fn check_new_deposits() {
         ));
     }
     scrape_logs().await;
+}
+
+#[update]
+async fn dex_order(args: DexOrderArgs) -> Result<(), DexOrderError> {
+    let (
+        is_swapping_active,
+        twin_usdc_info,
+        dex_canister_id,
+        last_native_token_usd_price_estimate,
+        canister_signing_fee_twin_usdc_amount,
+        swap_contract_address,
+        evm_network,
+    ) = read_state(|s| {
+        (
+            s.is_swapping_active,
+            s.twin_usdc_info.clone(),
+            s.dex_canister_id,
+            s.last_native_token_usd_price_estimate,
+            s.canister_signing_fee_twin_usdc_amount,
+            s.swap_contract_address,
+            s.evm_network,
+        )
+    });
+
+    if !is_swapping_active {
+        panic!("SWAPPING NOT ACTIVE");
+    }
+
+    let twin_usdc_info =
+        twin_usdc_info.expect("BUG: twin USDC info should be available if swapping is active");
+    let dex_canister_id =
+        dex_canister_id.expect("BUG: DEX canister ID should be available if swapping is active");
+    let last_native_token_usd_price_estimate = last_native_token_usd_price_estimate
+        .expect("BUG: native token USD price should be available if swapping is active");
+    let canister_signing_fee_twin_usdc_amount = canister_signing_fee_twin_usdc_amount.expect(
+        "BUG: canister signing fee twin USDC amount should be available if swapping is active",
+    );
+    let swap_contract_address = swap_contract_address
+        .expect("BUG: swap contract address should be available if swapping is active");
+
+    if dex_canister_id != ic_cdk::api::msg_caller() {
+        panic!("Only appic DEX canister is authorized to call this function");
+    }
+
+    let swap_request_result = build_dex_swap_request(
+        &args,
+        &twin_usdc_info,
+        last_native_token_usd_price_estimate.1,
+        canister_signing_fee_twin_usdc_amount,
+        swap_contract_address,
+        evm_network,
+        dex_canister_id,
+    )
+    .await;
+
+    let result = match swap_request_result {
+        Ok(swap_request) => {
+            mutate_state(|s| process_event(s, EventType::AcceptedSwapRequest(swap_request)));
+            Ok(())
+        }
+        Err(err) if is_quarantine_error(&err) => {
+            mutate_state(|s| process_event(s, EventType::QuarantinedSwap(args.clone())));
+            Err(err)
+        }
+        Err(err) => {
+            match build_dex_swap_refund_request(
+                &args,
+                &twin_usdc_info,
+                last_native_token_usd_price_estimate.1,
+                canister_signing_fee_twin_usdc_amount,
+                evm_network,
+                dex_canister_id,
+            )
+            .await
+            {
+                Ok(withdrawal_request) => {
+                    mutate_state(|s| {
+                        process_event(
+                            s,
+                            EventType::AcceptedErc20WithdrawalRequest(withdrawal_request),
+                        )
+                    });
+                    Err(err)
+                }
+                Err(withdrawal_err) => {
+                    mutate_state(|s| process_event(s, EventType::QuarantinedSwap(args.clone())));
+                    Err(withdrawal_err)
+                }
+            }
+        }
+    };
+
+    ic_cdk_timers::set_timer(Duration::from_secs(0), || {
+        ic_cdk::futures::spawn_017_compat(process_retrieve_tokens_requests())
+    });
+
+    result
 }
 
 #[query]
@@ -1246,6 +1341,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     l1_fee,
                     withdrawal_fee,
                     is_wrapped_mint,
+                    swap_tx_id,
                 }) => EP::AcceptedErc20WithdrawalRequest {
                     max_transaction_fee: max_transaction_fee.into(),
                     withdrawal_amount: withdrawal_amount.into(),
@@ -1260,6 +1356,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     l1_fee: l1_fee.map(|fee| fee.into()),
                     withdrawal_fee: withdrawal_fee.map(|fee| fee.into()),
                     is_wrapped_mint: is_wrapped_mint.unwrap_or_default(),
+                    swap_tx_id,
                 },
                 EventType::MintedErc20 {
                     event_source,
@@ -1376,16 +1473,27 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                 EventType::SwapContractActivated {
                     swap_contract_address,
                     usdc_contract_address,
-                    ic_usdc_ledger_id,
+                    twin_usdc_ledger_id,
+                    twin_usdc_decimals,
+                    canister_signing_fee_twin_usdc_value,
                 } => EP::SwapContractActivated {
                     swap_contract_address: swap_contract_address.to_string(),
                     usdc_contract_address: usdc_contract_address.to_string(),
-                    ic_usdc_ledger_id,
+                    twin_usdc_ledger_id,
+                    twin_usdc_decimals: twin_usdc_decimals.into(),
+                    canister_signing_fee_twin_usdc_value: canister_signing_fee_twin_usdc_value
+                        .into(),
                 },
                 EventType::AcceptedSwapActivationRequest(_erc20_approve) => {
                     EP::AcceptedSwapActivationRequest
                 }
                 EventType::ReceivedSwapOrder(received_swap_event) => todo!(),
+                EventType::ReleasedGasFromGasTankWithUsdc {
+                    usdc_amount,
+                    gas_amount,
+                } => todo!(),
+                EventType::AcceptedSwapRequest(execute_swap_request) => todo!(),
+                EventType::QuarantinedSwap(dex_order_args) => todo!(),
             },
         }
     }
@@ -1431,12 +1539,15 @@ pub async fn update_chain_data(chain_data: ChainData) {
     let fee_history =
         parse_fee_history(chain_data.fee_history).expect("Failed to parse fee hisotry");
 
+    let native_token_usd_price = chain_data.native_token_usd_price.unwrap_or_default();
+
     match estimate_transaction_fee(&fee_history) {
         Ok(estimate) => {
             mutate_state(|s| {
                 s.last_transaction_price_estimate = Some((now, estimate.clone()));
                 s.last_observed_block_number = Some(latest_block_number);
                 s.last_observed_block_time = Some(now);
+                s.last_native_token_usd_price_estimate = Some((now, native_token_usd_price))
             });
         }
         Err(e) => {

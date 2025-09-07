@@ -543,7 +543,7 @@ mod withdrawal_transactions {
             expected_address: &Address,
             expected_amount: &Erc20Value,
         ) -> Vec<u8> {
-            use crate::state::transactions::ERC_20_TRANSFER_FUNCTION_SELECTOR;
+            use crate::state::transactions::data::ERC_20_TRANSFER_FUNCTION_SELECTOR;
             use ethers_core::abi::{Param, ParamType, Token};
 
             let erc20_transfer = ethers_core::abi::Function {
@@ -881,6 +881,7 @@ mod withdrawal_transactions {
                         .unwrap(),
                     WithdrawalRequest::Erc20(_) => initial_tx.amount,
                     WithdrawalRequest::Erc20Approve(_) => initial_tx.amount,
+                    WithdrawalRequest::Swap(execute_swap_request) => todo!(),
                 };
                 let expected_resubmitted_tx = Eip1559TransactionRequest {
                     max_fee_per_gas: test.resubmitted_tx_max_fee_per_gas,
@@ -2227,6 +2228,7 @@ mod oldest_incomplete_withdrawal_timestamp {
             WithdrawalRequest::Native(request) => request.created_at = Some(created_at),
             WithdrawalRequest::Erc20(request) => request.created_at = created_at,
             WithdrawalRequest::Erc20Approve(request) => request.created_at = created_at,
+            WithdrawalRequest::Swap(execute_swap_request) => todo!(),
         }
     }
 }

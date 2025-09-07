@@ -14,6 +14,7 @@ use crate::numeric::{
 use crate::rpc_declarations::BlockTag;
 use crate::rpc_declarations::{TransactionReceipt, TransactionStatus};
 use crate::state::audit::apply_state_transition;
+use crate::state::balances::GasTank;
 use crate::state::event::{Event, EventType};
 use crate::state::transactions::{Erc20WithdrawalRequest, ReimbursementIndex};
 use crate::state::{Erc20Balances, State};
@@ -1030,10 +1031,13 @@ pub fn state_equivalence() {
         icrc_balances: Default::default(),
         wrapped_icrc_tokens: Default::default(),
         last_log_scraping_time: None,
-        ic_usdc_ids: None,
+        twin_usdc_info: None,
         swap_contract_address: None,
-        is_swapping_active: None,
+        is_swapping_active: false,
         swap_event_to_mint_to_appic_dex: Default::default(),
+        last_native_token_usd_price_estimate: None,
+        canister_signing_fee_twin_usdc_amount: None,
+        gas_tank: GasTank::default(),
     };
 
     assert_eq!(
@@ -1597,6 +1601,7 @@ mod native_balance {
                 WithdrawalRequest::Erc20Approve(erc20_approve) => {
                     EventType::AcceptedSwapActivationRequest(erc20_approve.clone())
                 }
+                WithdrawalRequest::Swap(execute_swap_request) => todo!(),
             };
             apply_state_transition(state, &accepted_withdrawal_request_event);
 

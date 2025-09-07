@@ -4,7 +4,11 @@ use candid::Principal;
 
 use crate::{
     eth_types::Address,
-    numeric::{Erc20Value, IcrcValue, Wei},
+    numeric::{Erc20Value, IcrcValue, LedgerBurnIndex, Wei},
+    state::{
+        audit::{process_event, Event, EventType},
+        mutate_state, read_state,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,10 +127,7 @@ impl Erc20Balances {
         match self.balance_by_erc20_contract.get(&erc20_contract) {
             Some(previous_value) => {
                 let new_value = previous_value.checked_add(deposit).unwrap_or_else(|| {
-                    panic!(
-                        "BUG: overflow when adding {} to {}",
-                        deposit, previous_value
-                    )
+                    panic!("BUG: overflow when adding {deposit} to {previous_value}")
                 });
                 self.balance_by_erc20_contract
                     .insert(erc20_contract, new_value);
@@ -146,10 +147,7 @@ impl Erc20Balances {
         let new_value = previous_value
             .checked_sub(withdrawal_amount)
             .unwrap_or_else(|| {
-                panic!(
-                    "BUG: underflow when subtracting {} from {}",
-                    withdrawal_amount, previous_value
-                )
+                panic!("BUG: underflow when subtracting {withdrawal_amount} from {previous_value}")
             });
         self.balance_by_erc20_contract
             .insert(erc20_contract, new_value);
@@ -259,4 +257,42 @@ impl Default for GasTank {
             usdc_balance: Erc20Value::ZERO,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseGasFromTankError {
+    pub requested: Wei,
+    pub available: Wei,
+}
+pub fn release_gas_from_tank_with_usdc(
+    usdc_amount: Erc20Value,
+    gas_amount: Wei,
+) -> Result<LedgerBurnIndex, ReleaseGasFromTankError> {
+    let (native_tank_balance, next_swap_ledger_burn_index) = read_state(|s| {
+        (
+            s.gas_tank.native_balance,
+            s.next_swap_ledger_burn_index.expect(
+                "Bug: next_swap_ledger_burn_index should be available if swapping is active",
+            ),
+        )
+    });
+
+    if native_tank_balance < gas_amount {
+        return Err(ReleaseGasFromTankError {
+            requested: gas_amount,
+            available: native_tank_balance,
+        });
+    }
+
+    mutate_state(|s| {
+        process_event(
+            s,
+            EventType::ReleasedGasFromGasTankWithUsdc {
+                usdc_amount,
+                gas_amount,
+            },
+        )
+    });
+
+    Ok(next_swap_ledger_burn_index)
 }

@@ -17,14 +17,16 @@ use maplit::btreemap;
 
 use crate::{
     address::ecdsa_public_key_to_address,
-    contract_logs::types::ReceivedNativeEvent,
-    contract_logs::EventSource,
+    contract_logs::{types::ReceivedNativeEvent, EventSource},
     erc20::ERC20TokenSymbol,
     evm_config::EvmNetwork,
     map::DedupMultiKeyMap,
     numeric::{BlockNumber, LedgerMintIndex, LogIndex, Wei, WeiPerGas},
     rpc_declarations::BlockTag,
-    state::{transactions::WithdrawalTransactions, InvalidEventReason, MintedEvent, State},
+    state::{
+        balances::GasTank, transactions::WithdrawalTransactions, InvalidEventReason, MintedEvent,
+        State,
+    },
 };
 
 #[test]
@@ -1158,10 +1160,13 @@ fn test_state() -> State {
         wrapped_icrc_tokens,
         last_log_scraping_time: None,
         dex_canister_id: None,
-        ic_usdc_ids: None,
+        twin_usdc_info: None,
         swap_contract_address: None,
-        is_swapping_active: None,
+        is_swapping_active: false,
         swap_event_to_mint_to_appic_dex: Default::default(),
+        last_native_token_usd_price_estimate: None,
+        canister_signing_fee_twin_usdc_amount: None,
+        gas_tank: GasTank::default(),
     }
 }
 

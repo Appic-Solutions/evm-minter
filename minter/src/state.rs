@@ -6,7 +6,14 @@ pub mod balances;
 pub mod event;
 pub mod transactions;
 
-use crate::state::{balances::GasTank, transactions::data::TransactionCallData};
+use crate::{
+    candid_types::dex_orders::DexOrderArgs,
+    numeric::Erc20Value,
+    state::{
+        balances::GasTank,
+        transactions::{data::TransactionCallData, ExecuteSwapRequest},
+    },
+};
 use std::{
     cell::RefCell,
     collections::{btree_map, BTreeMap, BTreeSet, HashSet},
@@ -109,7 +116,7 @@ pub struct ReleasedEvent {
 pub struct TwinUSDCInfo {
     pub address: Address,
     pub ledger_id: Principal,
-    pub decimlas: u8,
+    pub decimals: u8,
 }
 
 impl MintedEvent {
@@ -176,6 +183,7 @@ pub struct State {
 
     // Transaction price estimate
     pub last_transaction_price_estimate: Option<(u64, GasFeeEstimate)>,
+    pub last_native_token_usd_price_estimate: Option<(u64, f64)>,
 
     /// fees charged for withdraw and mint_wrapped icp tokens operations in order to cover signing cost,
     /// can be none in case there is no need to charge any withdrawal fees.
@@ -201,18 +209,31 @@ pub struct State {
 
     // Appic swapper canister_id
     pub dex_canister_id: Option<Principal>,
-    // TWIN USDC address and ledger_id
-    pub twin_usdc_info: Option<TwinUSDCInfo>,
-    // swap contract address
-    pub swap_contract_address: Option<Address>,
-    // is the maximum approval given to the swap contract
-    pub is_swapping_active: Option<bool>,
 
     // received swap events to be minted to appic dex to start a crosschain swap
     pub swap_event_to_mint_to_appic_dex: BTreeMap<EventSource, ReceivedContractEvent>,
 
+    // TWIN USDC address and ledger_id
+    pub twin_usdc_info: Option<TwinUSDCInfo>,
+    // swap contract address
+    pub swap_contract_address: Option<Address>,
+
+    // canister_fee in twin usdc amount for covering signing cost
+    pub canister_signing_fee_twin_usdc_amount: Option<Erc20Value>,
+
+    // is the maximum approval given to the swap contract
+    pub is_swapping_active: bool,
+
     // gas tank
     pub gas_tank: GasTank,
+
+    // next swap burn index
+    pub next_swap_ledger_burn_index: Option<LedgerBurnIndex>,
+
+    // Quarantined swap requests
+    // Swap requests that failed to process
+    // key = swap_i
+    pub quarantined_swap_requests: BTreeMap<String, DexOrderArgs>,
 }
 
 impl State {
@@ -375,7 +396,7 @@ impl State {
                     .expect("Bug: duplicate wrapped icp token should've been detected before");
             }
             ReceivedContractEvent::ReceivedSwapOrder(received_swap_event) => {
-                assert!(self.is_swapping_active.unwrap_or(false), "BUG: There should be no swap event fetched if swap feature is not yet activated");
+                assert!(self.is_swapping_active, "BUG: There should be no swap event fetched if swap feature is not yet activated");
                 assert!(self.dex_canister_id.is_some(), "BUG: Swap events can not be minted to appic dex if appic dex canister id is not represented");
                 assert!(received_swap_event.bridged_to_minter, "BUG: Events with bridged_to_minter=false should have already been filtered out");
                 assert!(
@@ -556,6 +577,11 @@ impl State {
             .record_withdrawal_request(request);
     }
 
+    pub fn record_swap_request(&mut self, request: ExecuteSwapRequest) {
+        self.withdrawal_transactions
+            .record_withdrawal_request(request);
+    }
+
     pub fn record_finalized_transaction(
         &mut self,
         withdrawal_id: &LedgerBurnIndex,
@@ -570,7 +596,7 @@ impl State {
         match withdrawal_request {
             WithdrawalRequest::Native(_) | WithdrawalRequest::Erc20(_) => {}
             WithdrawalRequest::Erc20Approve(_) => {
-                self.is_swapping_active = Some(true);
+                self.is_swapping_active = true;
             }
             WithdrawalRequest::Swap(execute_swap_request) => todo!(),
         }
@@ -799,14 +825,39 @@ impl State {
         twin_usdc_ids: (Address, Principal),
         swap_contract_address: Address,
         twin_usdc_decimals: u8,
+        canister_signing_fee_twin_usdc_amount: Erc20Value,
     ) {
         self.twin_usdc_info = Some(TwinUSDCInfo {
             address: twin_usdc_ids.0,
             ledger_id: twin_usdc_ids.1,
-            decimlas: twin_usdc_decimals,
+            decimals: twin_usdc_decimals,
         });
         self.swap_contract_address = Some(swap_contract_address);
-        self.is_swapping_active = Some(true);
+        self.canister_signing_fee_twin_usdc_amount = Some(canister_signing_fee_twin_usdc_amount);
+        // For an operation we need a ledger bunr index but since the swap operations use the
+        // native tokens that are already burned and located in the gas tank, we have an internal
+        // counter that is not synced with the actual native ledger burn index and it starts from
+        // u64::MAX / 2 to make it safe in order to prevent conflicts with actual ledger operations
+        //
+        // Adter every operation(adding usdc to gas tank and getting native token) the swap ledger
+        // bunr index will be incremented.
+        self.next_swap_ledger_burn_index =
+            Some(LedgerBurnIndex::new(10_000_000_000_000_000_000_u64));
+    }
+
+    pub fn release_gas_from_tank_with_usdc(&mut self, usdc_amount: Erc20Value, gas_amount: Wei) {
+        self.gas_tank.native_balance_sub(gas_amount);
+        self.gas_tank.usdc_balance_add(usdc_amount);
+
+        // increment the next swap ledger burn index after releasing gas
+        self.next_swap_ledger_burn_index = Some(LedgerBurnIndex::new(
+            self.next_swap_ledger_burn_index.unwrap().get() + 1,
+        ));
+    }
+
+    pub fn record_quarantined_swap_request(&mut self, swap_request: DexOrderArgs) {
+        self.quarantined_swap_requests
+            .insert(swap_request.tx_id(), swap_request);
     }
 
     /// Checks whether two states are equivalent.

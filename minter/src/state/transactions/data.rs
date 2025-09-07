@@ -2,14 +2,14 @@ use std::str::FromStr;
 
 use crate::{eth_types::Address, numeric::Erc20Value, rpc_declarations::Data};
 use alloy::primitives::{Address as AlloyAddress, Bytes, FixedBytes, U256};
-use alloy::sol_types::{SolCall, SolType};
+use alloy::sol_types::SolCall;
 use minicbor::{Decode, Encode};
 //use alloy_primitives::{Address as AlloyAddress, FixedBytes,U256};
 
 // Existing selectors
-const ERC_20_TRANSFER_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("a9059cbb");
-const ERC_20_APPROVE_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("095ea7b3");
-const EXECUTE_SWAP_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("13178b7a");
+pub const ERC_20_TRANSFER_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("a9059cbb");
+pub const ERC_20_APPROVE_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("095ea7b3");
+pub const EXECUTE_SWAP_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("13178b7a");
 
 // Command enum
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Encode, Decode)]
@@ -211,16 +211,16 @@ impl TransactionCallData {
                     format!("Failed to decode alloy address into local address {e}")
                 })?;
 
-                let recipient = Address::from_str(&AlloyAddress::from(call.recipient).to_string())
-                    .map_err(|e| {
-                        format!("Failed to decode alloy Bytes<32> into local address {e}")
-                    })?;
+                let recipient =
+                    Address::from_str(&AlloyAddress::from_word(call.recipient).to_string())
+                        .map_err(|e| {
+                            format!("Failed to decode alloy Bytes<32> into local address {e}")
+                        })?;
 
                 let data = call.data.iter().map(|d| Data(d.to_vec())).collect();
                 let amount_in = Erc20Value::from_be_bytes(call.amountIn.to_be_bytes());
                 let min_amount_out = Erc20Value::from_be_bytes(call.minAmountOut.to_be_bytes());
                 let deadline = Erc20Value::from_be_bytes(call.deadline.to_be_bytes());
-                let recipient;
                 let encoded_data = Data(call.encodedData.to_vec());
 
                 Ok(TransactionCallData::ExecuteSwap {
@@ -231,6 +231,7 @@ impl TransactionCallData {
                     min_amount_out,
                     deadline,
                     encoded_data,
+
                     recipient,
                     bridge_to_minter: call.bridgeToMinter,
                 })

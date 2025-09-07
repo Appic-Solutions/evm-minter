@@ -6,6 +6,7 @@ use crate::logs::INFO;
 use crate::numeric::{BlockNumber, TransactionNonce, Wei, WeiPerGas};
 use crate::rpc_declarations::BlockTag;
 use crate::state::audit::{process_event, replay_events, EventType};
+use crate::state::balances::GasTank;
 use crate::state::transactions::WithdrawalTransactions;
 use crate::state::{mutate_state, InvalidStateError, State, STATE};
 use crate::storage::total_event_count;
@@ -169,10 +170,15 @@ impl TryFrom<InitArg> for State {
             icrc_balances: Default::default(),
             wrapped_icrc_tokens: Default::default(),
             last_log_scraping_time: None,
-            ic_usdc_ids: None,
+            twin_usdc_info: None,
             swap_contract_address: None,
-            is_swapping_active: None,
             swap_event_to_mint_to_appic_dex: Default::default(),
+            last_native_token_usd_price_estimate: None,
+            canister_signing_fee_twin_usdc_amount: None,
+            is_swapping_active: false,
+            gas_tank: GasTank::default(),
+            next_swap_ledger_burn_index: None,
+            quarantined_swap_requests: Default::default(),
         };
         state.validate_config()?;
         Ok(state)
