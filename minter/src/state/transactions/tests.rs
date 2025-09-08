@@ -874,6 +874,7 @@ mod withdrawal_transactions {
                     TransactionCount::ZERO,
                     test.price_at_tx_resubmission.clone(),
                 );
+
                 let expected_resubmitted_tx_amount = match withdrawal_request {
                     WithdrawalRequest::Native(_) => initial_tx
                         .amount
@@ -881,8 +882,9 @@ mod withdrawal_transactions {
                         .unwrap(),
                     WithdrawalRequest::Erc20(_) => initial_tx.amount,
                     WithdrawalRequest::Erc20Approve(_) => initial_tx.amount,
-                    WithdrawalRequest::Swap(execute_swap_request) => todo!(),
+                    WithdrawalRequest::Swap(_) => initial_tx.amount,
                 };
+
                 let expected_resubmitted_tx = Eip1559TransactionRequest {
                     max_fee_per_gas: test.resubmitted_tx_max_fee_per_gas,
                     max_priority_fee_per_gas: test.resubmitted_tx_max_priority_fee_per_gas,
@@ -2228,7 +2230,7 @@ mod oldest_incomplete_withdrawal_timestamp {
             WithdrawalRequest::Native(request) => request.created_at = Some(created_at),
             WithdrawalRequest::Erc20(request) => request.created_at = created_at,
             WithdrawalRequest::Erc20Approve(request) => request.created_at = created_at,
-            WithdrawalRequest::Swap(execute_swap_request) => todo!(),
+            WithdrawalRequest::Swap(request) => request.created_at = created_at,
         }
     }
 }

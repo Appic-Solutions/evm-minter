@@ -247,11 +247,16 @@ pub enum EventType {
         usdc_amount: Erc20Value,
         #[n(1)]
         gas_amount: Wei,
+        #[n(2)]
+        swap_tx_id: String,
     },
     #[n(35)]
     AcceptedSwapRequest(#[n(0)] ExecuteSwapRequest),
     #[n(36)]
-    QuarantinedSwap(#[n(0)] DexOrderArgs),
+    QuarantinedDexOrder(#[n(0)] DexOrderArgs),
+
+    #[n(37)]
+    QuarantinedSwapRequest(#[n(0)] ExecuteSwapRequest),
 }
 
 impl ReceivedContractEvent {

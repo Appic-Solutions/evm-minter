@@ -178,7 +178,7 @@ impl TryFrom<InitArg> for State {
             is_swapping_active: false,
             gas_tank: GasTank::default(),
             next_swap_ledger_burn_index: None,
-            quarantined_swap_requests: Default::default(),
+            quarantined_dex_orders: Default::default(),
         };
         state.validate_config()?;
         Ok(state)

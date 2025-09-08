@@ -8,7 +8,6 @@ use num_traits::ToPrimitive;
 use super::*;
 
 // candid file designed for operations sent by appic dex
-
 #[derive(CandidType, Deserialize, Clone, Debug, Encode, Decode, Eq, PartialEq)]
 pub enum DexOrderArgs {
     #[n(0)]
@@ -49,6 +48,13 @@ impl DexOrderArgs {
                 .map_err(|_| "ERROR: failed to convert Nat to u256".to_string()),
             DexOrderArgs::Bridge(order) => Erc20Value::try_from(order.deadline.clone())
                 .map_err(|_| "ERROR: failed to convert Nat to u256".to_string()),
+        }
+    }
+
+    pub fn amount(&self) -> Nat {
+        match self {
+            DexOrderArgs::Swap(order) => order.amount_in.clone(),
+            DexOrderArgs::Bridge(order) => order.amount.clone(),
         }
     }
 

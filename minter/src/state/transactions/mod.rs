@@ -116,10 +116,6 @@ pub struct Erc20WithdrawalRequest {
     /// locked on the icp side     
     #[n(12)]
     pub is_wrapped_mint: Option<bool>,
-
-    // In case swap failed and then the minter converted the swap into a bridge transaction
-    #[n(13)]
-    pub swap_tx_id: Option<String>,
 }
 
 /// ERC-20(both unlocking erc20 tokens, and minting wrappped icrc tokens) withdrawal request issued by the user.
@@ -181,9 +177,6 @@ pub struct ExecuteSwapRequest {
     /// Additional data associated with the commands, providing parameters or details for execution
     #[n(7)]
     pub commands_data: Vec<Data>,
-    /// Optional encoded data for additional swap-related information or instructions
-    #[n(8)]
-    pub encoded_data: Option<Data>,
 
     #[n(9)]
     pub swap_contract: Address,
@@ -198,6 +191,7 @@ pub struct ExecuteSwapRequest {
     /// The ERC20 ledger on which the minter burned the ERC20 tokens (USDC ledger in most cases).
     #[cbor(n(12), with = "crate::cbor::principal")]
     pub erc20_ledger_id: Principal,
+
     /// The transaction ID of the ERC20 burn operation on the ERC20 ledger.
     #[cbor(n(13), with = "crate::cbor::id")]
     pub erc20_ledger_burn_index: LedgerBurnIndex,
@@ -222,7 +216,7 @@ pub struct ExecuteSwapRequest {
     pub withdrawal_fee: Option<Wei>,
 
     #[n(19)]
-    pub swap_tx_id: Option<String>,
+    pub swap_tx_id: String,
 }
 
 struct DebugPrincipal<'a>(&'a Principal);
@@ -274,7 +268,6 @@ impl fmt::Debug for Erc20WithdrawalRequest {
             l1_fee,
             withdrawal_fee,
             is_wrapped_mint,
-            swap_tx_id,
         } = self;
         f.debug_struct("Erc20WithdrawalRequest")
             .field("max_transaction_fee", max_transaction_fee)
@@ -290,7 +283,6 @@ impl fmt::Debug for Erc20WithdrawalRequest {
             .field("l1_fee", l1_fee)
             .field("withdrawal_fee", withdrawal_fee)
             .field("is_wrapped_mint", is_wrapped_mint)
-            .field("swap_tx_id", swap_tx_id)
             .finish()
     }
 }
@@ -333,7 +325,6 @@ impl fmt::Debug for ExecuteSwapRequest {
             deadline,
             commands,
             commands_data,
-            encoded_data,
             swap_contract,
             gas_estimate,
             native_ledger_burn_index,
@@ -355,7 +346,6 @@ impl fmt::Debug for ExecuteSwapRequest {
             .field("deadline", deadline)
             .field("commands", commands)
             .field("commands_data", commands_data)
-            .field("encoded_data", encoded_data)
             .field("swap_contract", swap_contract)
             .field("gas_estimate", gas_estimate)
             .field("native_ledger_burn_index", native_ledger_burn_index)
@@ -474,7 +464,7 @@ impl WithdrawalRequest {
             WithdrawalRequest::Erc20Approve(_request) => {
                 panic!("Bug: Approval tx is not a withdrawal tx")
             }
-            WithdrawalRequest::Swap(request) => todo!(),
+            WithdrawalRequest::Swap(request) => EventType::AcceptedSwapRequest(request),
         }
     }
 
@@ -671,8 +661,11 @@ pub enum ReimbursedError {
 ///    The others sent transactions for that nonce were never mined and can be discarded.
 /// 6. If a given transaction fails the minter will reimburse the user who requested the
 ///    withdrawal with the corresponding amount minus fees.
-/// #[derive(Clone, Debug, Eq, PartialEq)]
-
+///
+/// 7. If a swap requests transactions fails it will be converted into a Erc20 withdrawal requests to refund the
+///    users with USDC equivalent
+///
+/// 8. If the swap refund fails for any reason(low usdc amount or etc) it will be quarantined.
 #[derive(Clone, Debug, Eq, PartialEq)]
 
 pub struct WithdrawalTransactions {
@@ -691,6 +684,10 @@ pub struct WithdrawalTransactions {
     pub(in crate::state) maybe_reimburse: BTreeSet<LedgerBurnIndex>,
     pub(in crate::state) reimbursement_requests: BTreeMap<ReimbursementIndex, ReimbursementRequest>,
     pub(in crate::state) reimbursed: BTreeMap<ReimbursementIndex, ReimbursedResult>,
+
+    // Key = swap_tx_id
+    pub(in crate::state) failed_swap_requests: BTreeMap<String, ExecuteSwapRequest>,
+    pub(in crate::state) quarantined_swap_requests: BTreeMap<String, ExecuteSwapRequest>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -724,6 +721,8 @@ impl WithdrawalTransactions {
             maybe_reimburse: Default::default(),
             reimbursement_requests: Default::default(),
             reimbursed: Default::default(),
+            failed_swap_requests: Default::default(),
+            quarantined_swap_requests: Default::default(),
         }
     }
 
@@ -1081,8 +1080,24 @@ impl WithdrawalTransactions {
                     log!(INFO,"ERC20 approval failed, and there is no reimbursment for failed erc20 transactions");
                 }
             }
-            WithdrawalRequest::Swap(request) => todo!(),
+
+            WithdrawalRequest::Swap(request) => {
+                if receipt.status == TransactionStatus::Failure {
+                    self.record_failed_swap_request(request.clone());
+                }
+            }
         }
+    }
+
+    pub fn record_failed_swap_request(&mut self, request: ExecuteSwapRequest) {
+        self.failed_swap_requests
+            .insert(request.swap_tx_id.clone(), request);
+    }
+
+    pub fn record_quarantined_swap_request(&mut self, request: ExecuteSwapRequest) {
+        self.failed_swap_requests.remove(&request.swap_tx_id);
+        self.quarantined_swap_requests
+            .insert(request.swap_tx_id.clone(), request);
     }
 
     pub fn record_reimbursement_request(
@@ -1173,7 +1188,7 @@ impl WithdrawalTransactions {
                         (request, WithdrawalStatus::TxFinalized(status), Some(tx))
                     }
                     _ => {
-                        panic!("Status of processed request is not found {:?}", request)
+                        panic!("Status of processed request is not found {request:?}")
                     }
                 }
             });
@@ -1365,6 +1380,10 @@ impl WithdrawalTransactions {
         self.finalized_tx.iter()
     }
 
+    pub fn failed_swap_requests(&self) -> Vec<(String, ExecuteSwapRequest)> {
+        self.failed_swap_requests.clone().into_iter().collect()
+    }
+
     pub fn is_sent_tx_empty(&self) -> bool {
         self.sent_tx.is_empty()
     }
@@ -1373,10 +1392,19 @@ impl WithdrawalTransactions {
         !self.pending_withdrawal_requests.is_empty()
             || !self.created_tx.is_empty()
             || !self.sent_tx.is_empty()
+            || !self.failed_swap_requests.is_empty()
+    }
+
+    pub fn is_failed_swaps_requests_empty(&self) -> bool {
+        self.failed_swap_requests.is_empty()
     }
 
     fn remove_withdrawal_request(&mut self, request: &WithdrawalRequest) {
         self.pending_withdrawal_requests.retain(|r| r != request);
+    }
+
+    pub fn remove_failed_swap_request_by_swap_tx_id(&mut self, swap_tx_id: &str) {
+        self.failed_swap_requests.remove(swap_tx_id);
     }
 
     fn expect_last_sent_tx_entry<'a>(
@@ -1586,7 +1614,6 @@ pub fn create_transaction(
                         .unwrap_or(Wei::MAX),
                 });
             }
-            let encoded_data = request.encoded_data.clone().unwrap_or(Data(Vec::new()));
 
             Ok(Eip1559TransactionRequest {
                 chain_id: evm_network.chain_id(),
@@ -1603,7 +1630,7 @@ pub fn create_transaction(
                     amount_in: request.erc20_amount_in,
                     min_amount_out: request.min_amount_out,
                     deadline: request.deadline,
-                    encoded_data,
+                    encoded_data: Data(Vec::new()),
                     recipient: request.recipient,
                     bridge_to_minter: false,
                 }

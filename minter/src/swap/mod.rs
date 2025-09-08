@@ -6,13 +6,12 @@ use crate::evm_config::EvmNetwork;
 use crate::rpc_declarations::Data;
 use crate::state::balances::{release_gas_from_tank_with_usdc, ReleaseGasFromTankError};
 use crate::state::transactions::data::Command;
-use crate::state::transactions::{Erc20WithdrawalRequest, ExecuteSwapRequest};
+use crate::state::transactions::ExecuteSwapRequest;
 use crate::state::TwinUSDCInfo;
 use crate::swap::command_data::decode_commands_data;
-use crate::tx::gas_fees::{
-    estimate_dex_order_fee, estimate_erc20_transaction_fee, DEFAULT_L1_BASE_GAS_FEE,
-};
+use crate::tx::gas_fees::{estimate_dex_order_fee, DEFAULT_L1_BASE_GAS_FEE};
 use crate::tx::gas_usd::MaxFeeUsd;
+use crate::withdraw::{REFUND_FAILED_SWAP_GAS_LIMIT, UNLIMITED_DEADLINE};
 use crate::{
     candid_types::dex_orders::DexOrderArgs,
     numeric::{Erc20Value, Wei},
@@ -61,7 +60,8 @@ pub async fn build_dex_swap_request(
         prepare_order_details(args, max_gas_fee_twin_usdc, signing_fee)?;
 
     let native_ledger_burn_index =
-        release_gas_from_tank_with_usdc(max_gas_fee_twin_usdc, max_transaction_fee).map_err(
+        release_gas_from_tank_with_usdc(max_gas_fee_twin_usdc, max_transaction_fee, args.tx_id())
+            .map_err(
             |ReleaseGasFromTankError {
                  requested,
                  available,
@@ -80,7 +80,6 @@ pub async fn build_dex_swap_request(
         deadline,
         commands,
         commands_data,
-        encoded_data: None,
         swap_contract,
         gas_estimate: gas_limit,
         native_ledger_burn_index,
@@ -91,7 +90,7 @@ pub async fn build_dex_swap_request(
         created_at: now,
         l1_fee,
         withdrawal_fee: None,
-        swap_tx_id: Some(args.tx_id()),
+        swap_tx_id: args.tx_id(),
     })
 }
 
@@ -151,7 +150,8 @@ pub async fn build_dex_swap_refund_request(
     signing_fee: Erc20Value,
     evm_network: EvmNetwork,
     from: Principal,
-) -> Result<Erc20WithdrawalRequest, DexOrderError> {
+    swap_contract: Address,
+) -> Result<ExecuteSwapRequest, DexOrderError> {
     let amount = match args {
         DexOrderArgs::Swap(DexSwapOrderArgs { amount_in, .. }) => amount_in.clone(),
         DexOrderArgs::Bridge(DexBridgeOrderArgs { amount, .. }) => amount.clone(),
@@ -161,12 +161,13 @@ pub async fn build_dex_swap_refund_request(
     let recipient = args
         .recipient()
         .expect("BUG: recipient should be valid at this point");
-    let erc20_tx_fee =
-        estimate_erc20_transaction_fee()
-            .await
-            .ok_or(DexOrderError::TemporarilyUnavailable(
-                "Failed to retrieve current gas fee".to_string(),
-            ))?;
+
+    let erc20_tx_fee = estimate_dex_order_fee(REFUND_FAILED_SWAP_GAS_LIMIT)
+        .await
+        .ok_or(DexOrderError::TemporarilyUnavailable(
+            "Failed to retrieve current gas fee".to_string(),
+        ))?;
+
     let l1_fee = match evm_network {
         EvmNetwork::Base => Some(DEFAULT_L1_BASE_GAS_FEE),
         _ => None,
@@ -182,40 +183,46 @@ pub async fn build_dex_swap_refund_request(
     )
     .map_err(|_| DexOrderError::UsdcAmountInTooLow)?;
 
-    let withdrawal_amount = original_amount
+    let amount_in = original_amount
         .checked_sub(max_gas_fee_twin_usdc)
         .ok_or(DexOrderError::UsdcAmountInTooLow)?
         .checked_sub(signing_fee)
         .ok_or(DexOrderError::UsdcAmountInTooLow)?;
 
     let native_ledger_burn_index =
-        release_gas_from_tank_with_usdc(max_gas_fee_twin_usdc, fee_to_be_deducted).map_err(
-            |ReleaseGasFromTankError {
-                 requested,
-                 available,
-             }| DexOrderError::NotEnoughGasInGasTank {
-                requested: requested.into(),
-                available: available.into(),
-            },
-        )?;
+        release_gas_from_tank_with_usdc(max_gas_fee_twin_usdc, fee_to_be_deducted, args.tx_id())
+            .map_err(
+                |ReleaseGasFromTankError {
+                     requested,
+                     available,
+                 }| DexOrderError::NotEnoughGasInGasTank {
+                    requested: requested.into(),
+                    available: available.into(),
+                },
+            )?;
 
     let now = ic_cdk::api::time();
 
-    Ok(Erc20WithdrawalRequest {
+    Ok(ExecuteSwapRequest {
         max_transaction_fee: erc20_tx_fee,
-        withdrawal_amount,
-        destination: recipient,
+        erc20_token_in: twin_usdc_info.address,
+        erc20_amount_in: amount_in,
+        min_amount_out: amount_in,
+        recipient,
+        deadline: UNLIMITED_DEADLINE,
+        commands: vec![],
+        commands_data: vec![],
+        swap_contract,
+        gas_estimate: REFUND_FAILED_SWAP_GAS_LIMIT,
         native_ledger_burn_index,
         erc20_ledger_id: twin_usdc_info.ledger_id,
         erc20_ledger_burn_index: args.erc20_ledger_burn_index(),
-        erc20_contract_address: twin_usdc_info.address,
         from,
         from_subaccount: None,
         created_at: now,
         l1_fee,
-        is_wrapped_mint: Some(false),
         withdrawal_fee: None,
-        swap_tx_id: Some(args.tx_id()),
+        swap_tx_id: args.tx_id(),
     })
 }
 

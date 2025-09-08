@@ -232,8 +232,8 @@ pub struct State {
 
     // Quarantined swap requests
     // Swap requests that failed to process
-    // key = swap_i
-    pub quarantined_swap_requests: BTreeMap<String, DexOrderArgs>,
+    // key = swap_tx_id
+    pub quarantined_dex_orders: BTreeMap<String, DexOrderArgs>,
 }
 
 impl State {
@@ -579,6 +579,9 @@ impl State {
 
     pub fn record_swap_request(&mut self, request: ExecuteSwapRequest) {
         self.withdrawal_transactions
+            .remove_failed_swap_request_by_swap_tx_id(&request.swap_tx_id);
+
+        self.withdrawal_transactions
             .record_withdrawal_request(request);
     }
 
@@ -598,7 +601,7 @@ impl State {
             WithdrawalRequest::Erc20Approve(_) => {
                 self.is_swapping_active = true;
             }
-            WithdrawalRequest::Swap(execute_swap_request) => todo!(),
+            WithdrawalRequest::Swap(_) => {}
         }
 
         self.withdrawal_transactions
@@ -678,7 +681,7 @@ impl State {
                 req.is_wrapped_mint.unwrap_or_default(),
             ),
             WithdrawalRequest::Erc20Approve(req) => (req.max_transaction_fee, false),
-            WithdrawalRequest::Swap(execute_swap_request) => todo!(),
+            WithdrawalRequest::Swap(req) => (req.max_transaction_fee, false),
         };
 
         let unspent_tx_fee = charged_tx_fee.checked_sub(tx_fee).expect(
@@ -732,16 +735,18 @@ impl State {
                     value: _,
                 } => {}
                 TransactionCallData::ExecuteSwap {
-                    commands,
-                    data,
+                    commands: _,
+                    data: _,
                     token_in,
                     amount_in,
-                    min_amount_out,
-                    deadline,
-                    encoded_data,
-                    recipient,
-                    bridge_to_minter,
-                } => todo!(),
+                    min_amount_out: _,
+                    deadline: _,
+                    encoded_data: _,
+                    recipient: _,
+                    bridge_to_minter: _,
+                } => {
+                    self.erc20_balances.erc20_sub(token_in, amount_in);
+                }
             }
         }
     }
@@ -855,8 +860,8 @@ impl State {
         ));
     }
 
-    pub fn record_quarantined_swap_request(&mut self, swap_request: DexOrderArgs) {
-        self.quarantined_swap_requests
+    pub fn record_quarantined_dex_order(&mut self, swap_request: DexOrderArgs) {
+        self.quarantined_dex_orders
             .insert(swap_request.tx_id(), swap_request);
     }
 

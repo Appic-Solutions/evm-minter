@@ -239,7 +239,7 @@ impl LogParser for ReceivedEventsLogParser {
                         ),
                     });
                 };
-                if bridged_to_minter == false {
+                if !bridged_to_minter {
                     Err(ReceivedContractEventError::SameChainSwap)
                 } else {
                     Ok(ReceivedContractEvent::ReceivedSwapOrder(
@@ -431,21 +431,20 @@ fn parse_swap_executed_data(
 
     // Extract the offset to encodedData (should be 160 / 0xa0).
     let offset_bytes: [u8; 32] = bytes[128..160].try_into().unwrap();
-    let offset = bytes32_to_usize(offset_bytes, event_source.clone())?;
+    let offset = bytes32_to_usize(offset_bytes, event_source)?;
     // For this event, offset should always be 160 since there are 4 static params before the dynamic one.
     if offset != 160 {
         return Err(ReceivedContractEventError::InvalidEventSource {
             source: event_source,
             error: EventSourceError::InvalidEvent(format!(
-                "Unexpected offset for encodedData: expected 160, got {}",
-                offset
+                "Unexpected offset for encodedData: expected 160, got {offset}"
             )),
         });
     }
 
     // Extract the length of encodedData.
     let len_bytes: [u8; 32] = bytes[offset..offset + 32].try_into().unwrap();
-    let len = bytes32_to_usize(len_bytes, event_source.clone())?;
+    let len = bytes32_to_usize(len_bytes, event_source)?;
 
     // Calculate positions.
     let data_start = offset + 32;

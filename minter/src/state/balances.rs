@@ -6,7 +6,7 @@ use crate::{
     eth_types::Address,
     numeric::{Erc20Value, IcrcValue, LedgerBurnIndex, Wei},
     state::{
-        audit::{process_event, Event, EventType},
+        audit::{process_event, EventType},
         mutate_state, read_state,
     },
 };
@@ -69,30 +69,6 @@ impl NativeBalance {
                 panic!(
                     "BUG: overflow when adding {} to {}",
                     value, self.total_effective_tx_fees
-                )
-            })
-    }
-
-    pub fn total_collected_operation_native_fee_add(&mut self, value: Wei) {
-        self.total_collected_operation_native_fee = self
-            .total_collected_operation_native_fee
-            .checked_add(value)
-            .unwrap_or_else(|| {
-                panic!(
-                    "BUG: overflow when adding {} to {}",
-                    value, self.total_effective_tx_fees
-                )
-            })
-    }
-
-    pub fn total_unspent_tx_fees_add(&mut self, value: Wei) {
-        self.total_unspent_tx_fees = self
-            .total_unspent_tx_fees
-            .checked_add(value)
-            .unwrap_or_else(|| {
-                panic!(
-                    "BUG: overflow when adding {} to {}",
-                    value, self.total_unspent_tx_fees
                 )
             })
     }
@@ -171,10 +147,7 @@ impl IcrcBalances {
         match self.balance_by_icrc_ledger.get(&token_principal) {
             Some(previous_value) => {
                 let new_value = previous_value.checked_add(lock_amount).unwrap_or_else(|| {
-                    panic!(
-                        "BUG: overflow when adding {} to {}",
-                        lock_amount, previous_value
-                    )
+                    panic!("BUG: overflow when adding {lock_amount} to {previous_value}")
                 });
                 self.balance_by_icrc_ledger
                     .insert(token_principal, new_value);
@@ -194,10 +167,7 @@ impl IcrcBalances {
         let new_value = previous_value
             .checked_sub(release_amount)
             .unwrap_or_else(|| {
-                panic!(
-                    "BUG: underflow when subtracting {} from {}",
-                    release_amount, previous_value
-                )
+                panic!("BUG: underflow when subtracting {release_amount} from {previous_value}")
             });
         self.balance_by_icrc_ledger
             .insert(token_principal, new_value);
@@ -267,6 +237,7 @@ pub struct ReleaseGasFromTankError {
 pub fn release_gas_from_tank_with_usdc(
     usdc_amount: Erc20Value,
     gas_amount: Wei,
+    swap_tx_id: String,
 ) -> Result<LedgerBurnIndex, ReleaseGasFromTankError> {
     let (native_tank_balance, next_swap_ledger_burn_index) = read_state(|s| {
         (
@@ -290,6 +261,7 @@ pub fn release_gas_from_tank_with_usdc(
             EventType::ReleasedGasFromGasTankWithUsdc {
                 usdc_amount,
                 gas_amount,
+                swap_tx_id,
             },
         )
     });

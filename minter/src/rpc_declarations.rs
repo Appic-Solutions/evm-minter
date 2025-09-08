@@ -19,7 +19,7 @@ pub fn into_nat(quantity: Quantity) -> candid::Nat {
     candid::Nat::from(BigUint::from_bytes_be(&quantity.to_be_bytes()))
 }
 
-#[derive(Debug, Clone, PartialOrd, Ord, Deserialize, Serialize, PartialEq, Eq, Encode, Decode)]
+#[derive(Clone, PartialOrd, Ord, Deserialize, Serialize, PartialEq, Eq, Encode, Decode)]
 #[serde(transparent)]
 pub struct Data(
     #[serde(with = "serde_data")]
@@ -33,6 +33,30 @@ impl std::str::FromStr for Data {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         serde_json::from_value(Value::String(s.to_string()))
             .map_err(|e| format!("failed to parse data from string: {e}"))
+    }
+}
+
+impl Debug for Data {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:x}")
+    }
+}
+
+impl Display for Data {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:x}")
+    }
+}
+
+impl LowerHex for Data {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "0x{}", hex::encode(self.0.clone()))
+    }
+}
+
+impl UpperHex for Data {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "0x{}", hex::encode_upper(self.0.clone()))
     }
 }
 

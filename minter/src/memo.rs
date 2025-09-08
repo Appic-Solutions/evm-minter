@@ -121,7 +121,6 @@ impl From<BurnMemo> for Memo {
 
 impl From<&ReceivedContractEvent> for Memo {
     fn from(event: &ReceivedContractEvent) -> Self {
-        //todo!()
         match event {
             ReceivedContractEvent::NativeDeposit(received_native_event) => MintMemo::Convert {
                 from_address: received_native_event.from_address,

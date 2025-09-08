@@ -238,12 +238,18 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
         EventType::ReleasedGasFromGasTankWithUsdc {
             usdc_amount,
             gas_amount,
+            swap_tx_id: _,
         } => state.release_gas_from_tank_with_usdc(*usdc_amount, *gas_amount),
         EventType::AcceptedSwapRequest(execute_swap_request) => {
             state.record_swap_request(execute_swap_request.clone())
         }
-        EventType::QuarantinedSwap(dex_order_args) => {
-            state.record_quarantined_swap_request(dex_order_args.clone())
+        EventType::QuarantinedDexOrder(dex_order_args) => {
+            state.record_quarantined_dex_order(dex_order_args.clone())
+        }
+        EventType::QuarantinedSwapRequest(execute_swap_request) => {
+            state
+                .withdrawal_transactions
+                .record_quarantined_swap_request(execute_swap_request.clone());
         }
     }
 }

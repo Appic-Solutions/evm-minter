@@ -143,7 +143,7 @@ mod get_contract_logs {
 
         let parsed_event =
             ReceivedEventsLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap());
-        println!("{:?}", parsed_event);
+        println!("{parsed_event:?}");
         let burn_event = ReceivedBurnEvent {
             transaction_hash: "0x5618f72c485bd98a3df58d900eabe9e24bfaa972a6fe5227e02233fad2db1154"
                 .parse()
@@ -1167,6 +1167,8 @@ fn test_state() -> State {
         last_native_token_usd_price_estimate: None,
         canister_signing_fee_twin_usdc_amount: None,
         gas_tank: GasTank::default(),
+        next_swap_ledger_burn_index: None,
+        quarantined_dex_orders: Default::default(),
     }
 }
 
