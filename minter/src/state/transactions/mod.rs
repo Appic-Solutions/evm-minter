@@ -217,6 +217,9 @@ pub struct ExecuteSwapRequest {
 
     #[n(19)]
     pub swap_tx_id: String,
+
+    #[n(20)]
+    pub is_refund: bool,
 }
 
 struct DebugPrincipal<'a>(&'a Principal);
@@ -336,6 +339,7 @@ impl fmt::Debug for ExecuteSwapRequest {
             l1_fee,
             withdrawal_fee,
             swap_tx_id,
+            is_refund,
         } = self;
         f.debug_struct("ExecuteSwapRequest")
             .field("max_transaction_fee", max_transaction_fee)
@@ -357,6 +361,7 @@ impl fmt::Debug for ExecuteSwapRequest {
             .field("l1_fee", l1_fee)
             .field("withdrawal_fee", withdrawal_fee)
             .field("swap_tx_id", swap_tx_id)
+            .field("is_refund", is_refund)
             .finish()
     }
 }

@@ -12,6 +12,8 @@ use crate::contract_logs::scraping::{LogScraping, ReceivedEventsLogScraping};
 use crate::contract_logs::{
     report_transaction_error, ReceivedContractEvent, ReceivedContractEventError,
 };
+use crate::dex_client::types::ReceivedSwapOrderEvent;
+use crate::dex_client::DexClient;
 use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
 use crate::guard::TimerGuard;
@@ -25,6 +27,7 @@ use crate::rpc_declarations::Topic;
 use crate::rpc_declarations::{BlockSpec, GetLogsParam};
 use crate::state::audit::{process_event, EventType};
 use crate::state::{mutate_state, read_state, State, TaskType};
+use crate::tx_id::SwapTxId;
 use icrc_ledger_client::ICRC1Client;
 use icrc_ledger_types::icrc1::transfer::TransferArg;
 use num_traits::ToPrimitive;
@@ -293,105 +296,198 @@ async fn mint_and_release() {
     }
 }
 
-//pub async fn mint_to_appic_dex_and_swap() {
-//    let (swap_events_to_mint, native_ledger_canister_id, dex_canister_id) = read_state(|s| {
-//        (
-//            s.swap_event_to_mint_to_appic_dex(),
-//            s.native_ledger_id,
-//            s.dex_canister_id,
-//        )
-//    });
-//
-//    let mut error_count = 0;
-//
-//    for event in swap_events_to_mint {
-//        // Ensure that even if we were to panic in the callback, after having contacted the ledger to mint the tokens,
-//        // this event will not be processed again.
-//        let prevent_double_minting_guard = scopeguard::guard(event.clone(), |event| {
-//            mutate_state(|s| {
-//                process_event(
-//                    s,
-//                    EventType::QuarantinedDeposit {
-//                        event_source: event.source(),
-//                    },
-//                )
-//            });
-//        });
-//        let (token_symbol, ledger_canister_id, amount, recepient) = match &event {
-//            ReceivedContractEvent::ReceivedSwapOrder(swap_order) => {}
-//            _ => panic!("BUG: Only deposit events should be in the minting list"),
-//        };
-//
-//        let client = ICRC1Client {
-//            runtime: IcrcBoundedRuntime,
-//            ledger_canister_id,
-//        };
-//
-//        // Mint tokens for the user
-//        let block_index = match client
-//            .transfer(TransferArg {
-//                from_subaccount: None,
-//                to: Account {
-//                    owner: recepient,
-//                    subaccount: None,
-//                },
-//                fee: None,
-//                created_at_time: None,
-//                memo: Some((&event).into()),
-//                amount: amount.clone(),
-//            })
-//            .await
-//        {
-//            Ok(Ok(block_index)) => block_index.0.to_u64().expect("nat does not fit into u64"),
-//            Ok(Err(err)) => {
-//                log!(INFO, "Failed to mint {token_symbol}: {event:?} {err}");
-//                error_count += 1;
-//                // minting failed, defuse guard
-//                ScopeGuard::into_inner(prevent_double_minting_guard);
-//                continue;
-//            }
-//            Err(err) => {
-//                log!(
-//                    INFO,
-//                    "Failed to send a message to the ledger ({ledger_canister_id}): {err:?}"
-//                );
-//                error_count += 1;
-//                // minting failed, defuse guard
-//                ScopeGuard::into_inner(prevent_double_minting_guard);
-//                continue;
-//            }
-//        };
-//
-//        // Record event
-//        mutate_state(|s| {
-//            process_event(
-//                s,
-//                match &event {
-//                    ReceivedContractEvent::NativeDeposit(event) => EventType::MintedNative {
-//                        event_source: event.source(),
-//                        mint_block_index: LedgerMintIndex::new(block_index),
-//                    },
-//
-//                    ReceivedContractEvent::Erc20Deposit(event) => EventType::MintedErc20 {
-//                        event_source: event.source(),
-//                        mint_block_index: LedgerMintIndex::new(block_index),
-//                        erc20_contract_address: event.erc20_contract_address,
-//                        erc20_token_symbol: token_symbol.clone(),
-//                    },
-//                    _ => panic!("BUG: Only deposit events should be in the minting list"),
-//                },
-//            )
-//        });
-//        log!(
-//            INFO,
-//            "Minted {} {token_symbol} to {} in block {block_index} ",
-//            amount,
-//            recepient.to_text(),
-//        );
-//        // minting succeeded, defuse guard
-//        ScopeGuard::into_inner(prevent_double_minting_guard);
-//    }
-//}
+pub async fn mint_to_appic_dex_and_swap() {
+    let _guard = match TimerGuard::new(TaskType::MintToDexAndSwap) {
+        Ok(guard) => guard,
+        Err(_) => return,
+    };
+
+    let (swap_events_to_mint, dex_canister_id, ledger_canister_id, chain_id) = read_state(|s| {
+        (
+            s.swap_events_to_mint_to_appic_dex(),
+            s.dex_canister_id
+                .clone()
+                .expect("Bug: This function should not be called if swapping is not active"),
+            s.twin_usdc_info
+                .clone()
+                .expect("Bug: This function should not be called if swapping is not active")
+                .ledger_id,
+            s.evm_network.chain_id().to_string(),
+        )
+    });
+
+    let mut error_count = 0;
+
+    for event in swap_events_to_mint {
+        // Ensure that even if we were to panic in the callback, after having contacted the ledger to mint the tokens,
+        // this event will not be processed again.
+        let prevent_double_minting_guard = scopeguard::guard(event.clone(), |event| {
+            mutate_state(|s| {
+                process_event(
+                    s,
+                    EventType::QuarantinedDeposit {
+                        event_source: event.source(),
+                    },
+                )
+            });
+        });
+        let amount = match &event {
+            ReceivedContractEvent::ReceivedSwapOrder(swap_order) => {
+                Nat::from(swap_order.amount_out)
+            }
+
+            _ => panic!("BUG: Only deposit events should be in the minting list"),
+        };
+
+        let client = ICRC1Client {
+            runtime: IcrcBoundedRuntime,
+            ledger_canister_id,
+        };
+
+        // Mint tokens for the user
+        let block_index = match client
+            .transfer(TransferArg {
+                from_subaccount: None,
+                to: Account {
+                    owner: dex_canister_id,
+                    subaccount: None,
+                },
+                fee: None,
+                created_at_time: None,
+                memo: Some((&event).into()),
+                amount: amount.clone(),
+            })
+            .await
+        {
+            Ok(Ok(block_index)) => block_index.0.to_u64().expect("nat does not fit into u64"),
+            Ok(Err(err)) => {
+                log!(INFO, "Failed to mint USDC: {event:?} {err}");
+                error_count += 1;
+                // minting failed, defuse guard
+                ScopeGuard::into_inner(prevent_double_minting_guard);
+                continue;
+            }
+            Err(err) => {
+                log!(
+                    INFO,
+                    "Failed to send a message to the ledger ({ledger_canister_id}): {err:?}"
+                );
+                error_count += 1;
+                // minting failed, defuse guard
+                ScopeGuard::into_inner(prevent_double_minting_guard);
+                continue;
+            }
+        };
+
+        let time = ic_cdk::api::time();
+
+        let tx_id = SwapTxId::new(&chain_id, Nat::from(block_index), time);
+
+        // Record event
+        mutate_state(|s| {
+            process_event(
+                s,
+                match &event {
+                    ReceivedContractEvent::ReceivedSwapOrder(swap_order) => {
+                        EventType::MintedToAppicDex {
+                            event_source: swap_order.source(),
+                            mint_block_index: LedgerMintIndex::new(block_index),
+                            minted_token: ledger_canister_id,
+                            erc20_contract_address: swap_order.token_out,
+                            tx_id,
+                        }
+                    }
+                    _ => panic!("BUG: Only deposit events should be in the minting list"),
+                },
+            )
+        });
+        log!(
+            INFO,
+            "Minted {} USDC to appic_dex {} in block {block_index} ",
+            amount,
+            dex_canister_id.to_text()
+        );
+        // minting succeeded, defuse guard
+        ScopeGuard::into_inner(prevent_double_minting_guard);
+    }
+
+    let swap_events_to_be_notified = read_state(|s| s.swap_events_to_be_notified());
+
+    for event in swap_events_to_be_notified {
+        // Ensure that even if we were to panic in the callback, after having contacted the ledger to mint the tokens,
+        // this event will not be processed again.
+        let prevent_double_minting_guard = scopeguard::guard(event.clone(), |event| {
+            mutate_state(|s| {
+                process_event(
+                    s,
+                    EventType::QuarantinedDeposit {
+                        event_source: event.event.source(),
+                    },
+                )
+            });
+        });
+
+        let swap_order = match event.event {
+            ReceivedContractEvent::ReceivedSwapOrder(received_swap_event) => received_swap_event,
+            _ => panic!("BUG: only swap events should be presented here"),
+        };
+
+        let client = DexClient::new(dex_canister_id);
+
+        // Mint tokens for the user
+        match client
+            .minter_order(&ReceivedSwapOrderEvent {
+                from_address: swap_order.from_address.to_string(),
+                recipient: swap_order.recipient.to_string(),
+                token_in: swap_order.token_in.to_string(),
+                token_out: swap_order.token_out.to_string(),
+                amount_in: swap_order.amount_in.into(),
+                amount_out: swap_order.amount_out.into(),
+                encoded_swap_data: swap_order.encoded_swap_data.to_string(),
+                tx_id: event.tx_id.0.clone(),
+            })
+            .await
+        {
+            Ok(_) => {}
+            Err(err) => {
+                log!(INFO, "Failed to send a message to the appic dex: {err:?}");
+                error_count += 1;
+                // minting failed, defuse guard
+                ScopeGuard::into_inner(prevent_double_minting_guard);
+                continue;
+            }
+        };
+
+        // Record event
+        mutate_state(|s| {
+            process_event(
+                s,
+                EventType::NotifiedSwapEventOrderToAppicDex {
+                    event_source: swap_order.source(),
+                    tx_id: event.tx_id.clone(),
+                },
+            )
+        });
+        log!(
+            INFO,
+            "Notified Appic Dex about swap {} with source {}",
+            event.tx_id.0,
+            swap_order.source()
+        );
+        // minting succeeded, defuse guard
+        ScopeGuard::into_inner(prevent_double_minting_guard);
+    }
+
+    if error_count > 0 {
+        log!(
+            INFO,
+            "Failed to mint or release {error_count} events, rescheduling the minting and releasing"
+        );
+        ic_cdk_timers::set_timer(crate::MINT_RETRY_DELAY, || {
+            ic_cdk::futures::spawn_017_compat(mint_to_appic_dex_and_swap())
+        });
+    }
+}
 
 pub async fn scrape_logs() {
     let _guard = match TimerGuard::new(TaskType::ScrapLogs) {
@@ -636,7 +732,8 @@ pub fn register_deposit_events(
     }
     if read_state(|s| s.has_events_to_mint() || s.has_events_to_release()) {
         ic_cdk_timers::set_timer(Duration::from_secs(0), || {
-            ic_cdk::futures::spawn_017_compat(mint_and_release())
+            ic_cdk::futures::spawn_017_compat(mint_and_release());
+            ic_cdk::futures::spawn_017_compat(mint_to_appic_dex_and_swap());
         });
     }
     for error in errors {

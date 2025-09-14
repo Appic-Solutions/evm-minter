@@ -12,6 +12,7 @@ use types::{
 use crate::{
     checked_amount::CheckedAmountOf,
     contract_logs::swap::swap_logs::ReceivedSwapEvent,
+    eth_types::Address,
     logs::{DEBUG, INFO},
     numeric::{BlockNumber, LogIndex},
     rpc_declarations::{FixedSizeData, Hash},
@@ -99,6 +100,16 @@ impl ReceivedContractEvent {
             ReceivedContractEvent::WrappedIcrcBurn(evt) => evt.transaction_hash,
             ReceivedContractEvent::WrappedIcrcDeployed(evt) => evt.transaction_hash,
             ReceivedContractEvent::ReceivedSwapOrder(evt) => evt.transaction_hash,
+        }
+    }
+
+    pub fn from_address(&self) -> Address {
+        match self {
+            ReceivedContractEvent::NativeDeposit(evt) => evt.from_address,
+            ReceivedContractEvent::Erc20Deposit(evt) => evt.from_address,
+            ReceivedContractEvent::WrappedIcrcBurn(evt) => evt.from_address,
+            ReceivedContractEvent::WrappedIcrcDeployed(_evt) => Address::ZERO,
+            ReceivedContractEvent::ReceivedSwapOrder(evt) => evt.from_address,
         }
     }
 }

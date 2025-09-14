@@ -6,6 +6,7 @@ pub mod cbor;
 pub mod checked_amount;
 pub mod contract_logs;
 pub mod deposit;
+pub mod dex_client;
 pub mod erc20;
 pub mod eth_types;
 pub mod evm_config;
@@ -24,6 +25,7 @@ pub mod state;
 pub mod storage;
 pub mod swap;
 pub mod tx;
+pub mod tx_id;
 pub mod withdraw;
 
 #[cfg(test)]

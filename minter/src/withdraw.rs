@@ -311,9 +311,9 @@ pub fn process_failed_swaps(gas_fee_estimate: GasFeeEstimate) {
             deadline: UNLIMITED_DEADLINE,
             commands: vec![],
             commands_data: vec![],
-            encoded_data: None,
             swap_contract: swap_contract_address,
             gas_estimate: REFUND_FAILED_SWAP_GAS_LIMIT,
+            is_refund: true,
         };
 
         mutate_state(|s| process_event(s, EventType::AcceptedSwapRequest(request)))

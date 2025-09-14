@@ -221,6 +221,9 @@ impl LogParser for ReceivedEventsLogParser {
                 let recipient = entry.topics[1].clone();
                 let token_in = parse_address(&entry.topics[2], event_source)?;
                 let token_out = parse_address(&entry.topics[3], event_source)?;
+                let twin_usdc_info = read_state(|s| s.twin_usdc_info.clone())
+                    .expect("BUG: swapping is not activatd yet");
+
                 let (fixed_words, encoded_swap_data) =
                     parse_swap_executed_data(entry.data, event_source)?;
                 let from_address = parse_address(&FixedSizeData(fixed_words[0]), event_source)?;
@@ -241,6 +244,13 @@ impl LogParser for ReceivedEventsLogParser {
                 };
                 if !bridged_to_minter {
                     Err(ReceivedContractEventError::SameChainSwap)
+                } else if twin_usdc_info.address != token_out {
+                    Err(ReceivedContractEventError::InvalidEventSource {
+                        source: event_source,
+                        error: EventSourceError::InvalidEvent(
+                            "Swapped token is not USDC, only usdc tokens are supported".to_string(),
+                        ),
+                    })
                 } else {
                     Ok(ReceivedContractEvent::ReceivedSwapOrder(
                         ReceivedSwapEvent {

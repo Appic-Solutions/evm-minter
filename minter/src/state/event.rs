@@ -21,6 +21,7 @@ use crate::{
     rpc_declarations::TransactionReceipt,
     state::transactions::{Erc20Approve, ExecuteSwapRequest},
     tx::{Eip1559TransactionRequest, SignedEip1559TransactionRequest},
+    tx_id::SwapTxId,
 };
 
 use super::transactions::{
@@ -242,6 +243,29 @@ pub enum EventType {
     #[n(33)]
     ReceivedSwapOrder(#[n(0)] ReceivedSwapEvent),
     #[n(34)]
+    MintedToAppicDex {
+        /// The unique identifier of the deposit on the Ethereum network.
+        #[n(0)]
+        event_source: EventSource,
+        /// The transaction index on the native ledger.
+        #[cbor(n(1), with = "crate::cbor::id")]
+        mint_block_index: LedgerMintIndex,
+        #[cbor(n(2), with = "crate::cbor::principal")]
+        minted_token: Principal,
+        #[n(3)]
+        erc20_contract_address: Address,
+        #[n(4)]
+        tx_id: SwapTxId,
+    },
+    #[n(35)]
+    NotifiedSwapEventOrderToAppicDex {
+        /// The unique identifier of the deposit on the Ethereum network.
+        #[n(0)]
+        event_source: EventSource,
+        #[n(4)]
+        tx_id: SwapTxId,
+    },
+    #[n(36)]
     ReleasedGasFromGasTankWithUsdc {
         #[n(0)]
         usdc_amount: Erc20Value,
@@ -250,12 +274,12 @@ pub enum EventType {
         #[n(2)]
         swap_tx_id: String,
     },
-    #[n(35)]
+    #[n(37)]
     AcceptedSwapRequest(#[n(0)] ExecuteSwapRequest),
-    #[n(36)]
+    #[n(38)]
     QuarantinedDexOrder(#[n(0)] DexOrderArgs),
 
-    #[n(37)]
+    #[n(39)]
     QuarantinedSwapRequest(#[n(0)] ExecuteSwapRequest),
 }
 

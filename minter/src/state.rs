@@ -13,6 +13,7 @@ use crate::{
         balances::GasTank,
         transactions::{data::TransactionCallData, ExecuteSwapRequest},
     },
+    tx_id::SwapTxId,
 };
 use std::{
     cell::RefCell,
@@ -100,6 +101,23 @@ pub struct MintedEvent {
     pub mint_block_index: LedgerMintIndex,
     pub token_symbol: String,
     pub erc20_contract_address: Option<Address>,
+}
+
+// events for minted(wrapped) erc20 tokens to appic dex
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MintedToDex {
+    pub event: ReceivedContractEvent,
+    pub mint_block_index: LedgerMintIndex,
+    pub minted_token: Principal,
+    pub erc20_contract_address: Option<Address>,
+    pub tx_id: SwapTxId,
+}
+
+// events for minted(wrapped) erc20 tokens to appic dex
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NotifiedToAppiDex {
+    pub event: ReceivedContractEvent,
+    pub tx_id: SwapTxId,
 }
 
 // events for unlocked(unwrapped) icp tokens
@@ -211,7 +229,13 @@ pub struct State {
     pub dex_canister_id: Option<Principal>,
 
     // received swap events to be minted to appic dex to start a crosschain swap
-    pub swap_event_to_mint_to_appic_dex: BTreeMap<EventSource, ReceivedContractEvent>,
+    pub swap_events_to_mint_to_appic_dex: BTreeMap<EventSource, ReceivedContractEvent>,
+
+    // minted swap events waiting to be notified to appic dex
+    pub swap_events_to_be_notified: BTreeMap<EventSource, MintedToDex>,
+
+    // notified events to appic dex
+    pub notified_swap_events: BTreeMap<EventSource, NotifiedToAppiDex>,
 
     // TWIN USDC address and ledger_id
     pub twin_usdc_info: Option<TwinUSDCInfo>,
@@ -301,11 +325,15 @@ impl State {
         self.events_to_mint.values().cloned().collect()
     }
 
-    pub fn swap_event_to_mint_to_appic_dex(&self) -> Vec<ReceivedContractEvent> {
-        self.swap_event_to_mint_to_appic_dex
+    pub fn swap_events_to_mint_to_appic_dex(&self) -> Vec<ReceivedContractEvent> {
+        self.swap_events_to_mint_to_appic_dex
             .values()
             .cloned()
             .collect()
+    }
+
+    pub fn swap_events_to_be_notified(&self) -> Vec<MintedToDex> {
+        self.swap_events_to_be_notified.values().cloned().collect()
     }
 
     pub fn has_events_to_mint(&self) -> bool {
@@ -404,7 +432,7 @@ impl State {
                     "BUG: Swap events with empty encoded data should've alread been filtered out"
                 );
 
-                self.swap_event_to_mint_to_appic_dex
+                self.swap_events_to_mint_to_appic_dex
                     .insert(event_source, event.clone());
             }
         };
@@ -480,7 +508,7 @@ impl State {
     ) {
         assert!(
             !self.invalid_events.contains_key(&source),
-            "attempted to mint an event previously marked as invalid {source:?}"
+            "attempted to release an event previously marked as invalid {source:?}"
         );
         let event = match self.events_to_release.remove(&source) {
             Some(event) => event,
@@ -503,6 +531,68 @@ impl State {
         );
 
         self.update_balance_upon_release(&event);
+    }
+
+    pub fn record_successful_mint_to_dex(
+        &mut self,
+        source: EventSource,
+        mint_block_index: LedgerMintIndex,
+        minted_token: Principal,
+        erc20_contract_address: Address,
+        tx_id: SwapTxId,
+    ) {
+        assert!(
+            !self.invalid_events.contains_key(&source),
+            "attempted to mint an event previously marked as invalid {source:?}"
+        );
+
+        let event = match self.swap_events_to_mint_to_appic_dex.remove(&source) {
+            Some(event) => event,
+            None => panic!("attempted to mint Twin tokens for an unknown event {source:?}"),
+        };
+
+        assert_eq!(
+            self.swap_events_to_be_notified.insert(
+                source,
+                MintedToDex {
+                    event,
+                    mint_block_index,
+                    minted_token,
+                    erc20_contract_address: Some(erc20_contract_address),
+                    tx_id,
+                },
+            ),
+            None,
+            "attempted to mint native twice for the same event {source:?}"
+        );
+    }
+
+    pub fn record_notified_swap_event_to_appic_dex(
+        &mut self,
+        source: EventSource,
+        tx_id: SwapTxId,
+    ) {
+        assert!(
+            !self.invalid_events.contains_key(&source),
+            "attempted to notify appic dex with an event previously marked as invalid {source:?}"
+        );
+
+        assert!(
+            !self.swap_events_to_mint_to_appic_dex.contains_key(&source),
+            "attempted to notify an event not minted yet{source:?}"
+        );
+
+        let event = match self.swap_events_to_be_notified.remove(&source) {
+            Some(event) => event,
+            None => panic!("attempted to mint Twin tokens for an unknown event {source:?}"),
+        };
+
+        assert_eq!(
+            self.notified_swap_events
+                .insert(source, NotifiedToAppiDex { event, tx_id },),
+            None,
+            "attempted to record notified swap evetn twice for same event {source:?}"
+        );
     }
 
     pub fn get_deposit_status(&self, tx_hash: Hash) -> Option<DepositStatus> {
@@ -1011,6 +1101,7 @@ where
 #[derive(Debug, Hash, Copy, Clone, PartialEq, Eq, EnumIter)]
 pub enum TaskType {
     Mint,
+    MintToDexAndSwap,
     RetrieveEth,
     ScrapLogs,
     RefreshGasFeeEstimate,

@@ -9,109 +9,7 @@ use super::*;
 
 // candid file designed for operations sent by appic dex
 #[derive(CandidType, Deserialize, Clone, Debug, Encode, Decode, Eq, PartialEq)]
-pub enum DexOrderArgs {
-    #[n(0)]
-    Swap(#[n(0)] DexSwapOrderArgs),
-    #[n(1)]
-    Bridge(#[n(0)] DexBridgeOrderArgs),
-}
-
-impl DexOrderArgs {
-    pub fn tx_id(&self) -> String {
-        match self {
-            DexOrderArgs::Swap(order) => order.tx_id.to_lowercase(),
-            DexOrderArgs::Bridge(order) => order.tx_id.to_lowercase(),
-        }
-    }
-
-    pub fn gas_limit(&self) -> Result<GasAmount, String> {
-        match self {
-            DexOrderArgs::Swap(order) => GasAmount::try_from(order.gas_limit.clone())
-                .map_err(|_| "ERROR: failed to convert Nat to u256".to_string()),
-            DexOrderArgs::Bridge(order) => GasAmount::try_from(order.gas_limit.clone())
-                .map_err(|_| "ERROR: failed to convert Nat to u256".to_string()),
-        }
-    }
-
-    pub fn recipient(&self) -> Result<Address, String> {
-        match self {
-            DexOrderArgs::Swap(order) => Address::from_str(&order.recipient)
-                .map_err(|_| "ERROR: Invalid recipient".to_string()),
-            DexOrderArgs::Bridge(order) => Address::from_str(&order.recipient)
-                .map_err(|_| "ERROR: Invalid recipient".to_string()),
-        }
-    }
-
-    pub fn deadline(&self) -> Result<Erc20Value, String> {
-        match self {
-            DexOrderArgs::Swap(order) => Erc20Value::try_from(order.deadline.clone())
-                .map_err(|_| "ERROR: failed to convert Nat to u256".to_string()),
-            DexOrderArgs::Bridge(order) => Erc20Value::try_from(order.deadline.clone())
-                .map_err(|_| "ERROR: failed to convert Nat to u256".to_string()),
-        }
-    }
-
-    pub fn amount(&self) -> Nat {
-        match self {
-            DexOrderArgs::Swap(order) => order.amount_in.clone(),
-            DexOrderArgs::Bridge(order) => order.amount.clone(),
-        }
-    }
-
-    pub fn max_gas_fee_twin_usdc_amount(
-        &self,
-        twin_usdc_decimals: u8,
-    ) -> Result<Erc20Value, DexOrderError> {
-        match self {
-            DexOrderArgs::Swap(order) => MaxFeeUsd::new(&order.max_gas_fee_usd)
-                .map_err(DexOrderError::InvalidMaxUsdFeeAmount)?
-                .to_twin_usdc_amount(twin_usdc_decimals)
-                .map_err(DexOrderError::InvalidMaxUsdFeeAmount),
-            DexOrderArgs::Bridge(order) => MaxFeeUsd::new(&order.max_gas_fee_usd)
-                .map_err(DexOrderError::InvalidMaxUsdFeeAmount)?
-                .to_twin_usdc_amount(twin_usdc_decimals)
-                .map_err(DexOrderError::InvalidMaxUsdFeeAmount),
-        }
-    }
-
-    pub fn max_gas_fee_amount(
-        &self,
-        native_token_usd_price_estimate: f64,
-    ) -> Result<Wei, DexOrderError> {
-        match self {
-            DexOrderArgs::Swap(order) => MaxFeeUsd::new(&order.max_gas_fee_usd)
-                .map_err(DexOrderError::InvalidMaxUsdFeeAmount)?
-                .to_native_wei(native_token_usd_price_estimate)
-                .map_err(DexOrderError::InvalidMaxUsdFeeAmount),
-            DexOrderArgs::Bridge(order) => MaxFeeUsd::new(&order.max_gas_fee_usd)
-                .map_err(DexOrderError::InvalidMaxUsdFeeAmount)?
-                .to_native_wei(native_token_usd_price_estimate)
-                .map_err(DexOrderError::InvalidMaxUsdFeeAmount),
-        }
-    }
-
-    pub fn erc20_ledger_burn_index(&self) -> LedgerBurnIndex {
-        match self {
-            DexOrderArgs::Swap(order) => LedgerBurnIndex::new(
-                order
-                    .erc20_ledger_burn_index
-                    .0
-                    .to_u64()
-                    .expect("nat does not fit into u64"),
-            ),
-            DexOrderArgs::Bridge(order) => LedgerBurnIndex::new(
-                order
-                    .erc20_ledger_burn_index
-                    .0
-                    .to_u64()
-                    .expect("nat does not fit into u64"),
-            ),
-        }
-    }
-}
-
-#[derive(CandidType, Deserialize, Clone, Debug, PartialEq, Eq, Encode, Decode)]
-pub struct DexSwapOrderArgs {
+pub struct DexOrderArgs {
     #[n(0)]
     pub tx_id: String,
     #[cbor(n(1), with = "crate::cbor::nat")]
@@ -123,7 +21,7 @@ pub struct DexSwapOrderArgs {
     #[n(4)]
     pub commands_data: Vec<String>,
     #[n(5)]
-    pub max_gas_fee_usd: String,
+    pub max_gas_fee_usd: Option<String>,
     #[cbor(n(6), with = "crate::cbor::nat")]
     pub gas_limit: Nat,
     #[cbor(n(7), with = "crate::cbor::nat")]
@@ -132,24 +30,55 @@ pub struct DexSwapOrderArgs {
     pub recipient: String,
     #[cbor(n(9), with = "crate::cbor::nat")]
     pub erc20_ledger_burn_index: Nat,
+    #[n(10)]
+    pub is_refund: bool,
 }
 
-#[derive(CandidType, Deserialize, Clone, Debug, PartialEq, Eq, Encode, Decode)]
-pub struct DexBridgeOrderArgs {
-    #[n(0)]
-    pub tx_id: String,
-    #[n(2)]
-    pub recipient: String,
-    #[cbor(n(3), with = "crate::cbor::nat")]
-    pub amount: Nat,
-    #[n(4)]
-    pub max_gas_fee_usd: String,
-    #[cbor(n(5), with = "crate::cbor::nat")]
-    pub gas_limit: Nat,
-    #[cbor(n(6), with = "crate::cbor::nat")]
-    pub deadline: Nat,
-    #[cbor(n(7), with = "crate::cbor::nat")]
-    pub erc20_ledger_burn_index: Nat,
+impl DexOrderArgs {
+    pub fn tx_id(&self) -> String {
+        self.tx_id.to_lowercase()
+    }
+
+    pub fn gas_limit(&self) -> Result<GasAmount, String> {
+        GasAmount::try_from(self.gas_limit.clone())
+            .map_err(|_| "ERROR: failed to convert Nat to u256".to_string())
+    }
+
+    pub fn recipient(&self) -> Result<Address, String> {
+        Address::from_str(&self.recipient).map_err(|_| "ERROR: Invalid recipient".to_string())
+    }
+
+    pub fn deadline(&self) -> Result<Erc20Value, String> {
+        Erc20Value::try_from(self.deadline.clone())
+            .map_err(|_| "ERROR: failed to convert Nat to u256".to_string())
+    }
+
+    pub fn amount(&self) -> Nat {
+        self.amount_in.clone()
+    }
+
+    pub fn max_gas_fee_twin_usdc_amount(&self, twin_usdc_decimals: u8) -> Option<Erc20Value> {
+        MaxFeeUsd::new(&self.max_gas_fee_usd.clone()?)
+            .ok()?
+            .to_twin_usdc_amount(twin_usdc_decimals)
+            .ok()
+    }
+
+    pub fn max_gas_fee_amount(&self, native_token_usd_price_estimate: f64) -> Option<Wei> {
+        MaxFeeUsd::new(&self.max_gas_fee_usd.clone()?)
+            .ok()?
+            .to_native_wei(native_token_usd_price_estimate)
+            .ok()
+    }
+
+    pub fn erc20_ledger_burn_index(&self) -> LedgerBurnIndex {
+        LedgerBurnIndex::new(
+            self.erc20_ledger_burn_index
+                .0
+                .to_u64()
+                .expect("nat does not fit into u64"),
+        )
+    }
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug, PartialEq, Encode, Decode)]

@@ -1,6 +1,6 @@
 use candid::Principal;
 
-use crate::candid_types::dex_orders::{DexBridgeOrderArgs, DexOrderError, DexSwapOrderArgs};
+use crate::candid_types::dex_orders::DexOrderError;
 use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
 use crate::rpc_declarations::Data;
@@ -29,14 +29,31 @@ pub async fn build_dex_swap_request(
     from: Principal,
 ) -> Result<ExecuteSwapRequest, DexOrderError> {
     let gas_limit = args.gas_limit().map_err(DexOrderError::InvalidGasLimit)?;
-    let max_transaction_fee = args.max_gas_fee_amount(gas_usd_price)?;
-    let max_gas_fee_twin_usdc = args.max_gas_fee_twin_usdc_amount(twin_usdc_info.decimals)?;
+
     let erc20_tx_fee =
         estimate_dex_order_fee(gas_limit)
             .await
             .ok_or(DexOrderError::TemporarilyUnavailable(
                 "Failed to retrieve current gas fee".to_string(),
             ))?;
+
+    // if the max transaction fee is specified in the request use that, else use the estimated tx
+    // fee, in the refund transactions the max fee is not represented thats why we should calculate
+    // it.
+    let max_transaction_fee = match args.max_gas_fee_amount(gas_usd_price) {
+        Some(max_transaction_fee) => max_transaction_fee,
+        None => erc20_tx_fee,
+    };
+
+    let max_gas_fee_twin_usdc = match args.max_gas_fee_twin_usdc_amount(twin_usdc_info.decimals) {
+        Some(max_gas_fee_twin_usdc) => max_gas_fee_twin_usdc,
+        None => MaxFeeUsd::twin_usdc_from_native_wei(
+            max_transaction_fee,
+            gas_usd_price,
+            twin_usdc_info.decimals,
+        )
+        .map_err(DexOrderError::TemporarilyUnavailable)?,
+    };
 
     let l1_fee = match evm_network {
         EvmNetwork::Base => Some(DEFAULT_L1_BASE_GAS_FEE),
@@ -99,48 +116,28 @@ fn prepare_order_details(
     max_gas_fee_twin_usdc: Erc20Value,
     signing_fee: Erc20Value,
 ) -> Result<(Erc20Value, Erc20Value, Vec<Command>, Vec<Data>), DexOrderError> {
-    match args {
-        DexOrderArgs::Swap(DexSwapOrderArgs {
-            amount_in,
-            min_amount_out: swap_min_amount_out,
-            commands: swap_commands,
-            commands_data: swap_commands_data,
-            ..
-        }) => {
-            let amount_in = Erc20Value::try_from(amount_in.clone())
-                .map_err(|_| DexOrderError::InvalidAmount)?;
-            let min_amount_out = Erc20Value::try_from(swap_min_amount_out.clone())
-                .map_err(|_| DexOrderError::InvalidAmount)?;
-            let amount_in_minus_fees = amount_in
-                .checked_sub(max_gas_fee_twin_usdc)
-                .ok_or(DexOrderError::UsdcAmountInTooLow)?
-                .checked_sub(signing_fee)
-                .ok_or(DexOrderError::UsdcAmountInTooLow)?;
-            let commands_data = decode_commands_data(swap_commands_data)
-                .map_err(DexOrderError::InvalidCommandData)?;
-            let commands = swap_commands
-                .iter()
-                .map(|&command| Command::from_u8(command).map_err(DexOrderError::InvalidCommand))
-                .collect::<Result<Vec<Command>, DexOrderError>>()?;
-            Ok((
-                amount_in_minus_fees,
-                min_amount_out,
-                commands,
-                commands_data,
-            ))
-        }
-        DexOrderArgs::Bridge(DexBridgeOrderArgs { amount, .. }) => {
-            let amount_in =
-                Erc20Value::try_from(amount.clone()).map_err(|_| DexOrderError::InvalidAmount)?;
-            let amount_in_minus_fees = amount_in
-                .checked_sub(max_gas_fee_twin_usdc)
-                .ok_or(DexOrderError::UsdcAmountInTooLow)?
-                .checked_sub(signing_fee)
-                .ok_or(DexOrderError::UsdcAmountInTooLow)?;
-            let min_amount_out = amount_in_minus_fees;
-            Ok((amount_in_minus_fees, min_amount_out, vec![], vec![]))
-        }
-    }
+    let amount_in =
+        Erc20Value::try_from(args.amount_in.clone()).map_err(|_| DexOrderError::InvalidAmount)?;
+    let min_amount_out = Erc20Value::try_from(args.min_amount_out.clone())
+        .map_err(|_| DexOrderError::InvalidAmount)?;
+    let amount_in_minus_fees = amount_in
+        .checked_sub(max_gas_fee_twin_usdc)
+        .ok_or(DexOrderError::UsdcAmountInTooLow)?
+        .checked_sub(signing_fee)
+        .ok_or(DexOrderError::UsdcAmountInTooLow)?;
+    let commands_data =
+        decode_commands_data(&args.commands_data).map_err(DexOrderError::InvalidCommandData)?;
+    let commands = args
+        .commands
+        .iter()
+        .map(|&command| Command::from_u8(command).map_err(DexOrderError::InvalidCommand))
+        .collect::<Result<Vec<Command>, DexOrderError>>()?;
+    Ok((
+        amount_in_minus_fees,
+        min_amount_out,
+        commands,
+        commands_data,
+    ))
 }
 
 pub async fn build_dex_swap_refund_request(
@@ -152,10 +149,7 @@ pub async fn build_dex_swap_refund_request(
     from: Principal,
     swap_contract: Address,
 ) -> Result<ExecuteSwapRequest, DexOrderError> {
-    let amount = match args {
-        DexOrderArgs::Swap(DexSwapOrderArgs { amount_in, .. }) => amount_in.clone(),
-        DexOrderArgs::Bridge(DexBridgeOrderArgs { amount, .. }) => amount.clone(),
-    };
+    let amount = args.amount_in.clone();
     let original_amount =
         Erc20Value::try_from(amount).expect("BUG: amount should be valid at this point");
     let recipient = args

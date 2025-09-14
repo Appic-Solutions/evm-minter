@@ -251,6 +251,27 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
                 .withdrawal_transactions
                 .record_quarantined_swap_request(execute_swap_request.clone());
         }
+        EventType::MintedToAppicDex {
+            event_source,
+            mint_block_index,
+            minted_token,
+            erc20_contract_address,
+            tx_id,
+        } => {
+            state.record_successful_mint_to_dex(
+                *event_source,
+                *mint_block_index,
+                *minted_token,
+                *erc20_contract_address,
+                tx_id.clone(),
+            );
+        }
+        EventType::NotifiedSwapEventOrderToAppicDex {
+            event_source,
+            tx_id,
+        } => {
+            state.record_notified_swap_event_to_appic_dex(*event_source, tx_id.clone());
+        }
     }
 }
 

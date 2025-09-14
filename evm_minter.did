@@ -19,18 +19,17 @@ type DepositStatus = variant {
   InvalidDeposit;
   Quarantined;
 };
-type DexBridgeOrderArgs = record {
+type DexOrderArgs = record {
   erc20_ledger_burn_index : nat;
+  min_amount_out : nat;
   tx_id : text;
   recipient : text;
-  max_gas_fee_usd : text;
+  max_gas_fee_usd : opt text;
   deadline : nat;
   gas_limit : nat;
-  amount : nat;
-};
-type DexOrderArgs = variant {
-  Swap : DexSwapOrderArgs;
-  Bridge : DexBridgeOrderArgs;
+  amount_in : nat;
+  commands : blob;
+  commands_data : vec text;
 };
 type DexOrderError = variant {
   InvalidMaxUsdFeeAmount : text;
@@ -45,18 +44,6 @@ type DexOrderError = variant {
   InvalidMinAmountIn;
   InvalidCommand : text;
   InvalidCommandData : text;
-};
-type DexSwapOrderArgs = record {
-  erc20_ledger_burn_index : nat;
-  min_amount_out : nat;
-  tx_id : text;
-  recipient : text;
-  max_gas_fee_usd : text;
-  deadline : nat;
-  gas_limit : nat;
-  amount_in : nat;
-  commands : blob;
-  commands_data : vec text;
 };
 type Eip1559TransactionPrice = record {
   max_priority_fee_per_gas : nat;

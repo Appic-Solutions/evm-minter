@@ -1036,12 +1036,14 @@ pub fn state_equivalence() {
         twin_usdc_info: None,
         swap_contract_address: None,
         is_swapping_active: false,
-        swap_event_to_mint_to_appic_dex: Default::default(),
+        swap_events_to_mint_to_appic_dex: Default::default(),
         last_native_token_usd_price_estimate: None,
         canister_signing_fee_twin_usdc_amount: None,
         gas_tank: GasTank::default(),
         next_swap_ledger_burn_index: None,
         quarantined_dex_orders: Default::default(),
+        swap_events_to_be_notified: Default::default(),
+        notified_swap_events: Default::default(),
     };
 
     assert_eq!(
