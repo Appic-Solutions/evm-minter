@@ -15,8 +15,8 @@ use crate::{
     eth_types::Address,
     lifecycle::{InitArg, UpgradeArg},
     numeric::{
-        BlockNumber, Erc20Value, IcrcValue, LedgerBurnIndex, LedgerMintIndex, LedgerReleaseIndex,
-        Wei,
+        BlockNumber, Erc20TokenAmount, Erc20TokenAmountTag, Erc20Value, IcrcValue, LedgerBurnIndex,
+        LedgerMintIndex, LedgerReleaseIndex, Wei,
     },
     rpc_declarations::TransactionReceipt,
     state::transactions::{Erc20Approve, ExecuteSwapRequest},
@@ -281,6 +281,13 @@ pub enum EventType {
 
     #[n(39)]
     QuarantinedSwapRequest(#[n(0)] ExecuteSwapRequest),
+    #[n(40)]
+    GasTankUpdate {
+        #[n(0)]
+        usdc_withdrawn: Erc20Value,
+        #[n(1)]
+        native_deposited: Wei,
+    },
 }
 
 impl ReceivedContractEvent {

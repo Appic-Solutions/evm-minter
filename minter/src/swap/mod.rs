@@ -108,6 +108,7 @@ pub async fn build_dex_swap_request(
         l1_fee,
         withdrawal_fee: None,
         swap_tx_id: args.tx_id(),
+        is_refund: false,
     })
 }
 
@@ -217,6 +218,7 @@ pub async fn build_dex_swap_refund_request(
         l1_fee,
         withdrawal_fee: None,
         swap_tx_id: args.tx_id(),
+        is_refund: true,
     })
 }
 

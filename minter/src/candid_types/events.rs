@@ -266,6 +266,18 @@ pub enum EventPayload {
         bridged_to_minter: bool,
         encoded_swap_data: String,
     },
+    MintedToAppicDex {
+        event_source: EventSource,
+        mint_block_index: Nat,
+        minted_token: Principal,
+        erc20_contract_address: String,
+        tx_id: String,
+    },
+    NotifiedSwapEventOrderToAppicDex {
+        event_source: EventSource,
+        tx_id: String,
+    },
+
     ReleasedGasFromGasTankWithUsdc {
         usdc_amount: Nat,
         gas_amount: Nat,
@@ -289,6 +301,7 @@ pub enum EventPayload {
         l1_fee: Option<Nat>,
         withdrawal_fee: Option<Nat>,
         swap_tx_id: String,
+        is_refund: bool,
     },
     QuarantinedDexOrder(DexOrderArgs),
     QuarantinedSwapRequest {
@@ -309,5 +322,10 @@ pub enum EventPayload {
         l1_fee: Option<Nat>,
         withdrawal_fee: Option<Nat>,
         swap_tx_id: String,
+        is_refund: bool,
+    },
+    GasTankUpdate {
+        usdc_withdrawn: Nat,
+        native_deposited: Nat,
     },
 }

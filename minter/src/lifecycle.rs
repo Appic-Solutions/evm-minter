@@ -172,13 +172,15 @@ impl TryFrom<InitArg> for State {
             last_log_scraping_time: None,
             twin_usdc_info: None,
             swap_contract_address: None,
-            swap_event_to_mint_to_appic_dex: Default::default(),
+            swap_events_to_mint_to_appic_dex: Default::default(),
             last_native_token_usd_price_estimate: None,
             canister_signing_fee_twin_usdc_amount: None,
             is_swapping_active: false,
             gas_tank: GasTank::default(),
             next_swap_ledger_burn_index: None,
             quarantined_dex_orders: Default::default(),
+            swap_events_to_be_notified: Default::default(),
+            notified_swap_events: Default::default(),
         };
         state.validate_config()?;
         Ok(state)

@@ -111,6 +111,8 @@ pub enum BurnMemo {
         #[n(1)]
         to_address: Address,
     },
+    #[n(5)]
+    GasTankCharged,
 }
 
 impl From<BurnMemo> for Memo {

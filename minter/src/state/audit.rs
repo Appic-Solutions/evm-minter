@@ -272,6 +272,12 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
         } => {
             state.record_notified_swap_event_to_appic_dex(*event_source, tx_id.clone());
         }
+        EventType::GasTankUpdate {
+            usdc_withdrawn,
+            native_deposited,
+        } => {
+            state.update_gas_tank_balance(*usdc_withdrawn, *native_deposited);
+        }
     }
 }
 

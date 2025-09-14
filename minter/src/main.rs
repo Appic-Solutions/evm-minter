@@ -37,6 +37,7 @@ use evm_minter::eth_types::fee_hisotry_parser::parse_fee_history;
 use evm_minter::eth_types::Address;
 use evm_minter::evm_config::EvmNetwork;
 use evm_minter::guard::retrieve_withdraw_guard;
+use evm_minter::icrc_client::runtime::IcrcBoundedRuntime;
 use evm_minter::icrc_client::{LedgerBurnError, LedgerClient};
 use evm_minter::lifecycle::MinterArg;
 use evm_minter::logs::INFO;
@@ -73,8 +74,11 @@ use evm_minter::{
 };
 use ic_canister_log::log;
 use ic_cdk::{init, post_upgrade, pre_upgrade, query, update};
+use icrc_ledger_client::ICRC1Client;
+use icrc_ledger_types::icrc1::transfer::TransferArg;
 use std::collections::BTreeSet;
 use std::convert::TryFrom;
+use std::panic;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -1508,7 +1512,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                 } => EP::ReleasedGasFromGasTankWithUsdc {
                     usdc_amount: usdc_amount.into(),
                     gas_amount: gas_amount.into(),
-                    swap_tx_id: swap_tx_id.into(),
+                    swap_tx_id,
                 },
                 EventType::AcceptedSwapRequest(ExecuteSwapRequest {
                     max_transaction_fee,
@@ -1530,6 +1534,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     l1_fee,
                     withdrawal_fee,
                     swap_tx_id,
+                    is_refund,
                 }) => EP::AcceptedSwapRequest {
                     max_transaction_fee: max_transaction_fee.into(),
                     erc20_token_in: erc20_token_in.to_string(),
@@ -1544,10 +1549,11 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     erc20_ledger_burn_index: erc20_ledger_burn_index.get().into(),
                     from,
                     from_subaccount: from_subaccount.map(|s| s.0),
-                    created_at: created_at.into(),
+                    created_at,
                     l1_fee: l1_fee.map(|fee| fee.into()),
                     withdrawal_fee: withdrawal_fee.map(|fee| fee.into()),
                     swap_tx_id,
+                    is_refund,
                 },
                 EventType::QuarantinedSwapRequest(ExecuteSwapRequest {
                     max_transaction_fee,
@@ -1569,6 +1575,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     l1_fee,
                     withdrawal_fee,
                     swap_tx_id,
+                    is_refund,
                 }) => EP::QuarantinedSwapRequest {
                     max_transaction_fee: max_transaction_fee.into(),
                     erc20_token_in: erc20_token_in.to_string(),
@@ -1583,12 +1590,40 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     erc20_ledger_burn_index: erc20_ledger_burn_index.get().into(),
                     from,
                     from_subaccount: from_subaccount.map(|s| s.0),
-                    created_at: created_at.into(),
+                    created_at,
                     l1_fee: l1_fee.map(|fee| fee.into()),
                     withdrawal_fee: withdrawal_fee.map(|fee| fee.into()),
                     swap_tx_id,
+                    is_refund,
                 },
                 EventType::QuarantinedDexOrder(args) => EP::QuarantinedDexOrder(args.clone()),
+                EventType::MintedToAppicDex {
+                    event_source,
+                    mint_block_index,
+                    minted_token,
+                    erc20_contract_address,
+                    tx_id,
+                } => EP::MintedToAppicDex {
+                    event_source: map_event_source(event_source),
+                    mint_block_index: mint_block_index.get().into(),
+                    minted_token,
+                    erc20_contract_address: erc20_contract_address.to_string(),
+                    tx_id: tx_id.0,
+                },
+                EventType::NotifiedSwapEventOrderToAppicDex {
+                    event_source,
+                    tx_id,
+                } => EP::NotifiedSwapEventOrderToAppicDex {
+                    event_source: map_event_source(event_source),
+                    tx_id: tx_id.0,
+                },
+                EventType::GasTankUpdate {
+                    usdc_withdrawn,
+                    native_deposited,
+                } => EP::GasTankUpdate {
+                    usdc_withdrawn: usdc_withdrawn.into(),
+                    native_deposited: native_deposited.into(),
+                },
             },
         }
     }
@@ -1652,6 +1687,73 @@ pub async fn update_chain_data(chain_data: ChainData) {
             );
         }
     };
+}
+
+#[update]
+pub async fn charge_gas_tank(amount: Nat) {
+    let caller = validate_caller_not_anonymous();
+
+    let appic_controller = Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap();
+
+    let twin_usdcinfo = read_state(|s| {
+        s.twin_usdc_info
+            .clone()
+            .expect("Swapping now active yet usdc not availabe")
+    });
+
+    if caller != appic_controller {
+        panic!("Only appic controller can call this endpoint");
+    }
+
+    let native_amount = Wei::try_from(amount.clone()).expect("failed to convert Nat to u256");
+    let usdc_balance = read_state(|s| s.gas_tank.usdc_balance);
+
+    let native_deposited = if native_amount > Wei::ZERO {
+        let client = read_state(LedgerClient::native_ledger_from_state);
+        log!(INFO, "[withdraw]: burning {:?}", amount);
+        match client
+            .burn_from(caller.into(), native_amount, BurnMemo::GasTankCharged, None)
+            .await
+        {
+            Ok(_burn_index) => native_amount,
+            Err(_) => Wei::ZERO,
+        }
+    } else {
+        Wei::ZERO
+    };
+
+    let usdc_withdrawn = if usdc_balance > Erc20Value::ZERO {
+        let client = ICRC1Client {
+            runtime: IcrcBoundedRuntime,
+            ledger_canister_id: twin_usdcinfo.ledger_id,
+        };
+
+        match client
+            .transfer(TransferArg {
+                from_subaccount: None,
+                to: appic_controller.into(),
+                fee: None,
+                created_at_time: None,
+                memo: None,
+                amount: usdc_balance.into(),
+            })
+            .await
+        {
+            Ok(_ledger_mint_index) => usdc_balance,
+            Err(_) => Erc20Value::ZERO,
+        }
+    } else {
+        Erc20Value::ZERO
+    };
+    mutate_state(|s| {
+        process_event(
+            s,
+            EventType::GasTankUpdate {
+                usdc_withdrawn,
+                native_deposited,
+            },
+        )
+    })
 }
 
 // list every base URL that users will authenticate to your app from

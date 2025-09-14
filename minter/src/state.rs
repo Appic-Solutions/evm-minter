@@ -8,7 +8,7 @@ pub mod transactions;
 
 use crate::{
     candid_types::dex_orders::DexOrderArgs,
-    numeric::Erc20Value,
+    numeric::{Erc20TokenAmount, Erc20Value},
     state::{
         balances::GasTank,
         transactions::{data::TransactionCallData, ExecuteSwapRequest},
@@ -588,8 +588,13 @@ impl State {
         };
 
         assert_eq!(
-            self.notified_swap_events
-                .insert(source, NotifiedToAppiDex { event, tx_id },),
+            self.notified_swap_events.insert(
+                source,
+                NotifiedToAppiDex {
+                    event: event.event,
+                    tx_id
+                },
+            ),
             None,
             "attempted to record notified swap evetn twice for same event {source:?}"
         );
@@ -839,6 +844,11 @@ impl State {
                 }
             }
         }
+    }
+
+    pub fn update_gas_tank_balance(&mut self, usdc_withdrawn: Erc20Value, native_deposited: Wei) {
+        self.gas_tank.usdc_balance_sub(usdc_withdrawn);
+        self.gas_tank.native_balance_add(native_deposited);
     }
 
     pub fn find_erc20_token_by_ledger_id(&self, erc20_ledger_id: &Principal) -> Option<ERC20Token> {
