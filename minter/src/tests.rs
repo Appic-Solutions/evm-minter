@@ -55,12 +55,15 @@ fn deserialize_block_spec() {
 mod get_contract_logs {
     use crate::candid_types::RequestScrapingError;
     use crate::contract_logs::parser::{LogParser, ReceivedEventsLogParser};
+    use crate::contract_logs::swap::swap_logs::ReceivedSwapEvent;
     use crate::contract_logs::types::{ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent};
-    use crate::contract_logs::LedgerSubaccount;
+    use crate::contract_logs::{LedgerSubaccount, ReceivedContractEvent};
     use crate::deposit::validate_log_scraping_request;
+    use crate::erc20::ERC20TokenSymbol;
     use crate::eth_types::Address;
     use crate::numeric::{BlockNumber, Erc20Value, LogIndex, Wei};
-    use crate::rpc_declarations::LogEntry;
+    use crate::rpc_declarations::Data;
+    use crate::rpc_declarations::{FixedSizeData, LogEntry};
     use crate::state::STATE;
     use crate::tests::test_state;
     use candid::Principal;
@@ -339,6 +342,80 @@ mod get_contract_logs {
         .into();
 
         assert_eq!(parsed_event, expected_event);
+    }
+
+    #[test]
+    #[should_panic]
+    fn should_panic_parsing_swap_event_if_swapping_is_not_active() {
+        let state = test_state();
+        STATE.with(|cell| *cell.borrow_mut() = Some(state));
+
+        let event = r#"{"address":"0x98fff5f36c0cf12ae16d3d80f67b5e8ab5e1ffb1","topics":["0xc33dada04354dd803ea44b93af35ba61d4bfa477f5f06c86b6a00cfc0c261bea","0x000000000000000000000000daf40d6d8fcfbbffd1deba15990b7e08780f7ace","0x0000000000000000000000000000000000000000000000000000000000000000","0x00000000000000000000000055d398326f99059ff775485246999027b3197955"],"data":"0x000000000000000000000000daf40d6d8fcfbbffd1deba15990b7e08780f7ace00000000000000000000000000000000000000000000000000038d7ea4c680000000000000000000000000000000000000000000000000000cd201850b14077f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000116273635f626e625f757364745f74657374000000000000000000000000000000","blockNumber":"0x3a565a0","transactionHash":"0x99842464fc055be0582006a497356e363d47b87be7cfcfc57e58f3b7624b60cc","transactionIndex":"0x38","blockHash":"0xc8b61d02becbe0f0d90239fba679e5b80f9f063e0ba2f6475d04cd68fc4b8b6e","logIndex":"0xf4","removed":false}"#;
+        let parsed_event =
+            ReceivedEventsLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap());
+
+        println!("{parsed_event:?}");
+    }
+
+    #[test]
+    fn should_not_parse_log_if_bridge_to_minter_false() {
+        let mut state = test_state();
+
+        let _ = state.erc20_tokens.try_insert(
+            Principal::from_text("qkrwp-ziaaa-aaaag-auemq-cai").unwrap(),
+            Address::from_str("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").unwrap(),
+            ERC20TokenSymbol("icUSDC.base".to_string()),
+        );
+        state.is_swapping_active = true;
+        state.activate_erc20_contract_address(
+            (
+                Address::from_str("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").unwrap(),
+                Principal::from_text("qkrwp-ziaaa-aaaag-auemq-cai").unwrap(),
+            ),
+            Address::from_str("0x98fff5F36C0cF12AE16d3D80F67B5E8ab5E1FfB1").unwrap(),
+            6,
+            Erc20Value::from(30_000_u32),
+        );
+
+        STATE.with(|cell| *cell.borrow_mut() = Some(state));
+
+        let event = r#"{"address":"0x98fff5f36c0cf12ae16d3d80f67b5e8ab5e1ffb1","topics":["0xc33dada04354dd803ea44b93af35ba61d4bfa477f5f06c86b6a00cfc0c261bea","0x000000000000000000000000daf40d6d8fcfbbffd1deba15990b7e08780f7ace","0x0000000000000000000000000000000000000000000000000000000000000000","0x00000000000000000000000055d398326f99059ff775485246999027b3197955"],"data":"0x000000000000000000000000daf40d6d8fcfbbffd1deba15990b7e08780f7ace00000000000000000000000000000000000000000000000000038d7ea4c680000000000000000000000000000000000000000000000000000cd201850b14077f000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000116273635f626e625f757364745f74657374000000000000000000000000000000","blockNumber":"0x3a565a0","transactionHash":"0x99842464fc055be0582006a497356e363d47b87be7cfcfc57e58f3b7624b60cc","transactionIndex":"0x38","blockHash":"0xc8b61d02becbe0f0d90239fba679e5b80f9f063e0ba2f6475d04cd68fc4b8b6e","logIndex":"0xf4","removed":false}"#;
+        let parsed_event =
+            ReceivedEventsLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap());
+
+        assert!(parsed_event.is_err());
+    }
+
+    #[test]
+    fn should_parse_swap_log() {
+        let mut state = test_state();
+
+        let _ = state.erc20_tokens.try_insert(
+            Principal::from_text("qkrwp-ziaaa-aaaag-auemq-cai").unwrap(),
+            Address::from_str("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").unwrap(),
+            ERC20TokenSymbol("icUSDC.base".to_string()),
+        );
+        state.is_swapping_active = true;
+        state.activate_erc20_contract_address(
+            (
+                Address::from_str("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").unwrap(),
+                Principal::from_text("qkrwp-ziaaa-aaaag-auemq-cai").unwrap(),
+            ),
+            Address::from_str("0x98fff5F36C0cF12AE16d3D80F67B5E8ab5E1FfB1").unwrap(),
+            6,
+            Erc20Value::from(30_000_u32),
+        );
+
+        STATE.with(|cell| *cell.borrow_mut() = Some(state));
+
+        let event = r#"{"address":"0xa72ab997ccd4c55a7adc049df8057d577f5322a8","topics":["0xc33dada04354dd803ea44b93af35ba61d4bfa477f5f06c86b6a00cfc0c261bea","0x000000000000000000000000daf40d6d8fcfbbffd1deba15990b7e08780f7ace","0x0000000000000000000000004200000000000000000000000000000000000006","0x000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913"],"data":"0x000000000000000000000000daf40d6d8fcfbbffd1deba15990b7e08780f7ace00000000000000000000000000000000000000000000000000037235b96ea0000000000000000000000000000000000000000000000000000000000000435d8a000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000800000000000000000000000008ac76a51cc950d9822d68b83fe1ad97b32cd580d00000000000000000000000055d398326f99059ff775485246999027b31979550000000000000000000000000000000000000000000000000000000000000bb8000000000000000000000000000000000000000000000000052c3d6e0738861c","blockNumber":"0x21eb744","transactionHash":"0x374994a3848087112f992c8f587399cb13e3a2e53fd4614c7d6f58f45feeed92","transactionIndex":"0x124","blockHash":"0xd3c268add935a28bd2d94cd0984de06c6c60650973d16b1bb45b11c43de8cebf","logIndex":"0x2d4","removed":false}"#;
+        let parsed_event =
+            ReceivedEventsLogParser::parse_log(serde_json::from_str::<LogEntry>(event).unwrap())
+                .unwrap();
+
+        let expected_event=ReceivedContractEvent::ReceivedSwapOrder(ReceivedSwapEvent{ transaction_hash: parsed_event.transaction_hash(), block_number:parsed_event.block_number(), log_index:parsed_event.log_index(), from_address: Address::from_str("0xdAf40D6d8FCFBbFfd1deBA15990B7e08780F7ACe").unwrap(), recipient:FixedSizeData::from_str("0x000000000000000000000000DAF40D6D8FCFBBFFD1DEBA15990B7E08780F7ACE").unwrap() ,token_in:Address::from_str("0x4200000000000000000000000000000000000006").unwrap(), token_out: Address::from_str("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").unwrap(), amount_in: Erc20Value::from(970000000000000_u128), amount_out: Erc20Value::from(4414858_u128), bridged_to_minter:true, encoded_swap_data: Data::from_str("0x0000000000000000000000008ac76a51cc950d9822d68b83fe1ad97b32cd580d00000000000000000000000055d398326f99059ff775485246999027b31979550000000000000000000000000000000000000000000000000000000000000bb8000000000000000000000000000000000000000000000000052c3d6e0738861c").unwrap() });
+
+        assert_eq!(expected_event, parsed_event);
     }
 
     #[test]
@@ -1163,12 +1240,14 @@ fn test_state() -> State {
         twin_usdc_info: None,
         swap_contract_address: None,
         is_swapping_active: false,
-        swap_event_to_mint_to_appic_dex: Default::default(),
+        swap_events_to_mint_to_appic_dex: Default::default(),
         last_native_token_usd_price_estimate: None,
         canister_signing_fee_twin_usdc_amount: None,
         gas_tank: GasTank::default(),
         next_swap_ledger_burn_index: None,
         quarantined_dex_orders: Default::default(),
+        swap_events_to_be_notified: Default::default(),
+        notified_swap_events: Default::default(),
     }
 }
 

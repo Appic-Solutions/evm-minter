@@ -9,7 +9,6 @@ use minicbor::{Decode, Encode};
 use serde;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use serde_json::Value;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter, LowerHex, UpperHex};
 pub type Quantity = ethnum::u256;
@@ -31,8 +30,12 @@ impl std::str::FromStr for Data {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        serde_json::from_value(Value::String(s.to_string()))
-            .map_err(|e| format!("failed to parse data from string: {e}"))
+        if !s.starts_with("0x") {
+            return Err("Ethereum hex string doesn't start with 0x".to_string());
+        }
+        let bytes =
+            hex::decode(&s[2..]).map_err(|e| format!("failed to decode hash from hex: {e}"))?;
+        Ok(Self(bytes))
     }
 }
 

@@ -1,5 +1,6 @@
 use candid::Nat;
 use minicbor::{Decode, Encode};
+use num_traits::ToPrimitive;
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct SwapTxId(#[n(0)] pub String);
@@ -7,6 +8,7 @@ pub struct SwapTxId(#[n(0)] pub String);
 impl SwapTxId {
     pub fn new(from_chain_id: &str, ledger_index: Nat, timestamp_ns: u64) -> Self {
         let timestamp_ms = timestamp_ns / 1_000_000;
+        let ledger_index = ledger_index.0.to_u128().unwrap();
         Self(format!("{from_chain_id}-{ledger_index}-{timestamp_ms}"))
     }
 }

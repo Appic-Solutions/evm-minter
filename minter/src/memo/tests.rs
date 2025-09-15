@@ -230,6 +230,10 @@ mod arbitrary {
         (arb_address()).prop_map(|to_address| BurnMemo::IcrcLocked { to_address })
     }
 
+    fn arb_gas_tank_update_memo() -> impl Strategy<Value = BurnMemo> {
+        (any::<u64>()).prop_map(|_| BurnMemo::GasTankCharged)
+    }
+
     pub fn arb_reimbursement_request() -> impl Strategy<Value = ReimbursementRequest> {
         (
             any::<u64>(),
@@ -281,6 +285,7 @@ mod arbitrary {
             BurnMemo::Erc20Convert { .. } => arb_burn_erc20_memo().boxed(),
             BurnMemo::WrapIcrcGasFee { .. } => arb_burn_native_for_wrap_icrc_fee_memo().boxed(),
             BurnMemo::IcrcLocked { .. } => arb_icrc_lock_memo().boxed(),
+            BurnMemo::GasTankCharged => arb_gas_tank_update_memo().boxed(),
         };
     }
 }

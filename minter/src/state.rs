@@ -8,7 +8,7 @@ pub mod transactions;
 
 use crate::{
     candid_types::dex_orders::DexOrderArgs,
-    numeric::{Erc20TokenAmount, Erc20Value},
+    numeric::Erc20Value,
     state::{
         balances::GasTank,
         transactions::{data::TransactionCallData, ExecuteSwapRequest},
@@ -346,6 +346,10 @@ impl State {
 
     pub fn has_events_to_release(&self) -> bool {
         !self.events_to_release.is_empty()
+    }
+
+    pub fn has_events_to_mint_and_notify(&self) -> bool {
+        !self.swap_events_to_mint_to_appic_dex.is_empty()
     }
 
     /// Quarantine the deposit event to prevent double minting.

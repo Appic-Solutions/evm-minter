@@ -733,9 +733,15 @@ pub fn register_deposit_events(
     if read_state(|s| s.has_events_to_mint() || s.has_events_to_release()) {
         ic_cdk_timers::set_timer(Duration::from_secs(0), || {
             ic_cdk::futures::spawn_017_compat(mint_and_release());
+        });
+    }
+
+    if read_state(|s| s.is_swapping_active && s.has_events_to_mint_and_notify()) {
+        ic_cdk_timers::set_timer(Duration::from_secs(0), || {
             ic_cdk::futures::spawn_017_compat(mint_to_appic_dex_and_swap());
         });
     }
+
     for error in errors {
         if let ReceivedContractEventError::InvalidEventSource { source, error } = &error {
             mutate_state(|s| {
