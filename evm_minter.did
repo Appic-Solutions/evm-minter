@@ -1,5 +1,12 @@
 type AccessListItem = record { storage_keys : vec blob; address : text };
 type Account = record { owner : principal; subaccount : opt blob };
+type ActivateSwapReqest = record {
+  twin_usdc_ledger_id : principal;
+  swap_contract_address : text;
+  dex_canister_id : principal;
+  twin_usdc_decimals : nat8;
+  canister_signing_fee_twin_usdc_value : nat;
+};
 type AddErc20Token = record {
   erc20_ledger_id : principal;
   erc20_token_symbol : text;
@@ -7,6 +14,11 @@ type AddErc20Token = record {
   address : text;
 };
 type CandidBlockTag = variant { Safe; Finalized; Latest };
+type CandidTwinUsdcInfo = record {
+  decimals : nat8;
+  ledger_id : principal;
+  address : text;
+};
 type ChainData = record {
   fee_history : text;
   latest_block_number : nat;
@@ -122,6 +134,7 @@ type EventPayload = variant {
     twin_usdc_ledger_id : principal;
     usdc_contract_address : text;
     swap_contract_address : text;
+    dex_canister_id : principal;
     twin_usdc_decimals : nat;
     canister_signing_fee_twin_usdc_value : nat;
   };
@@ -334,6 +347,7 @@ type GasFeeEstimate = record {
   max_fee_per_gas : nat;
   timestamp : nat64;
 };
+type GasTankBalance = record { native_balance : nat; usdc_balance : nat };
 type GetEventsArg = record { start : nat64; length : nat64 };
 type GetEventsResult = record { total_event_count : nat64; events : vec Event };
 type Icrc28TrustedOriginsResponse = record { trusted_origins : vec text };
@@ -403,18 +417,24 @@ type MinterInfo = record {
   last_scraped_block_number : opt nat;
   last_observed_block_number : opt nat;
   wrapped_icrc_tokens : opt vec WrappedIcrcToken;
+  twin_usdc_info : opt CandidTwinUsdcInfo;
+  swap_contract_address : opt text;
   supported_erc20_tokens : opt vec Erc20Token;
+  is_swapping_active : bool;
   helper_smart_contract_addresses : opt vec text;
   deposit_native_fee : opt nat;
+  dex_canister_id : opt principal;
   last_gas_fee_estimate : opt GasFeeEstimate;
   native_twin_token_ledger_id : opt principal;
   helper_smart_contract_address : opt text;
   swap_canister_id : opt principal;
   minimum_withdrawal_amount : opt nat;
   withdrawal_native_fee : opt nat;
+  gas_tank : opt GasTankBalance;
   erc20_balances : opt vec Erc20Balance;
   minter_address : opt text;
   block_height : opt CandidBlockTag;
+  canister_signing_fee_twin_usdc_value : opt nat;
   total_collected_operation_fee : opt nat;
   native_balance : opt nat;
   ledger_suite_manager_id : opt principal;
@@ -565,7 +585,7 @@ type WrappedIcrcToken = record {
   base_token : principal;
 };
 service : (MinterArg) -> {
-  activate_swap_feature : (principal, text, nat8, nat) -> (nat);
+  activate_swap_feature : (ActivateSwapReqest) -> (nat);
   add_erc20_token : (AddErc20Token) -> ();
   charge_gas_tank : (nat) -> ();
   check_new_deposits : () -> ();

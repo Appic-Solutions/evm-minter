@@ -367,13 +367,14 @@ mod get_contract_logs {
             ERC20TokenSymbol("icUSDC.base".to_string()),
         );
         state.is_swapping_active = true;
-        state.activate_erc20_contract_address(
+        state.activate_swap_feature(
             (
                 Address::from_str("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").unwrap(),
                 Principal::from_text("qkrwp-ziaaa-aaaag-auemq-cai").unwrap(),
             ),
             Address::from_str("0x98fff5F36C0cF12AE16d3D80F67B5E8ab5E1FfB1").unwrap(),
             6,
+            Principal::from_text("nbepk-iyaaa-aaaad-qhlma-cai").unwrap(),
             Erc20Value::from(30_000_u32),
         );
 
@@ -396,13 +397,14 @@ mod get_contract_logs {
             ERC20TokenSymbol("icUSDC.base".to_string()),
         );
         state.is_swapping_active = true;
-        state.activate_erc20_contract_address(
+        state.activate_swap_feature(
             (
                 Address::from_str("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913").unwrap(),
                 Principal::from_text("qkrwp-ziaaa-aaaag-auemq-cai").unwrap(),
             ),
             Address::from_str("0x98fff5F36C0cF12AE16d3D80F67B5E8ab5E1FfB1").unwrap(),
             6,
+            Principal::from_text("nbepk-iyaaa-aaaad-qhlma-cai").unwrap(),
             Erc20Value::from(30_000_u32),
         );
 

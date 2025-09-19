@@ -239,6 +239,8 @@ pub enum EventType {
         twin_usdc_decimals: u8,
         #[n(4)]
         canister_signing_fee_twin_usdc_value: Erc20Value,
+        #[cbor(n(5), with = "crate::cbor::principal")]
+        dex_canister_id: Principal,
     },
     #[n(33)]
     ReceivedSwapOrder(#[n(0)] ReceivedSwapEvent),

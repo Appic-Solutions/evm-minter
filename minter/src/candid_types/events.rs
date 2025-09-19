@@ -251,6 +251,7 @@ pub enum EventPayload {
         usdc_contract_address: String,
         twin_usdc_ledger_id: Principal,
         twin_usdc_decimals: Nat,
+        dex_canister_id: Principal,
         canister_signing_fee_twin_usdc_value: Nat,
     },
     ReceivedSwapOrder {

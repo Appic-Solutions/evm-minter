@@ -1,25 +1,31 @@
-use std::time::Duration;
+use std::{str::FromStr, time::Duration};
 
 use candid::{Nat, Principal};
+use serde_cbor::de;
 
 use crate::{
     candid_types::{
         withdraw_erc20::{RetrieveErc20Request, WithdrawErc20Arg, WithdrawErc20Error},
         withdraw_native::{WithdrawalArg, WithdrawalError},
-        DepositStatus, Eip1559TransactionPrice, RequestScrapingError, RetrieveNativeRequest,
-        RetrieveWithdrawalStatus, TxFinalizedStatus,
+        ActivateSwapReqest, DepositStatus, Eip1559TransactionPrice, MinterInfo,
+        RequestScrapingError, RetrieveNativeRequest, RetrieveWithdrawalStatus, TxFinalizedStatus,
     },
+    eth_types::Address,
     evm_config::EvmNetwork,
     tests::{
         lsm_types::{AddErc20Arg, AddErc20Error, Erc20Contract, LedgerInitArg, LedgerManagerInfo},
+        minter_flow_tets::mock_rpc_https_responses::MOCK_TRANSACTION_RECEIPT_APPROVE_ERC20,
         pocket_ic_helpers::{
             five_ticks, icp_principal, lsm_principal, native_ledger_principal, update_call,
         },
     },
-    SCRAPING_CONTRACT_LOGS_INTERVAL,
+    APPIC_CONTROLLER_PRINCIPAL, SCRAPING_CONTRACT_LOGS_INTERVAL,
 };
 
-use icrc_ledger_types::icrc1::account::Account;
+use icrc_ledger_types::icrc1::{
+    account::Account,
+    transfer::{TransferArg, TransferError},
+};
 use icrc_ledger_types::icrc2::approve::{ApproveArgs, ApproveError};
 
 use super::pocket_ic_helpers::{
@@ -647,7 +653,7 @@ fn should_deposit_and_withdrawal_erc20() {
     five_ticks(&pic);
 
     // Add icUSDC to lsm
-    let _result = update_call::<AddErc20Arg, Result<(), AddErc20Error>>(
+    update_call::<AddErc20Arg, Result<(), AddErc20Error>>(
         &pic,
         lsm_principal(),
         "add_erc20_ls",
@@ -1381,6 +1387,621 @@ fn should_fail_log_scrapping_request_without_proper_gap() {
     );
 }
 
+#[test]
+fn should_activate_swap_feature() {
+    let pic = create_pic();
+    create_and_install_minter_plus_dependency_canisters(&pic);
+
+    // At this time there should be 2 http requests:
+    // [0] is for eth_getBlockByNumber
+    // [1] is for eth_feeHistory
+    let canister_http_requests = pic.get_canister_http();
+
+    // 1st Generating mock response for eth_feehistory
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        0,
+        MOCK_FEE_HISTORY_RESPONSE,
+    );
+
+    // 2nd Generating mock response for eth_getBlockByNumber
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 1, MOCK_BLOCK_NUMBER);
+
+    five_ticks(&pic);
+
+    // 3rd generating mock response for eth_getLogs
+    // At this time there should be 2 http requests:
+    // [0] is for public_node eth_getLogs
+    // [1] is for ankr eth_getLogs
+    let canister_http_requests = pic.get_canister_http();
+
+    // public_node mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_GET_LOGS);
+
+    // Ankr mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 1, MOCK_GET_LOGS);
+
+    // Drpc mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 2, MOCK_GET_LOGS);
+
+    // Alchemy mock submissios
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 3, MOCK_GET_LOGS);
+
+    five_ticks(&pic);
+
+    // Check deposit
+    // Based on the logs there should be 100_000_000_000_000_000 - deposit fees(50_000_000_000_000_u64)= 99_950_000_000_000_000 icBNB minted for Native to b4any-vxcgx-dm654-xhumb-4pl7k-5kysk-qnjlt-w7hcb-2hd2h-ttzpz-fqe
+    let balance = query_call::<Account, Nat>(
+        &pic,
+        native_ledger_principal(),
+        "icrc1_balance_of",
+        Account {
+            owner: Principal::from_text(
+                "b4any-vxcgx-dm654-xhumb-4pl7k-5kysk-qnjlt-w7hcb-2hd2h-ttzpz-fqe",
+            )
+            .unwrap(),
+            subaccount: None,
+        },
+    );
+
+    assert_eq!(balance, Nat::from(100_000_000_000_000_000_u128));
+
+    five_ticks(&pic);
+
+    let transfer_result = update_call::<TransferArg, Result<Nat, TransferError>>(
+        &pic,
+        native_ledger_principal(),
+        "icrc1_transfer",
+        TransferArg {
+            from_subaccount: None,
+            to: Principal::from_text(APPIC_CONTROLLER_PRINCIPAL)
+                .unwrap()
+                .into(),
+            fee: None,
+            created_at_time: None,
+            memo: None,
+            amount: Nat::from(1_990_000_000_000_000_u128),
+        },
+        Some(
+            Principal::from_text("b4any-vxcgx-dm654-xhumb-4pl7k-5kysk-qnjlt-w7hcb-2hd2h-ttzpz-fqe")
+                .unwrap(),
+        ),
+    );
+
+    assert!(transfer_result.is_ok());
+
+    five_ticks(&pic);
+
+    // Calling icrc2_approve and giving the permission to minter for taking funds from users principal
+    // for sending the swap activation request
+    let _approve_result = update_call::<ApproveArgs, Result<Nat, ApproveError>>(
+        &pic,
+        native_ledger_principal(),
+        "icrc2_approve",
+        ApproveArgs {
+            from_subaccount: None,
+            spender: Account {
+                owner: minter_principal(),
+                subaccount: None,
+            },
+            amount: Nat::from(1_000_000_000_000_000_u128),
+            expected_allowance: None,
+            expires_at: None,
+            fee: None,
+            memo: None,
+            created_at_time: None,
+        },
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
+    )
+    .unwrap();
+
+    let _approve_result = update_call::<ApproveArgs, Result<Nat, ApproveError>>(
+        &pic,
+        native_ledger_principal(),
+        "icrc2_approve",
+        ApproveArgs {
+            from_subaccount: None,
+            spender: Account {
+                owner: minter_principal(),
+                subaccount: None,
+            },
+            amount: Nat::from(1_000_000_000_000_000_u128),
+            expected_allowance: None,
+            expires_at: None,
+            fee: None,
+            memo: None,
+            created_at_time: None,
+        },
+        Some(
+            Principal::from_text("b4any-vxcgx-dm654-xhumb-4pl7k-5kysk-qnjlt-w7hcb-2hd2h-ttzpz-fqe")
+                .unwrap(),
+        ),
+    )
+    .unwrap();
+
+    // Add icUSDC to lsm
+    // Calling icrc2_approve and giving the permission to lsm for taking funds from users principal
+    let _approve_result = update_call::<ApproveArgs, Result<Nat, ApproveError>>(
+        &pic,
+        icp_principal(),
+        "icrc2_approve",
+        ApproveArgs {
+            from_subaccount: None,
+            spender: Account {
+                owner: lsm_principal(),
+                subaccount: None,
+            },
+            amount: Nat::from(
+                2_500_000_000_u128, // Users balance - approval fee => 99_950_000_000_000_000_u128 - 10_000_000_000_000_u128
+            ),
+            expected_allowance: None,
+            expires_at: None,
+            fee: None,
+            memo: None,
+            created_at_time: None,
+        },
+        None,
+    )
+    .unwrap();
+
+    update_call::<AddErc20Arg, Result<(), AddErc20Error>>(
+        &pic,
+        lsm_principal(),
+        "add_erc20_ls",
+        AddErc20Arg {
+            contract: Erc20Contract {
+                chain_id: EvmNetwork::BSCTestnet.chain_id().into(),
+                address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913".to_string(),
+            },
+            ledger_init_arg: LedgerInitArg {
+                transfer_fee: Nat::from(10_000_u128),
+                decimals: 6,
+                token_name: "USDC on icp".to_string(),
+                token_symbol: "icUSDC".to_string(),
+                token_logo: "".to_string(),
+            },
+        },
+        None,
+    )
+    .unwrap();
+
+    five_ticks(&pic);
+
+    // Advance time for 1 min.
+    pic.advance_time(Duration::from_secs(60));
+
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+
+    // Making Native the withdrawal request to minter
+    let withdrawal_request_result = update_call::<
+        WithdrawalArg,
+        Result<RetrieveNativeRequest, WithdrawalError>,
+    >(
+        &pic,
+        minter_principal(),
+        "withdraw_native_token",
+        WithdrawalArg {
+            amount: Nat::from(940_000_000_000_000_u128),
+            recipient: "0x3bcE376777eCFeb93953cc6C1bB957fbAcb1A261".to_string(),
+        },
+        Some(
+            Principal::from_text("b4any-vxcgx-dm654-xhumb-4pl7k-5kysk-qnjlt-w7hcb-2hd2h-ttzpz-fqe")
+                .unwrap(),
+        ),
+    )
+    .unwrap();
+
+    five_ticks(&pic);
+
+    // Advance time for PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL amount.
+    //pic.advance_time(PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL);
+
+    five_ticks(&pic);
+
+    // At this point there should be an http request for refreshing the fee history
+    // Once there is a withdrawal request, The first attempt should be updating fee history
+    // Cause there should be a maximum gap of 30 seconds between the previous gas fee estimate
+    // we just advance time for amount
+    let canister_http_requests = pic.get_canister_http();
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        0,
+        MOCK_FEE_HISTORY_RESPONSE,
+    );
+
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+    five_ticks(&pic);
+
+    let canister_http_requests = pic.get_canister_http();
+
+    // Generating the latest transaction count for inserting the correct nonce
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        0,
+        MOCK_TRANSACTION_COUNT_LATEST,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        1,
+        MOCK_TRANSACTION_COUNT_LATEST,
+    );
+
+    // Generating the latest transaction count for inserting the correct nonce
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_TRANSACTION_COUNT_LATEST,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
+        MOCK_TRANSACTION_COUNT_LATEST,
+    );
+
+    five_ticks(&pic);
+    five_ticks(&pic);
+    //
+    // At this point there should be 2 http_requests
+    // [0] public_node eth_sendRawTransaction
+    // [1] ankr eth_sendRawTransaction
+    let canister_http_requests = pic.get_canister_http();
+
+    // public_node request
+    // Trying to simulate real sendrawtransaction since there will only be one successful result and the rest of the nodes will return
+    // one of the failed responses(NonceTooLow,NonceTooHigh,etc..,)
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        0,
+        MOCK_SEND_TRANSACTION_SUCCESS,
+    );
+
+    // ankr request
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        1,
+        MOCK_SEND_TRANSACTION_ERROR,
+    );
+
+    // Drpc request
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_SEND_TRANSACTION_ERROR,
+    );
+
+    // Alchemy request
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
+        MOCK_SEND_TRANSACTION_ERROR,
+    );
+    // getting the finalized transaction count after sending transaction was successful.
+
+    five_ticks(&pic);
+    let canister_http_requests = pic.get_canister_http();
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        0,
+        MOCK_TRANSACTION_COUNT_FINALIZED,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        1,
+        MOCK_TRANSACTION_COUNT_FINALIZED,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_TRANSACTION_COUNT_FINALIZED,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
+        MOCK_TRANSACTION_COUNT_FINALIZED,
+    );
+
+    five_ticks(&pic);
+
+    // At this point there should be two requests for eth_getTransactionReceipt
+    // [0] public_node
+    // [1] ankr
+    let canister_http_requests = pic.get_canister_http();
+
+    // public_node
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        0,
+        MOCK_SECOND_NATIVE_TRANSACTION_RECEIPT,
+    );
+
+    // ankr
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        1,
+        MOCK_SECOND_NATIVE_TRANSACTION_RECEIPT,
+    );
+
+    // public_node
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_SECOND_NATIVE_TRANSACTION_RECEIPT,
+    );
+
+    // ankr
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
+        MOCK_SECOND_NATIVE_TRANSACTION_RECEIPT,
+    );
+
+    five_ticks(&pic);
+
+    //Get icLink ledger id
+    let ic_usdc_ledger_id =
+        match query_call::<(), LedgerManagerInfo>(&pic, lsm_principal(), "get_lsm_info", ())
+            .managed_canisters
+            .into_iter()
+            .find(|canister| canister.twin_erc20_token_symbol == "icUSDC")
+            .unwrap()
+            .ledger
+            .unwrap()
+        {
+            crate::tests::lsm_types::ManagedCanisterStatus::Created { canister_id: _ } => {
+                panic!("Link canister id should be available")
+            }
+            crate::tests::lsm_types::ManagedCanisterStatus::Installed {
+                canister_id,
+                installed_wasm_hash: _,
+            } => canister_id,
+        };
+
+    println!("ic_usdc ledger id:{},", ic_usdc_ledger_id);
+
+    // swap activation request
+    let swap_contract_address =
+        Address::from_str("0xa72ab997CCd4C55a7aDc049df8057D577f5322a8").unwrap();
+
+    let dex_canister_id: Principal = Principal::from_text("nbepk-iyaaa-aaaad-qhlma-cai").unwrap();
+
+    let activation_result = update_call::<ActivateSwapReqest, Nat>(
+        &pic,
+        minter_principal(),
+        "activate_swap_feature",
+        ActivateSwapReqest {
+            twin_usdc_ledger_id: ic_usdc_ledger_id,
+            swap_contract_address: swap_contract_address.to_string(),
+            twin_usdc_decimals: 6,
+            dex_canister_id,
+            canister_signing_fee_twin_usdc_value: Nat::from(50_000_u32),
+        },
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
+    );
+
+    five_ticks(&pic);
+    five_ticks(&pic);
+
+    let canister_http_requests = pic.get_canister_http();
+
+    // Generating the latest transaction count for inserting the correct nonce
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        0,
+        MOCK_TRANSACTION_COUNT_LATEST_ERC20,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        1,
+        MOCK_TRANSACTION_COUNT_LATEST_ERC20,
+    );
+
+    // Generating the latest transaction count for inserting the correct nonce
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_TRANSACTION_COUNT_LATEST_ERC20,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
+        MOCK_TRANSACTION_COUNT_LATEST_ERC20,
+    );
+
+    five_ticks(&pic);
+    five_ticks(&pic);
+    //
+    // At this point there should be 2 http_requests
+    // [0] public_node eth_sendRawTransaction
+    // [1] ankr eth_sendRawTransaction
+    let canister_http_requests = pic.get_canister_http();
+
+    // public_node request
+    // Trying to simulate real sendrawtransaction since there will only be one successful result and the rest of the nodes will return
+    // one of the failed responses(NonceTooLow,NonceTooHigh,etc..,)
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        0,
+        MOCK_SEND_TRANSACTION_SUCCESS,
+    );
+
+    // ankr request
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        1,
+        MOCK_SEND_TRANSACTION_ERROR,
+    );
+
+    // Drpc request
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_SEND_TRANSACTION_ERROR,
+    );
+
+    // Alchemy request
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
+        MOCK_SEND_TRANSACTION_ERROR,
+    );
+    // getting the finalized transaction count after sending transaction was successful.
+
+    five_ticks(&pic);
+    let canister_http_requests = pic.get_canister_http();
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        0,
+        MOCK_TRANSACTION_COUNT_FINALIZED_ERC20,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        1,
+        MOCK_TRANSACTION_COUNT_FINALIZED_ERC20,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_TRANSACTION_COUNT_FINALIZED_ERC20,
+    );
+
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
+        MOCK_TRANSACTION_COUNT_FINALIZED_ERC20,
+    );
+
+    five_ticks(&pic);
+    five_ticks(&pic);
+
+    // At this point there should be two requests for eth_getTransactionReceipt
+    // [0] public_node
+    // [1] ankr
+    let canister_http_requests = pic.get_canister_http();
+
+    // public_node
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        0,
+        MOCK_TRANSACTION_RECEIPT_APPROVE_ERC20,
+    );
+
+    // ankr
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        1,
+        MOCK_TRANSACTION_RECEIPT_APPROVE_ERC20,
+    );
+
+    // public_node
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        2,
+        MOCK_TRANSACTION_RECEIPT_APPROVE_ERC20,
+    );
+
+    // ankr
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        3,
+        MOCK_TRANSACTION_RECEIPT_APPROVE_ERC20,
+    );
+
+    five_ticks(&pic);
+    five_ticks(&pic);
+
+    let minter_info = query_call::<(), MinterInfo>(&pic, minter_principal(), "get_minter_info", ());
+
+    assert!(minter_info.is_swapping_active);
+    assert_eq!(minter_info.clone().twin_usdc_info.unwrap().decimals, 6);
+    assert_eq!(
+        minter_info.clone().twin_usdc_info.unwrap().address,
+        "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    );
+    assert_eq!(
+        minter_info.clone().twin_usdc_info.unwrap().ledger_id,
+        ic_usdc_ledger_id
+    );
+    assert_eq!(
+        minter_info.clone().swap_contract_address.unwrap(),
+        swap_contract_address.to_string()
+    );
+    assert_eq!(
+        minter_info.clone().dex_canister_id.unwrap(),
+        dex_canister_id
+    );
+
+    println!("{minter_info:?}");
+}
+
 pub mod mock_rpc_https_responses {
     use pocket_ic::{common::rest::CanisterHttpRequest, PocketIc};
 
@@ -1619,6 +2240,27 @@ pub mod mock_rpc_https_responses {
             "status": "0x1",
             "to": "0x3bce376777ecfeb93953cc6c1bb957fbacb1a261",
             "transactionHash": "0x9b53b8f7443629f54ec92ac031d49c21df19bf695515a5435caab89441dae823",
+            "transactionIndex": "0x3",
+            "type": "0x2"
+        }
+    }"#;
+
+    pub const MOCK_TRANSACTION_RECEIPT_APPROVE_ERC20: &str = r#"{
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "blockHash": "0xa99ddaae8a1488af78eab4942d91e7c3640479ee7162c5ae3d1e3fe325599b9c",
+            "blockNumber": "0x2bcf802",
+            "contractAddress": null,
+            "cumulativeGasUsed": "0x1f00c",
+            "effectiveGasPrice": "0xb2d05e00",
+            "from": "0xffd465f2655e4ee9164856715518f4287b22a49d",
+            "gasUsed": "0x5208",
+            "logs": [],
+            "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "status": "0x1",
+            "to": "0x3bce376777ecfeb93953cc6c1bb957fbacb1a261",
+            "transactionHash": "0xce425c33232a4c23423609f9f55ca6c5fa1e9d4f7dd7bc2136572cfd9ada4c8c",
             "transactionIndex": "0x3",
             "type": "0x2"
         }

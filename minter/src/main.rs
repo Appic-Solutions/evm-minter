@@ -18,8 +18,8 @@ use evm_minter::deposit::{
 };
 
 use evm_minter::candid_types::{
-    self, AddErc20Token, DepositStatus, Icrc28TrustedOriginsResponse, IcrcBalance,
-    RequestScrapingError,
+    self, ActivateSwapReqest, AddErc20Token, CandidTwinUsdcInfo, DepositStatus, GasTankBalance,
+    Icrc28TrustedOriginsResponse, IcrcBalance, RequestScrapingError,
 };
 use evm_minter::candid_types::{
     withdraw_erc20::RetrieveErc20Request, withdraw_erc20::WithdrawErc20Arg,
@@ -53,7 +53,7 @@ use evm_minter::state::transactions::{
     ReimbursementIndex, ReimbursementRequest,
 };
 use evm_minter::state::{
-    lazy_call_ecdsa_public_key, mutate_state, read_state, transactions, State, STATE,
+    lazy_call_ecdsa_public_key, mutate_state, read_state, transactions, State, TwinUSDCInfo, STATE,
 };
 use evm_minter::storage::set_rpc_api_key;
 use evm_minter::swap::{
@@ -302,7 +302,6 @@ async fn get_minter_info() -> MinterInfo {
                 .helper_contract_addresses
                 .as_ref()
                 .and_then(|addresses| addresses.first().map(|address| address.to_string())),
-
             helper_smart_contract_addresses: s.helper_contract_addresses.as_ref().map(
                 |addresses| {
                     addresses
@@ -335,6 +334,21 @@ async fn get_minter_info() -> MinterInfo {
             ),
             icrc_balances,
             wrapped_icrc_tokens,
+            is_swapping_active: s.is_swapping_active,
+            dex_canister_id: s.dex_canister_id,
+            swap_contract_address: s.swap_contract_address.map(|address| address.to_string()),
+            twin_usdc_info: s.twin_usdc_info.clone().map(|info| CandidTwinUsdcInfo {
+                address: info.address.to_string(),
+                ledger_id: info.ledger_id,
+                decimals: info.decimals,
+            }),
+            canister_signing_fee_twin_usdc_value: s
+                .canister_signing_fee_twin_usdc_amount
+                .map(|fee| fee.into()),
+            gas_tank: Some(GasTankBalance {
+                native_balance: s.gas_tank.native_balance.into(),
+                usdc_balance: s.gas_tank.usdc_balance.into(),
+            }),
         }
     })
 }
@@ -855,10 +869,13 @@ async fn wrap_icrc(
 
 #[update]
 async fn activate_swap_feature(
-    twin_usdc_ledger_id: Principal,
-    swap_contract_address: String,
-    twin_usdc_decimals: u8,
-    canister_signing_fee_twin_usdc_value: Nat,
+    ActivateSwapReqest {
+        twin_usdc_ledger_id,
+        swap_contract_address,
+        twin_usdc_decimals,
+        dex_canister_id,
+        canister_signing_fee_twin_usdc_value,
+    }: ActivateSwapReqest,
 ) -> Nat {
     let caller = validate_caller_not_anonymous();
     if caller != Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap() {
@@ -868,12 +885,10 @@ async fn activate_swap_feature(
     let erc20_token = read_state(|s| s.find_erc20_token_by_ledger_id(&twin_usdc_ledger_id))
         .expect("could not find icUSDC tokens with provided principal");
 
-    let (withdrawal_native_fee, native_ledger, minter_address) = read_state(|s| {
+    let (withdrawal_native_fee, native_ledger) = read_state(|s| {
         (
             s.withdrawal_native_fee,
             LedgerClient::native_ledger_from_state(s),
-            s.minter_address()
-                .expect("expextd minter address to be presented"),
         )
     });
 
@@ -917,6 +932,7 @@ async fn activate_swap_feature(
                 usdc_contract_address: erc20_token.erc20_contract_address,
                 twin_usdc_ledger_id,
                 twin_usdc_decimals,
+                dex_canister_id,
                 canister_signing_fee_twin_usdc_value,
             },
         );
@@ -938,7 +954,7 @@ async fn activate_swap_feature(
         Ok(native_ledger_burn_index) => {
             let approval_request = Erc20Approve {
                 max_transaction_fee: tx_fee,
-                minter_address,
+                swap_contract_address,
                 native_ledger_burn_index,
                 erc20_contract_address: erc20_token.erc20_contract_address,
                 from: caller,
@@ -947,6 +963,8 @@ async fn activate_swap_feature(
                 l1_fee,
                 withdrawal_fee: withdrawal_native_fee,
             };
+
+            println!("successfully burnt for maximum approval to the swap contract");
 
             mutate_state(|s| {
                 process_event(
@@ -1469,6 +1487,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     twin_usdc_ledger_id,
                     twin_usdc_decimals,
                     canister_signing_fee_twin_usdc_value,
+                    dex_canister_id,
                 } => EP::SwapContractActivated {
                     swap_contract_address: swap_contract_address.to_string(),
                     usdc_contract_address: usdc_contract_address.to_string(),
@@ -1476,6 +1495,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     twin_usdc_decimals: twin_usdc_decimals.into(),
                     canister_signing_fee_twin_usdc_value: canister_signing_fee_twin_usdc_value
                         .into(),
+                    dex_canister_id,
                 },
                 EventType::AcceptedSwapActivationRequest(_erc20_approve) => {
                     EP::AcceptedSwapActivationRequest

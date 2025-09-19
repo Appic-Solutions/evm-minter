@@ -224,11 +224,13 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
             twin_usdc_ledger_id,
             twin_usdc_decimals,
             canister_signing_fee_twin_usdc_value,
+            dex_canister_id,
         } => {
-            state.activate_erc20_contract_address(
+            state.activate_swap_feature(
                 (*usdc_contract_address, *twin_usdc_ledger_id),
                 *swap_contract_address,
                 *twin_usdc_decimals,
+                *dex_canister_id,
                 *canister_signing_fee_twin_usdc_value,
             );
         }

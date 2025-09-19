@@ -129,7 +129,7 @@ pub struct Erc20Approve {
     pub erc20_contract_address: Address,
     // approval is given to this address
     #[n(2)]
-    pub minter_address: Address,
+    pub swap_contract_address: Address,
     /// The transaction ID of the Native token burn operation on the native token ledger.
     #[cbor(n(3), with = "crate::cbor::id")]
     pub native_ledger_burn_index: LedgerBurnIndex,
@@ -301,7 +301,7 @@ impl fmt::Debug for Erc20Approve {
             created_at,
             l1_fee,
             withdrawal_fee,
-            minter_address,
+            swap_contract_address,
         } = self;
         f.debug_struct("Erc20Approve")
             .field("max_transaction_fee", max_transaction_fee)
@@ -312,7 +312,7 @@ impl fmt::Debug for Erc20Approve {
             .field("created_at", created_at)
             .field("l1_fee", l1_fee)
             .field("withdrawal_fee", withdrawal_fee)
-            .field("minter_address", minter_address)
+            .field("swap_contract_address", swap_contract_address)
             .finish()
     }
 }
@@ -435,9 +435,7 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.destination,
             WithdrawalRequest::Erc20(request) => request.erc20_contract_address,
-            WithdrawalRequest::Erc20Approve(_request) => {
-                panic!("Bug: Approval tx should not have a destination")
-            }
+            WithdrawalRequest::Erc20Approve(request) => request.erc20_contract_address,
             WithdrawalRequest::Swap(request) => request.swap_contract,
         }
     }
@@ -1588,7 +1586,7 @@ pub fn create_transaction(
                 destination: request.erc20_contract_address,
                 amount: Wei::ZERO,
                 data: TransactionCallData::Erc20Approve {
-                    spender: request.minter_address,
+                    spender: request.swap_contract_address,
                     value: Erc20Value::MAX.checked_sub(Erc20Value::from(1_u8)).unwrap(),
                 }
                 .encode(),

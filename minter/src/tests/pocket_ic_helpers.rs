@@ -47,7 +47,7 @@ use super::ledger_arguments::{
 };
 
 use crate::{
-    candid_types::{CandidBlockTag, Erc20Token, MinterInfo},
+    candid_types::{CandidBlockTag, Erc20Token, GasTankBalance, MinterInfo},
     evm_config::EvmNetwork,
     lifecycle::{InitArg, MinterArg, UpgradeArg},
     lsm_client::WasmHash,
@@ -103,7 +103,16 @@ fn should_create_and_install_and_upgrade_minter_canister() {
             wrapped_icrc_tokens: Some(vec![]),
             helper_smart_contract_addresses: Some(vec![
                 "0x733a1BEeF5A02990aAD285d7ED93fc1b622EeF1d".to_string()
-            ])
+            ]),
+            is_swapping_active: false,
+            dex_canister_id: None,
+            swap_contract_address: None,
+            twin_usdc_info: None,
+            canister_signing_fee_twin_usdc_value: None,
+            gas_tank: Some(GasTankBalance {
+                native_balance: Nat::from(0_u8),
+                usdc_balance: Nat::from(0_u8)
+            })
         }
     );
 
@@ -155,7 +164,16 @@ fn should_create_and_install_and_upgrade_minter_canister() {
             ledger_suite_manager_id: Some("kmcdp-4yaaa-aaaag-ats3q-cai".parse().unwrap()),
             total_collected_operation_fee: Some(Nat::from(0_u128)),
             icrc_balances: Some(vec![]),
-            wrapped_icrc_tokens: Some(vec![])
+            wrapped_icrc_tokens: Some(vec![]),
+            is_swapping_active: false,
+            dex_canister_id: None,
+            swap_contract_address: None,
+            twin_usdc_info: None,
+            canister_signing_fee_twin_usdc_value: None,
+            gas_tank: Some(GasTankBalance {
+                native_balance: Nat::from(0_u8),
+                usdc_balance: Nat::from(0_u8)
+            })
         }
     );
 }
@@ -443,7 +461,7 @@ where
 {
     match result {
         Ok(bytes) => Ok(candid::decode_one(&bytes).unwrap()),
-        Err(e) => panic!("{:?}", e),
+        Err(e) => panic!("{e:?}"),
     }
 }
 

@@ -929,11 +929,12 @@ impl State {
         );
     }
 
-    pub fn activate_erc20_contract_address(
+    pub fn activate_swap_feature(
         &mut self,
         twin_usdc_ids: (Address, Principal),
         swap_contract_address: Address,
         twin_usdc_decimals: u8,
+        dex_canister_id: Principal,
         canister_signing_fee_twin_usdc_amount: Erc20Value,
     ) {
         self.twin_usdc_info = Some(TwinUSDCInfo {
@@ -942,6 +943,7 @@ impl State {
             decimals: twin_usdc_decimals,
         });
         self.swap_contract_address = Some(swap_contract_address);
+        self.dex_canister_id = Some(dex_canister_id);
         self.canister_signing_fee_twin_usdc_amount = Some(canister_signing_fee_twin_usdc_amount);
         // For an operation we need a ledger bunr index but since the swap operations use the
         // native tokens that are already burned and located in the gas tank, we have an internal
