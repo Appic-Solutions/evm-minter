@@ -420,6 +420,7 @@ type MinterInfo = record {
   twin_usdc_info : opt CandidTwinUsdcInfo;
   swap_contract_address : opt text;
   supported_erc20_tokens : opt vec Erc20Token;
+  last_native_token_usd_price_estimate : opt NativeTokenUsdPriceEstimate;
   is_swapping_active : bool;
   helper_smart_contract_addresses : opt vec text;
   deposit_native_fee : opt nat;
@@ -439,6 +440,7 @@ type MinterInfo = record {
   native_balance : opt nat;
   ledger_suite_manager_id : opt principal;
 };
+type NativeTokenUsdPriceEstimate = record { timestamp : nat64; price : text };
 type ReimbursementIndex = variant {
   Erc20 : record {
     erc20_ledger_burn_index : nat;

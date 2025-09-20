@@ -19,7 +19,7 @@ use evm_minter::deposit::{
 
 use evm_minter::candid_types::{
     self, ActivateSwapReqest, AddErc20Token, CandidTwinUsdcInfo, DepositStatus, GasTankBalance,
-    Icrc28TrustedOriginsResponse, IcrcBalance, RequestScrapingError,
+    Icrc28TrustedOriginsResponse, IcrcBalance, NativeTokenUsdPriceEstimate, RequestScrapingError,
 };
 use evm_minter::candid_types::{
     withdraw_erc20::RetrieveErc20Request, withdraw_erc20::WithdrawErc20Arg,
@@ -349,6 +349,12 @@ async fn get_minter_info() -> MinterInfo {
                 native_balance: s.gas_tank.native_balance.into(),
                 usdc_balance: s.gas_tank.usdc_balance.into(),
             }),
+            last_native_token_usd_price_estimate: s.last_native_token_usd_price_estimate.map(
+                |estimate| NativeTokenUsdPriceEstimate {
+                    price: estimate.1.to_string(),
+                    timestamp: estimate.0,
+                },
+            ),
         }
     })
 }

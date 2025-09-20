@@ -101,6 +101,7 @@ pub struct MinterInfo {
     pub native_balance: Option<Nat>,
     pub total_collected_operation_fee: Option<Nat>,
     pub last_gas_fee_estimate: Option<GasFeeEstimate>,
+    pub last_native_token_usd_price_estimate: Option<NativeTokenUsdPriceEstimate>,
     pub erc20_balances: Option<Vec<Erc20Balance>>,
     pub icrc_balances: Option<Vec<IcrcBalance>>,
     pub gas_tank: Option<GasTankBalance>,
@@ -127,6 +128,12 @@ pub struct CandidTwinUsdcInfo {
 pub struct GasFeeEstimate {
     pub max_fee_per_gas: Nat,
     pub max_priority_fee_per_gas: Nat,
+    pub timestamp: u64,
+}
+
+#[derive(CandidType, Deserialize, Eq, Clone, Debug, PartialEq)]
+pub struct NativeTokenUsdPriceEstimate {
+    pub price: String,
     pub timestamp: u64,
 }
 

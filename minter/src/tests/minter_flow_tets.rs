@@ -1812,7 +1812,7 @@ fn should_activate_swap_feature() {
 
     let dex_canister_id: Principal = Principal::from_text("nbepk-iyaaa-aaaad-qhlma-cai").unwrap();
 
-    let activation_result = update_call::<ActivateSwapReqest, Nat>(
+    update_call::<ActivateSwapReqest, Nat>(
         &pic,
         minter_principal(),
         "activate_swap_feature",
@@ -2025,6 +2025,22 @@ pub mod mock_rpc_https_responses {
         }
     }"#;
 
+    pub const MOCK_BSC_FEE_HISTORY_RESPONSE: &str = r#"{"jsonrpc":"2.0","id":1,"result":{"oldestBlock":"0x3af1ef1","reward":[["0x5f5e100","0x68e7780","0x7735940"],["0x68e7780","0x68e7780","0x69f4060"],["0x5f5e100","0x68e7780","0x7270e01"],["0x5f5e100","0x68e7780","0x7735940"],["0x5f5e100","0x68e7780","0x69f4060"]],"baseFeePerGas":["0x0","0x0","0x0","0x0","0x0","0x0"],"gasUsedRatio":[0.27619985333333336,0.21652034666666667,0.32256104,0.28686824,0.2847872],"baseFeePerBlobGas":["0x1","0x1","0x1","0x1","0x1","0x1"],"blobGasUsedRatio":[0,0,0,0.16666666666666666,0]}}"#;
+
+    pub const MOCK_BSC_FEE_HISTORY_INNER: &str = r#"{"oldestBlock":"0x3af1ef1","reward":[["0x5f5e100","0x68e7780","0x7735940"],["0x68e7780","0x68e7780","0x69f4060"],["0x5f5e100","0x68e7780","0x7270e01"],["0x5f5e100","0x68e7780","0x7735940"],["0x5f5e100","0x68e7780","0x69f4060"]],"baseFeePerGas":["0x0","0x0","0x0","0x0","0x0","0x0"],"gasUsedRatio":[0.27619985333333336,0.21652034666666667,0.32256104,0.28686824,0.2847872],"baseFeePerBlobGas":["0x1","0x1","0x1","0x1","0x1","0x1"],"blobGasUsedRatio":[0,0,0,0.16666666666666666,0]}"#;
+
+    pub const MOCK_BSC_BLOCK_NUMBER: &str = r#"{"jsonrpc":"2.0","id":1,"result":{"baseFeePerGas":"0xe128a69","blobGasUsed":"0x120000","difficulty":"0x0","excessBlobGas":"0x0","extraData":"0xda83010f0b846765746888676f312e32342e328777696e646f7773","gasLimit":"0x2aca2c9","gasUsed":"0x3a9b15","hash":"0xe703eaa3a31ab4377d5637b493ee854c98d599aaf1585f86f901a4ff2338846c","logsBloom":"0x40220115402210404a484004e9200d480392a0000003601018234004c01620028242a48288450a468014820000020514429002690a02131132420000a6251281404080480100962088600008280093700182002000509102a4426c1800402045ac16502482400a30381446404600883018003082035cf6c00050523400111002023808a20410d0041040802010027702011102200530412904800c5820300e13e240022c08082d81500880a118a801262810006210ce800880006a022010c024608038060819040d2461dc18002600000000005101180110c040a0a231802041013060680238010180a04880c088000c040828451110082800204010020a0582","miner":"0x6641a9df47ab895f93fa97d11a1afbb2c63d6e99","mixHash":"0x20b4f4e0822f4732db0e1eab23cc71edf4b90c8cc8b628300ed92aa755acd792","nonce":"0x0000000000000000","number":"0x16519d2","parentBeaconBlockRoot":"0xa15a9b5d93796347caa38eaa42123b1dff469d9483a670b04a3c880335f5e955","parentHash":"0x9904c8c8d192fe186d057996e9cc9969386c325bb30fe994d61e8db7c3cc6d5a","receiptsRoot":"0x6ba9eb62fd81f8788bbe340eb853e898920ced9e2657c5ffdd7810468360561d","requestsHash":"0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","sha3Uncles":"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347","size":"0x56f0","stateRoot":"0x2aab024c5f62088dc57840ead429f5388327278da6eb09e4c0838d320fa0b4b8","timestamp":"0x68ce5f8f","transactions":["0xc8ff6848c970a169f230a848131eb301edbbd2c06324a39a00f1eba0cac55fa3"],"transactionsRoot":"0x4d771a34d66d35a625b34540f0ac96baaf089161bc4e820ade26428fe316c04c","uncles":[]}}"#;
+
+    pub const MOCK_BSC_HIGHER_BLOCK_NUMBER: &str = r#"{"jsonrpc":"2.0","id":1,"result":{"baseFeePerGas":"0xe128a69","blobGasUsed":"0x120000","difficulty":"0x0","excessBlobGas":"0x0","extraData":"0xda83010f0b846765746888676f312e32342e328777696e646f7773","gasLimit":"0x2aca2c9","gasUsed":"0x3a9b15","hash":"0xe703eaa3a31ab4377d5637b493ee854c98d599aaf1585f86f901a4ff2338846c","logsBloom":"0x40220115402210404a484004e9200d480392a0000003601018234004c01620028242a48288450a468014820000020514429002690a02131132420000a6251281404080480100962088600008280093700182002000509102a4426c1800402045ac16502482400a30381446404600883018003082035cf6c00050523400111002023808a20410d0041040802010027702011102200530412904800c5820300e13e240022c08082d81500880a118a801262810006210ce800880006a022010c024608038060819040d2461dc18002600000000005101180110c040a0a231802041013060680238010180a04880c088000c040828451110082800204010020a0582","miner":"0x6641a9df47ab895f93fa97d11a1afbb2c63d6e99","mixHash":"0x20b4f4e0822f4732db0e1eab23cc71edf4b90c8cc8b628300ed92aa755acd792","nonce":"0x0000000000000000","number":"0x16519de","parentBeaconBlockRoot":"0xa15a9b5d93796347caa38eaa42123b1dff469d9483a670b04a3c880335f5e955","parentHash":"0x9904c8c8d192fe186d057996e9cc9969386c325bb30fe994d61e8db7c3cc6d5a","receiptsRoot":"0x6ba9eb62fd81f8788bbe340eb853e898920ced9e2657c5ffdd7810468360561d","requestsHash":"0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","sha3Uncles":"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347","size":"0x56f0","stateRoot":"0x2aab024c5f62088dc57840ead429f5388327278da6eb09e4c0838d320fa0b4b8","timestamp":"0x68ce5f8f","transactions":["0xc8ff6848c970a169f230a848131eb301edbbd2c06324a39a00f1eba0cac55fa3"],"transactionsRoot":"0x4d771a34d66d35a625b34540f0ac96baaf089161bc4e820ade26428fe316c04c","uncles":[]}}"#;
+
+    pub const MOCK_BASE_FEE_HISTORY_RESPONSE: &str = r#"{"jsonrpc":"2.0","result":{"baseFeePerBlobGas":["0x1","0x1","0x1","0x1","0x1","0x1"],"baseFeePerGas":["0x28995e","0x287804","0x2855e5","0x288e3b","0x289148","0x286974"],"blobGasUsedRatio":[0,0,0,0,0],"gasUsedRatio":[0.27984945333333333,0.2784370133333333,0.4242639733333333,0.33823486,0.26941264666666664],"oldestBlock":"0x22200ce","reward":[["0x1388","0xf4240","0x120555"],["0xcf850","0xf4240","0x110b48"],["0x1388","0xcf850","0xf4240"],["0x3e988","0xf09ea","0x116d35"],["0x1c8e8","0xf3f33","0x14d40c"]]},"id":1}"#;
+
+    pub const MOCK_BASE_FEE_HISTORY_INNER: &str = r#"{"baseFeePerBlobGas":["0x1","0x1","0x1","0x1","0x1","0x1"],"baseFeePerGas":["0x28995e","0x287804","0x2855e5","0x288e3b","0x289148","0x286974"],"blobGasUsedRatio":[0,0,0,0,0],"gasUsedRatio":[0.27984945333333333,0.2784370133333333,0.4242639733333333,0.33823486,0.26941264666666664],"oldestBlock":"0x22200ce","reward":[["0x1388","0xf4240","0x120555"],["0xcf850","0xf4240","0x110b48"],["0x1388","0xcf850","0xf4240"],["0x3e988","0xf09ea","0x116d35"],["0x1c8e8","0xf3f33","0x14d40c"]]}"#;
+
+    pub const MOCK_BASE_BLOCK_NUMBER: &str = r#"{"jsonrpc":"2.0","result":{"baseFeePerGas":"0x2b9f2d","blobGasUsed":"0x0","difficulty":"0x0","excessBlobGas":"0x0","extraData":"0x000000003200000003","gasLimit":"0x8f0d180","gasUsed":"0x2982f92","hash":"0x8879750e4c4d90d75a782bffb2e76406011d9ec5aa423a1cf5f8048136ce151d","logsBloom":"0x3cfd7faaf1eebfd9dff81ad5ffffbbf7fbfddbbfbdbbf3bf6fdfff1ffb336f7ee76ff9bddde6fe55d7f7f7f7773ff7fbedfdbfde97b3ffe27f7eff3f4efcf4bef5afeefe4cf95f6db3bcff3ddebfe8b6cedfa5e7ce7fbff7ddf95a1f97f57beffab4773fffbf4f7effaddfebfec6ee6fdbe37d7ffcffb6faaa7fd79fdf6ffbff1fbfffdf9a4efdfe7dbdffbbee8e1c7fb7a79efbff3f7acff75fdf5759f4ddfabaeef97ffbf7fc69cfeef3fff7fbffb3fef7eeeab9f3dd7f5cf7afbfe5fe3fb67fb7bcff6ffbdfddbf7f1dfe4f36fffefffef7ffc7fb1eff7bf53cfe9dfbebed63fe1b1b7cfebe5eb8f7f2de5bf3bfffbffeff3defcfffebfb2f7e8f77984e77","miner":"0x4200000000000000000000000000000000000011","mixHash":"0xad01bff52072db4cb559d8c10896b05a888ab2d1d6b380674873b177660b6707","nonce":"0x0000000000000000","number":"0x22202050","parentBeaconBlockRoot":"0x3253811d0f0da0f8a53e35779616f26af5590c0a0efce44e25e5997e6ab37476","parentHash":"0xfcce45dee3ee577e7c8b89beb08a0c36db9c6fc15f003d8b7bb85b7ebfba0452","receiptsRoot":"0xe878356a28e394bb7e04a9ffb70ba667d0dc176f6a007139a110e5cda018adc9","requestsHash":"0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","sha3Uncles":"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347","size":"0x1cb3e","stateRoot":"0x36f1d129e7398444e6eb9505464f8d4a9f1ff2d58127a797776fe4ea0c6962c6","timestamp":"0x68ce5ff3","transactions":["0xdae86681341440c523c62eb76c9eb5f07bc5f4fe520a10b2f6af8bd23e92b55c"],"transactionsRoot":"0xf5281f791a550fedfc6abab76a0ecf111efcfda34149d1eacdf11e5ae4317662","uncles":[]},"id":1}"#;
+
+    pub const MOCK_BASE_HIGHER_BLOCK_NUMBER: &str = r#"{"jsonrpc":"2.0","result":{"baseFeePerGas":"0x2b9f2d","blobGasUsed":"0x0","difficulty":"0x0","excessBlobGas":"0x0","extraData":"0x000000003200000003","gasLimit":"0x8f0d180","gasUsed":"0x2982f92","hash":"0x8879750e4c4d90d75a782bffb2e76406011d9ec5aa423a1cf5f8048136ce151d","logsBloom":"0x3cfd7faaf1eebfd9dff81ad5ffffbbf7fbfddbbfbdbbf3bf6fdfff1ffb336f7ee76ff9bddde6fe55d7f7f7f7773ff7fbedfdbfde97b3ffe27f7eff3f4efcf4bef5afeefe4cf95f6db3bcff3ddebfe8b6cedfa5e7ce7fbff7ddf95a1f97f57beffab4773fffbf4f7effaddfebfec6ee6fdbe37d7ffcffb6faaa7fd79fdf6ffbff1fbfffdf9a4efdfe7dbdffbbee8e1c7fb7a79efbff3f7acff75fdf5759f4ddfabaeef97ffbf7fc69cfeef3fff7fbffb3fef7eeeab9f3dd7f5cf7afbfe5fe3fb67fb7bcff6ffbdfddbf7f1dfe4f36fffefffef7ffc7fb1eff7bf53cfe9dfbebed63fe1b1b7cfebe5eb8f7f2de5bf3bfffbffeff3defcfffebfb2f7e8f77984e77","miner":"0x4200000000000000000000000000000000000011","mixHash":"0xad01bff52072db4cb559d8c10896b05a888ab2d1d6b380674873b177660b6707","nonce":"0x0000000000000000","number":"0x222020B0","parentBeaconBlockRoot":"0x3253811d0f0da0f8a53e35779616f26af5590c0a0efce44e25e5997e6ab37476","parentHash":"0xfcce45dee3ee577e7c8b89beb08a0c36db9c6fc15f003d8b7bb85b7ebfba0452","receiptsRoot":"0xe878356a28e394bb7e04a9ffb70ba667d0dc176f6a007139a110e5cda018adc9","requestsHash":"0xe3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","sha3Uncles":"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347","size":"0x1cb3e","stateRoot":"0x36f1d129e7398444e6eb9505464f8d4a9f1ff2d58127a797776fe4ea0c6962c6","timestamp":"0x68ce5ff3","transactions":["0xdae86681341440c523c62eb76c9eb5f07bc5f4fe520a10b2f6af8bd23e92b55c"],"transactionsRoot":"0xf5281f791a550fedfc6abab76a0ecf111efcfda34149d1eacdf11e5ae4317662","uncles":[]},"id":1}"#;
+
     pub const MOCK_BLOCK_NUMBER: &str = r#"{
         "jsonrpc": "2.0",
         "id": 1,
@@ -2153,11 +2169,107 @@ pub mod mock_rpc_https_responses {
         ]
     }"#;
 
+    pub const MOCK_GET_BSC_LOGS_ERC20: &str = r#"{
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": [
+            {
+                "address": "0x733a1beef5a02990aad285d7ed93fc1b622eef1d",
+                "topics": [
+                    "0xdeaddf8708b62ae1bf8ec4693b523254aa961b2da6bc5be57f3188ee784d6275",
+                    "0x0000000000000000000000008AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+                    "0x00000000000000000000000000000000000000000000011129a2241af62c0000",
+                    "0x1d811078ea0d8563f526b6697c5871ee8aab60b058b0aabb5c31ab17de020000"
+                ],
+                "data": "0x0000000000000000000000005d737f982696fe2fe4ef1c7584e914c3a8e44d540000000000000000000000000000000000000000000000000000000000000000",
+                "blockNumber": "0x16519d2",
+                "transactionHash": "0x0ce8486575f4a3fe725c463ad0c9a3da2484f68305edcec7bea5db26c95aa18c",
+                "transactionIndex": "0x4",
+                "blockHash": "0xc1ff7931ceab1152c911cbb033bb5f6dad378263e3849cb7c5d90711fcbe352c",
+                "logIndex": "0x4",
+                "removed": false
+            },
+            {
+                "address": "0x733a1beef5a02990aad285d7ed93fc1b622eef1d",
+                "topics": [
+                    "0xdeaddf8708b62ae1bf8ec4693b523254aa961b2da6bc5be57f3188ee784d6275",
+                    "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "0x00000000000000000000000000000000000000000000000000a2241af62c0000",
+                    "0x1d811078ea0d8563f526b6697c5871ee8aab60b058b0aabb5c31ab17de020000"
+                ],
+                "data": "0x0000000000000000000000005d737f982696fe2fe4ef1c7584e914c3a8e44d540000000000000000000000000000000000000000000000000000000000000000",
+                "blockNumber": "0x2220188",
+                "transactionHash": "0x0a655f518091572886dbb4c18169b00e47d2324b33e9d3f90f3ab6cc06ca4d5a",
+                "transactionIndex": "0x5",
+                "blockHash": "0xc1ff7931ceab1152c911cbb033bb5f6dad378263e3849cb7c5d90711fcbe352c",
+                "logIndex": "0x5",
+                "removed": false
+            }
+        ]
+    }"#;
+
+    pub const MOCK_GET_BASE_LOGS_ERC20: &str = r#"{
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": [
+            {
+                "address": "0x733a1beef5a02990aad285d7ed93fc1b622eef1d",
+                "topics": [
+                    "0xdeaddf8708b62ae1bf8ec4693b523254aa961b2da6bc5be57f3188ee784d6275",
+                    "0x000000000000000000000000833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                    "0x00000000000000000000000000000000000000000000000000a2241af62c0000",
+                    "0x1d811078ea0d8563f526b6697c5871ee8aab60b058b0aabb5c31ab17de020000"
+                ],
+                "data": "0x0000000000000000000000005d737f982696fe2fe4ef1c7584e914c3a8e44d540000000000000000000000000000000000000000000000000000000000000000",
+                "blockNumber": "0x2220188",
+                "transactionHash": "0x0ce8486575f4a3fe725c463ad0c9a3da2484f68305edcec7bea5db26c95aa18c",
+                "transactionIndex": "0x4",
+                "blockHash": "0xc1ff7931ceab1152c911cbb033bb5f6dad378263e3849cb7c5d90711fcbe352c",
+                "logIndex": "0x4",
+                "removed": false
+            },
+            {
+                "address": "0x733a1beef5a02990aad285d7ed93fc1b622eef1d",
+                "topics": [
+                    "0xdeaddf8708b62ae1bf8ec4693b523254aa961b2da6bc5be57f3188ee784d6275",
+                    "0x0000000000000000000000000000000000000000000000000000000000000000",
+                    "0x00000000000000000000000000000000000000000000000000a2241af62c0000",
+                    "0x1d811078ea0d8563f526b6697c5871ee8aab60b058b0aabb5c31ab17de020000"
+                ],
+                "data": "0x0000000000000000000000005d737f982696fe2fe4ef1c7584e914c3a8e44d540000000000000000000000000000000000000000000000000000000000000000",
+                "blockNumber": "0x2220188",
+                "transactionHash": "0x0a655f518091572886dbb4c18169b00e47d2324b33e9d3f90f3ab6cc06ca4d5a",
+                "transactionIndex": "0x5",
+                "blockHash": "0xc1ff7931ceab1152c911cbb033bb5f6dad378263e3849cb7c5d90711fcbe352c",
+                "logIndex": "0x5",
+                "removed": false
+            }
+        ]
+    }"#;
+
+    pub const MOCK_GET_LOGS_EMPTY: &str = r#"{
+      "jsonrpc": "2.0",
+        "id": 3,
+        "result": []
+    }"#;
+
     pub const MOCK_TRANSACTION_COUNT_LATEST: &str = r#"{"id":1,"jsonrpc":"2.0","result":"0x0"}"#;
+
+    pub const MOCK_TRANSACTION_COUNT_BSC_LATEST: &str =
+        r#"{"id":1,"jsonrpc":"2.0","result":"0x0"}"#;
+    pub const MOCK_TRANSACTION_COUNT_BASE_LATEST: &str =
+        r#"{"id":1,"jsonrpc":"2.0","result":"0x0"}"#;
+
     pub const MOCK_TRANSACTION_COUNT_LATEST_ERC20: &str =
         r#"{"id":1,"jsonrpc":"2.0","result":"0x1"}"#;
 
     pub const MOCK_TRANSACTION_COUNT_FINALIZED: &str = r#"{"id":1,"jsonrpc":"2.0","result":"0x1"}"#;
+
+    pub const MOCK_TRANSACTION_COUNT_BSC_FINALIZED: &str =
+        r#"{"id":1,"jsonrpc":"2.0","result":"0x1"}"#;
+    pub const MOCK_TRANSACTION_COUNT_BASE_FINALIZED: &str =
+        r#"{"id":1,"jsonrpc":"2.0","result":"0x1"}"#;
+
     pub const MOCK_TRANSACTION_COUNT_FINALIZED_ERC20: &str =
         r#"{"id":1,"jsonrpc":"2.0","result":"0x2"}"#;
 
@@ -2319,6 +2431,48 @@ pub mod mock_rpc_https_responses {
 
     ]
 }"#;
+
+    pub const MOCK_TRANSACTION_RECEIPT_APPROVE_BSC_ERC20: &str = r#"{
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "blockHash": "0xa99ddaae8a1488af78eab4942d91e7c3640479ee7162c5ae3d1e3fe325599b9c",
+            "blockNumber": "0x2bcf802",
+            "contractAddress": null,
+            "cumulativeGasUsed": "0x1f00c",
+            "effectiveGasPrice": "0x5f5e100",
+            "from": "0xffd465f2655e4ee9164856715518f4287b22a49d",
+            "gasUsed": "0x5208",
+            "logs": [],
+            "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "status": "0x1",
+            "to": "0x3bce376777ecfeb93953cc6c1bb957fbacb1a261",
+            "transactionHash": "0x4cd7852bb6247d9c9290f8a18619eade30b5f7021217218228d94d3b1c0b929e",
+            "transactionIndex": "0x3",
+            "type": "0x2"
+        }
+    }"#;
+
+    pub const MOCK_TRANSACTION_RECEIPT_APPROVE_BASE_ERC20: &str = r#"{
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "blockHash": "0xa99ddaae8a1488af78eab4942d91e7c3640479ee7162c5ae3d1e3fe325599b9c",
+            "blockNumber": "0x2bcf802",
+            "contractAddress": null,
+            "cumulativeGasUsed": "0x1f00c",
+            "effectiveGasPrice": "0x28995e",
+            "from": "0xffd465f2655e4ee9164856715518f4287b22a49d",
+            "gasUsed": "0x5208",
+            "logs": [],
+            "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "status": "0x1",
+            "to": "0x3bce376777ecfeb93953cc6c1bb957fbacb1a261",
+            "transactionHash": "0x69820844235e54998583772e2eba3ae1ab39469f08f517eab917bbd0d7307eb2",
+            "transactionIndex": "0x3",
+            "type": "0x2"
+        }
+    }"#;
 
     pub const MOCK_ICRC_RELEASE_REUQEST: &str = r#"{
     "jsonrpc": "2.0",

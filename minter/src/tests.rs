@@ -12,6 +12,12 @@ pub mod pocket_ic_helpers;
 #[cfg(test)]
 pub mod lock_release;
 
+#[cfg(test)]
+pub mod swap;
+
+#[cfg(test)]
+pub mod dex_types;
+
 use ic_management_canister_types::EcdsaPublicKeyResult;
 use maplit::btreemap;
 
