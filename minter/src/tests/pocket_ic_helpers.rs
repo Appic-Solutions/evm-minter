@@ -24,6 +24,7 @@ pub const LSM_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/lsm.wasm");
 pub const EVM_RPC_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/evm_rpc.wasm");
 pub const APPIC_HELPER_BYTES: &[u8] = include_bytes!("../../../wasm/appic_helper.wasm");
 pub const DEX_CANISTER_BYTES: &[u8] = include_bytes!("../../../wasm/appic_dex.wasm");
+pub const PROXY_CANISTER_BYTES: &[u8] = include_bytes!("../../../wasm/proxy_canister.wasm");
 
 pub const TWENTY_TRILLIONS: u64 = 20_000_000_000_000;
 

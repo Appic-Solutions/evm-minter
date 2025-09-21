@@ -2,13 +2,17 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use alloy_primitives::Address;
+use candid::Int;
 use icrc_ledger_types::icrc1::account::Account;
 use icrc_ledger_types::icrc2::approve::{ApproveArgs, ApproveError};
 
 use crate::candid_types::chain_data::ChainData;
 use crate::candid_types::{ActivateSwapReqest, AddErc20Token, MinterInfo, RequestScrapingError};
 use crate::evm_config::EvmNetwork;
-use crate::tests::dex_types::{CandidMinter, UpgradeArgs as DexUpgradeArgs};
+use crate::tests::dex_types::{
+    CandidMinter, CandidPoolId, CreatePoolArgs, CreatePoolError, MintPositionArgs,
+    MintPositionError, UpgradeArgs as DexUpgradeArgs,
+};
 use crate::tests::lsm_types::{
     AddErc20Arg, AddErc20Error, Erc20Contract, LedgerInitArg, LedgerManagerInfo,
 };
@@ -28,7 +32,8 @@ use crate::tests::pocket_ic_helpers::{
     create_lsm_canister, create_pic, encode_call_args, five_ticks, icp_principal,
     install_appic_helper_canister, install_evm_rpc_canister, install_icp_ledger_canister,
     install_lsm_canister, lsm_principal, minter_principal, query_call, update_call,
-    DEX_CANISTER_BYTES, INDEX_WAM_BYTES, LEDGER_WASM_BYTES, TWENTY_TRILLIONS, TWO_TRILLIONS,
+    DEX_CANISTER_BYTES, INDEX_WAM_BYTES, LEDGER_WASM_BYTES, PROXY_CANISTER_BYTES, TWENTY_TRILLIONS,
+    TWO_TRILLIONS,
 };
 use crate::{APPIC_CONTROLLER_PRINCIPAL, RPC_HELPER_PRINCIPAL, SCRAPING_CONTRACT_LOGS_INTERVAL};
 
@@ -38,6 +43,23 @@ use super::super::ledger_arguments::{
     ArchiveOptions, FeatureFlags as LedgerFeatureFlags, IndexArg, IndexInitArg,
     InitArgs as LedgerInitArgs, LedgerArgument, MetadataValue as LedgerMetadataValue,
 };
+
+pub fn create_proxy_canister(pic: &PocketIc) -> Principal {
+    pic.create_canister_with_id(
+        Some(sender_principal()),
+        None,
+        Principal::from_text("epulg-riaaa-aaaaj-a2erq-cai").unwrap(),
+    )
+    .unwrap()
+}
+pub fn install_proxy_canister(pic: &PocketIc, canister_id: Principal) {
+    pic.install_canister(
+        canister_id,
+        PROXY_CANISTER_BYTES.to_vec(),
+        vec![],
+        Some(sender_principal()),
+    );
+}
 
 // BNB SMART chain minter
 pub fn bsc_minter_principal() -> Principal {
@@ -279,6 +301,10 @@ fn install_base_index_canister(pic: &PocketIc, canister_id: Principal) {
     );
 }
 
+fn dex_principal_id() -> Principal {
+    Principal::from_text("nbepk-iyaaa-aaaad-qhlma-cai").unwrap()
+}
+
 fn create_dex_canister(pic: &PocketIc) -> Principal {
     pic.create_canister_with_id(
         Some(sender_principal()),
@@ -351,7 +377,12 @@ fn install_ck_usdc_ledger_canister(pic: &PocketIc, canister_id: Principal) {
     let ledger_init_bytes = LedgerArgument::Init(LedgerInitArgs {
         minting_account: lsm_principal().into(),
         fee_collector_account: None,
-        initial_balances: vec![(sender_principal().into(), Nat::from(500_000_000_u128))],
+        initial_balances: vec![(
+            Principal::from_text(APPIC_CONTROLLER_PRINCIPAL)
+                .unwrap()
+                .into(),
+            Nat::from(3_000_000_000_u128),
+        )],
         transfer_fee: Nat::from(10_000_u128),
         decimals: Some(6_u8),
         token_name: "ckUSDC".to_string(),
@@ -506,6 +537,11 @@ pub fn create_and_install_minters_plus_dependency_canisters(pic: &PocketIc) {
     install_icp_ledger_canister(pic, icp_canister_id);
     five_ticks(pic);
 
+    // create and install proxy canister
+    let proxy_id = create_proxy_canister(pic);
+    pic.add_cycles(proxy_id, TWO_TRILLIONS.into());
+    install_proxy_canister(pic, proxy_id);
+
     // Create and install appic helper
     let appic_helper_id = create_appic_helper_canister(pic);
     pic.add_cycles(appic_helper_id, TWENTY_TRILLIONS.into());
@@ -577,6 +613,8 @@ pub fn create_and_install_minters_plus_dependency_canisters(pic: &PocketIc) {
     let ck_usdc_ledger_id = create_ck_usdc_ledger_cansiter(pic);
     pic.add_cycles(ck_usdc_ledger_id, TWENTY_TRILLIONS.into());
     install_ck_usdc_ledger_canister(pic, ck_usdc_ledger_id);
+
+    create_pools_and_provide_liquidty(pic);
 }
 
 #[test]
@@ -1337,7 +1375,132 @@ pub fn install_base_minter_and_setup(pic: &PocketIc) {
 
 //create pools between ckUSDC and icUSDC.bsc and icUSDC.base nad provide lqiuidty
 pub fn create_pools_and_provide_liquidty(pic: &PocketIc) {
-    //
-    // pool creation
-    //update_call(pic, canister_id, method, payload, sender)
+    // approval from appic controller to dex canister to mint positions
+    // ckUSDC approval
+    update_call::<ApproveArgs, Result<Nat, ApproveError>>(
+        pic,
+        ck_usdc_principal(),
+        "icrc2_approve",
+        ApproveArgs {
+            from_subaccount: None,
+            spender: Account {
+                owner: dex_principal_id(),
+                subaccount: None,
+            },
+            amount: Nat::from(3_000_000_000_u128),
+            expected_allowance: None,
+            expires_at: None,
+            fee: None,
+            memo: None,
+            created_at_time: None,
+        },
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
+    )
+    .unwrap();
+
+    // icUSDC.base approval
+    update_call::<ApproveArgs, Result<Nat, ApproveError>>(
+        pic,
+        ic_usdc_base_principal(),
+        "icrc2_approve",
+        ApproveArgs {
+            from_subaccount: None,
+            spender: Account {
+                owner: dex_principal_id(),
+                subaccount: None,
+            },
+            amount: Nat::from(3_000_000_000_u128),
+            expected_allowance: None,
+            expires_at: None,
+            fee: None,
+            memo: None,
+            created_at_time: None,
+        },
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
+    )
+    .unwrap();
+
+    // icUSDC.bsc approval
+    update_call::<ApproveArgs, Result<Nat, ApproveError>>(
+        pic,
+        ic_usdc_bsc_principal(),
+        "icrc2_approve",
+        ApproveArgs {
+            from_subaccount: None,
+            spender: Account {
+                owner: dex_principal_id(),
+                subaccount: None,
+            },
+            amount: Nat::from(3_000_000_000_000_000_000_000_u128),
+            expected_allowance: None,
+            expires_at: None,
+            fee: None,
+            memo: None,
+            created_at_time: None,
+        },
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
+    )
+    .unwrap();
+
+    let ck_usdc_usdc_bsc_pool_id =
+        update_call::<CreatePoolArgs, Result<CandidPoolId, CreatePoolError>>(
+            pic,
+            dex_principal_id(),
+            "create_pool",
+            CreatePoolArgs {
+                fee: Nat::from(1000_u128),
+                sqrt_price_x96: Nat::from(79383368562352051400232_u128),
+                token_a: ic_usdc_bsc_principal(),
+                token_b: ck_usdc_principal(),
+            },
+            Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
+        )
+        .unwrap();
+
+    let ck_usdc_usdc_base_pool_id =
+        update_call::<CreatePoolArgs, Result<CandidPoolId, CreatePoolError>>(
+            pic,
+            dex_principal_id(),
+            "create_pool",
+            CreatePoolArgs {
+                fee: Nat::from(100_u128),
+                sqrt_price_x96: Nat::from(79348275437447525686522247306_u128),
+                token_a: ic_usdc_base_principal(),
+                token_b: ck_usdc_principal(),
+            },
+            Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
+        )
+        .unwrap();
+
+    update_call::<MintPositionArgs, Result<Nat, MintPositionError>>(
+        pic,
+        dex_principal_id(),
+        "mint_position",
+        MintPositionArgs {
+            amount1_max: Nat::from(371340035_u128),
+            pool: ck_usdc_usdc_bsc_pool_id,
+            from_subaccount: None,
+            amount0_max: Nat::from(24075968775435293008_u128),
+            tick_lower: Int::from(-276_360),
+            tick_upper: Int::from(-276_280),
+        },
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
+    )
+    .unwrap();
+
+    update_call::<MintPositionArgs, Result<Nat, MintPositionError>>(
+        pic,
+        dex_principal_id(),
+        "mint_position",
+        MintPositionArgs {
+            amount1_max: Nat::from(62998876_u128),
+            pool: ck_usdc_usdc_base_pool_id,
+            from_subaccount: None,
+            amount0_max: Nat::from(18874016_u128),
+            tick_lower: Int::from(-32),
+            tick_upper: Int::from(49),
+        },
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
+    )
+    .unwrap();
 }

@@ -103,7 +103,7 @@ pub struct CreatePoolArgs {
     pub token_b: Principal,
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(CandidType, Deserialize, Debug)]
 pub enum CreatePoolError {
     InvalidSqrtPriceX96,
     InvalidFeeAmount,
@@ -124,7 +124,7 @@ pub struct CrosschainSwapArgs {
     pub recipient: String,
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(CandidType, Deserialize, Debug)]
 pub enum DepositError {
     TemporarilyUnavailable(String),
     InvalidDestination(String),
@@ -462,7 +462,7 @@ pub struct MintPositionArgs {
     pub tick_upper: candid::Int,
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(CandidType, Deserialize, Debug)]
 pub enum MintPositionError {
     DepositError(DepositError),
     TickNotAlignedWithTickSpacing,
