@@ -40,7 +40,7 @@ use evm_minter::guard::retrieve_withdraw_guard;
 use evm_minter::icrc_client::runtime::IcrcBoundedRuntime;
 use evm_minter::icrc_client::{LedgerBurnError, LedgerClient};
 use evm_minter::lifecycle::MinterArg;
-use evm_minter::logs::INFO;
+use evm_minter::logs::{DEBUG, INFO};
 use evm_minter::lsm_client::lazy_add_native_ls_to_lsm_canister;
 use evm_minter::memo::BurnMemo;
 use evm_minter::numeric::{BlockNumber, Erc20Value, LedgerBurnIndex, Wei};
@@ -53,7 +53,7 @@ use evm_minter::state::transactions::{
     ReimbursementIndex, ReimbursementRequest,
 };
 use evm_minter::state::{
-    lazy_call_ecdsa_public_key, mutate_state, read_state, transactions, State, TwinUSDCInfo, STATE,
+    lazy_call_ecdsa_public_key, mutate_state, read_state, transactions, State, STATE,
 };
 use evm_minter::storage::set_rpc_api_key;
 use evm_minter::swap::{
@@ -355,6 +355,9 @@ async fn get_minter_info() -> MinterInfo {
                     timestamp: estimate.0,
                 },
             ),
+            next_swap_ledger_burn_index: s
+                .next_swap_ledger_burn_index
+                .map(|index| index.get().into()),
         }
     })
 }
@@ -1018,6 +1021,12 @@ async fn check_new_deposits() {
 
 #[update]
 async fn dex_order(args: DexOrderArgs) -> Result<(), DexOrderError> {
+    log!(
+        INFO,
+        "[dex_order]: Starting dex order processing for tx_id: {:?}",
+        args.tx_id
+    );
+
     let (
         is_swapping_active,
         twin_usdc_info,
@@ -1039,6 +1048,10 @@ async fn dex_order(args: DexOrderArgs) -> Result<(), DexOrderError> {
     });
 
     if !is_swapping_active {
+        log!(
+            DEBUG,
+            "[dex_order]: Swapping is not active, rejecting order"
+        );
         panic!("SWAPPING NOT ACTIVE");
     }
 
@@ -1058,6 +1071,11 @@ async fn dex_order(args: DexOrderArgs) -> Result<(), DexOrderError> {
         panic!("Only appic DEX canister is authorized to call this function");
     }
 
+    log!(
+        INFO,
+        "[dex_order]: Building swap request for tx_id: {:?}",
+        args.tx_id
+    );
     let swap_request_result = build_dex_swap_request(
         &args,
         &twin_usdc_info,
@@ -1071,14 +1089,32 @@ async fn dex_order(args: DexOrderArgs) -> Result<(), DexOrderError> {
 
     let result = match swap_request_result {
         Ok(swap_request) => {
+            log!(
+                INFO,
+                "[dex_order]: Successfully built swap request for tx_id: {:?}, with request {:?}",
+                args.tx_id,
+                swap_request
+            );
             mutate_state(|s| process_event(s, EventType::AcceptedSwapRequest(swap_request)));
             Ok(())
         }
         Err(err) if is_quarantine_error(&err) => {
+            log!(
+                DEBUG,
+                "[dex_order]: Quarantining dex order for tx_id: {:?} due to error: {:?}",
+                args.tx_id,
+                err
+            );
             mutate_state(|s| process_event(s, EventType::QuarantinedDexOrder(args.clone())));
             Err(err)
         }
         Err(err) => {
+            log!(
+                INFO,
+                "[dex_order]: Failed to build swap request for tx_id: {:?} for reason {:?}",
+                args.tx_id,
+                err
+            );
             match build_dex_swap_refund_request(
                 &args,
                 &twin_usdc_info,
@@ -1091,12 +1127,23 @@ async fn dex_order(args: DexOrderArgs) -> Result<(), DexOrderError> {
             .await
             {
                 Ok(refund_swap_request) => {
+                    log!(
+                        INFO,
+                        "[dex_order]: Successfully built refund request for tx_id: {:?}",
+                        args.tx_id
+                    );
                     mutate_state(|s| {
                         process_event(s, EventType::AcceptedSwapRequest(refund_swap_request))
                     });
                     Err(err)
                 }
                 Err(refund_err) => {
+                    log!(
+                        DEBUG,
+                        "[dex_order]: Failed to build refund request for tx_id: {:?}, with refund error {:?}",
+                        args.tx_id,
+                        refund_err
+                    );
                     mutate_state(|s| {
                         process_event(s, EventType::QuarantinedDexOrder(args.clone()))
                     });
@@ -1106,6 +1153,11 @@ async fn dex_order(args: DexOrderArgs) -> Result<(), DexOrderError> {
         }
     };
 
+    log!(
+        INFO,
+        "[dex_order]: Scheduling retrieve tokens for tx_id: {:?}",
+        args.tx_id
+    );
     ic_cdk_timers::set_timer(Duration::from_secs(0), || {
         ic_cdk::futures::spawn_017_compat(process_retrieve_tokens_requests())
     });

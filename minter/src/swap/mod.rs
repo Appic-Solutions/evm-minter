@@ -1,8 +1,11 @@
 use candid::Principal;
+use ic_canister_log::log;
+use ic_stable_structures::log;
 
 use crate::candid_types::dex_orders::DexOrderError;
 use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
+use crate::logs::DEBUG;
 use crate::rpc_declarations::Data;
 use crate::state::balances::{release_gas_from_tank_with_usdc, ReleaseGasFromTankError};
 use crate::state::transactions::data::Command;
@@ -23,7 +26,7 @@ pub async fn build_dex_swap_request(
     args: &DexOrderArgs,
     twin_usdc_info: &TwinUSDCInfo,
     gas_usd_price: f64,
-    signing_fee: Erc20Value,
+    actual_signing_fee: Erc20Value,
     swap_contract: Address,
     evm_network: EvmNetwork,
     from: Principal,
@@ -40,19 +43,34 @@ pub async fn build_dex_swap_request(
     // if the max transaction fee is specified in the request use that, else use the estimated tx
     // fee, in the refund transactions the max fee is not represented thats why we should calculate
     // it.
-    let max_transaction_fee = match args.max_gas_fee_amount(gas_usd_price) {
-        Some(max_transaction_fee) => max_transaction_fee,
-        None => erc20_tx_fee,
-    };
+    let max_transaction_fee =
+        match args.max_gas_fee_amount(actual_signing_fee, twin_usdc_info.decimals, gas_usd_price) {
+            Some(max_transaction_fee) => max_transaction_fee,
+            None => erc20_tx_fee,
+        };
 
-    let max_gas_fee_twin_usdc = match args.max_gas_fee_twin_usdc_amount(twin_usdc_info.decimals) {
-        Some(max_gas_fee_twin_usdc) => max_gas_fee_twin_usdc,
-        None => MaxFeeUsd::twin_usdc_from_native_wei(
-            max_transaction_fee,
-            gas_usd_price,
-            twin_usdc_info.decimals,
-        )
-        .map_err(DexOrderError::TemporarilyUnavailable)?,
+    let max_gas_fee_twin_usdc = match args
+        .max_gas_fee_twin_usdc_amount(twin_usdc_info.decimals, actual_signing_fee)
+    {
+        Some(max_gas_fee_twin_usdc) => {
+            log!(
+                DEBUG,
+                "[dex_order]: Using specified max gas fee in twin USDC: {:?}",
+                max_gas_fee_twin_usdc
+            );
+            max_gas_fee_twin_usdc
+        }
+        None => {
+            let converted_fee = MaxFeeUsd::twin_usdc_from_native_wei(
+                max_transaction_fee,
+                gas_usd_price,
+                twin_usdc_info.decimals,
+            )
+            .map_err(DexOrderError::TemporarilyUnavailable)?;
+            log!(DEBUG, "[dex_order]: Calculated max gas fee in twin USDC: {:?} from max_transaction_fee: {:?}", 
+            converted_fee, max_transaction_fee);
+            converted_fee
+        }
     };
 
     let l1_fee = match evm_network {
@@ -65,6 +83,12 @@ pub async fn build_dex_swap_request(
         .unwrap_or(Wei::MAX);
 
     if max_transaction_fee < total_required_fee {
+        log!(
+            DEBUG,
+            "[dex_order]: Max transaction fee too low: {:?}, required: {:?}",
+            max_transaction_fee,
+            total_required_fee
+        );
         return Err(DexOrderError::MaxUsdFeeTooLow);
     }
 
@@ -73,20 +97,20 @@ pub async fn build_dex_swap_request(
     let now = ic_cdk::api::time();
     let erc20_ledger_burn_index = args.erc20_ledger_burn_index();
 
-    let (erc20_amount_in, min_amount_out, commands, commands_data) =
-        prepare_order_details(args, max_gas_fee_twin_usdc, signing_fee)?;
+    let (erc20_amount_in, min_amount_out, all_twin_usdc_fees, commands, commands_data) =
+        prepare_order_details(args, max_gas_fee_twin_usdc, actual_signing_fee)?;
 
     let native_ledger_burn_index =
-        release_gas_from_tank_with_usdc(max_gas_fee_twin_usdc, max_transaction_fee, args.tx_id())
+        release_gas_from_tank_with_usdc(all_twin_usdc_fees, max_transaction_fee, args.tx_id())
             .map_err(
-            |ReleaseGasFromTankError {
-                 requested,
-                 available,
-             }| DexOrderError::NotEnoughGasInGasTank {
-                requested: requested.into(),
-                available: available.into(),
-            },
-        )?;
+                |ReleaseGasFromTankError {
+                     requested,
+                     available,
+                 }| DexOrderError::NotEnoughGasInGasTank {
+                    requested: requested.into(),
+                    available: available.into(),
+                },
+            )?;
 
     Ok(ExecuteSwapRequest {
         max_transaction_fee,
@@ -116,16 +140,20 @@ fn prepare_order_details(
     args: &DexOrderArgs,
     max_gas_fee_twin_usdc: Erc20Value,
     signing_fee: Erc20Value,
-) -> Result<(Erc20Value, Erc20Value, Vec<Command>, Vec<Data>), DexOrderError> {
+) -> Result<(Erc20Value, Erc20Value, Erc20Value, Vec<Command>, Vec<Data>), DexOrderError> {
     let amount_in =
         Erc20Value::try_from(args.amount_in.clone()).map_err(|_| DexOrderError::InvalidAmount)?;
     let min_amount_out = Erc20Value::try_from(args.min_amount_out.clone())
         .map_err(|_| DexOrderError::InvalidAmount)?;
+
+    let all_twin_usdc_fees = max_gas_fee_twin_usdc
+        .checked_add(signing_fee)
+        .unwrap_or(Erc20Value::MAX);
+
     let amount_in_minus_fees = amount_in
-        .checked_sub(max_gas_fee_twin_usdc)
-        .ok_or(DexOrderError::UsdcAmountInTooLow)?
-        .checked_sub(signing_fee)
+        .checked_sub(all_twin_usdc_fees)
         .ok_or(DexOrderError::UsdcAmountInTooLow)?;
+
     let commands_data =
         decode_commands_data(&args.commands_data).map_err(DexOrderError::InvalidCommandData)?;
     let commands = args
@@ -136,6 +164,7 @@ fn prepare_order_details(
     Ok((
         amount_in_minus_fees,
         min_amount_out,
+        all_twin_usdc_fees,
         commands,
         commands_data,
     ))
@@ -178,14 +207,16 @@ pub async fn build_dex_swap_refund_request(
     )
     .map_err(|_| DexOrderError::UsdcAmountInTooLow)?;
 
+    let all_twin_usdc_fees = max_gas_fee_twin_usdc
+        .checked_add(signing_fee)
+        .unwrap_or(Erc20Value::MAX);
+
     let amount_in = original_amount
-        .checked_sub(max_gas_fee_twin_usdc)
-        .ok_or(DexOrderError::UsdcAmountInTooLow)?
-        .checked_sub(signing_fee)
+        .checked_sub(all_twin_usdc_fees)
         .ok_or(DexOrderError::UsdcAmountInTooLow)?;
 
     let native_ledger_burn_index =
-        release_gas_from_tank_with_usdc(max_gas_fee_twin_usdc, fee_to_be_deducted, args.tx_id())
+        release_gas_from_tank_with_usdc(all_twin_usdc_fees, fee_to_be_deducted, args.tx_id())
             .map_err(
                 |ReleaseGasFromTankError {
                      requested,

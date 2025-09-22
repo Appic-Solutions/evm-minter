@@ -16,7 +16,7 @@ pub struct UpgradeArgs {
     pub upgrade_minters: Option<Vec<CandidMinter>>,
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(CandidType, Deserialize, Debug)]
 pub struct CandidPoolId {
     pub fee: candid::Nat,
     pub token0: Principal,
@@ -363,7 +363,7 @@ pub struct GetEventsResult {
     pub events: Vec<CandidEvent>,
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(CandidType, Deserialize, Debug)]
 pub struct CandidPoolState {
     pub sqrt_price_x96: candid::Nat,
     pub pool_reserves0: candid::Nat,
@@ -508,7 +508,7 @@ pub enum SwapOrderCreationError {
     InvalidRecipient(String),
     FailedRlpDecoding,
     InvalidRlpData(RlpDecodeError),
-    InvalidIcpSwapStep,
+    InvalidIcpSwapStep(SwapError),
 }
 
 #[derive(CandidType, Deserialize)]
@@ -545,7 +545,7 @@ pub enum QuoteArgs {
     QuoteExactInputSingleParams(QuoteExactSingleParams),
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(CandidType, Deserialize, Debug)]
 pub enum QuoteError {
     InvalidAmount,
     PoolNotInitialized,

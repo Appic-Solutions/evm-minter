@@ -83,6 +83,33 @@ impl MaxFeeUsd {
             .ok_or("Amount too large for u128".to_string())?;
         Ok(Erc20Value::from(amount_u128))
     }
+
+    pub fn native_wei_from_twin_usdc(
+        usdc_amount: Erc20Value,
+        native_price_usd: f64,
+        decimals: u8,
+    ) -> Result<Wei, String> {
+        if native_price_usd <= 0.0 {
+            return Err("Native price must be positive".to_string());
+        }
+        let usdc_dec =
+            Decimal::from_f64(usdc_amount.as_f64()).ok_or("Invalid USDC amount".to_string())?;
+        let ten = Decimal::from(10);
+        let usdc_decimals = ten.powu(decimals as u64);
+        let usd_value = usdc_dec / usdc_decimals;
+        let native_price =
+            Decimal::from_f64(native_price_usd).ok_or("Invalid native price value".to_string())?;
+        if native_price.is_zero() {
+            return Err("Native price cannot be zero".to_string());
+        }
+        let native_units = usd_value / native_price;
+        let native_decimals = ten.powu(18u64);
+        let wei_dec = native_units * native_decimals;
+        let wei_u128 = wei_dec
+            .to_u128()
+            .ok_or("Amount too large for u128".to_string())?;
+        Ok(Wei::from(wei_u128))
+    }
 }
 
 #[cfg(test)]

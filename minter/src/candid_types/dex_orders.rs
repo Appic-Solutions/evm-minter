@@ -22,15 +22,17 @@ pub struct DexOrderArgs {
     pub commands_data: Vec<String>,
     #[n(5)]
     pub max_gas_fee_usd: Option<String>,
-    #[cbor(n(6), with = "crate::cbor::nat")]
-    pub gas_limit: Nat,
+    #[n(6)]
+    pub signing_fee: Option<String>,
     #[cbor(n(7), with = "crate::cbor::nat")]
+    pub gas_limit: Nat,
+    #[cbor(n(8), with = "crate::cbor::nat")]
     pub deadline: Nat,
-    #[n(8)]
+    #[n(9)]
     pub recipient: String,
-    #[cbor(n(9), with = "crate::cbor::nat")]
+    #[cbor(n(10), with = "crate::cbor::nat")]
     pub erc20_ledger_burn_index: Nat,
-    #[n(10)]
+    #[n(11)]
     pub is_refund: bool,
 }
 
@@ -57,18 +59,45 @@ impl DexOrderArgs {
         self.amount_in.clone()
     }
 
-    pub fn max_gas_fee_twin_usdc_amount(&self, twin_usdc_decimals: u8) -> Option<Erc20Value> {
-        MaxFeeUsd::new(&self.max_gas_fee_usd.clone()?)
+    pub fn max_gas_fee_twin_usdc_amount(
+        &self,
+        twin_usdc_decimals: u8,
+        canister_singing_fee: Erc20Value,
+    ) -> Option<Erc20Value> {
+        let max_fee_usd = MaxFeeUsd::new(&self.max_gas_fee_usd.clone()?)
             .ok()?
             .to_twin_usdc_amount(twin_usdc_decimals)
-            .ok()
+            .ok()?;
+
+        // dedicated_signing_fee_twin_usdc_amount - actuall canister signing fee
+        let unused_signing_fee = self
+            .dedicated_signing_fee_twin_usdc_amount(twin_usdc_decimals)
+            .unwrap_or(Erc20Value::ZERO)
+            .checked_sub(canister_singing_fee)
+            .unwrap_or(Erc20Value::ZERO);
+
+        Some(
+            max_fee_usd
+                .checked_add(unused_signing_fee)
+                .unwrap_or(max_fee_usd),
+        )
     }
 
-    pub fn max_gas_fee_amount(&self, native_token_usd_price_estimate: f64) -> Option<Wei> {
-        MaxFeeUsd::new(&self.max_gas_fee_usd.clone()?)
-            .ok()?
-            .to_native_wei(native_token_usd_price_estimate)
-            .ok()
+    pub fn max_gas_fee_amount(
+        &self,
+        canister_singing_fee: Erc20Value,
+        twin_usdc_decimals: u8,
+        native_token_usd_price_estimate: f64,
+    ) -> Option<Wei> {
+        let max_gas_fee_twin_usdc_amount =
+            self.max_gas_fee_twin_usdc_amount(twin_usdc_decimals, canister_singing_fee)?;
+
+        MaxFeeUsd::native_wei_from_twin_usdc(
+            max_gas_fee_twin_usdc_amount,
+            native_token_usd_price_estimate,
+            twin_usdc_decimals,
+        )
+        .ok()
     }
 
     pub fn erc20_ledger_burn_index(&self) -> LedgerBurnIndex {
@@ -78,6 +107,16 @@ impl DexOrderArgs {
                 .to_u64()
                 .expect("nat does not fit into u64"),
         )
+    }
+
+    pub fn dedicated_signing_fee_twin_usdc_amount(
+        &self,
+        twin_usdc_decimals: u8,
+    ) -> Option<Erc20Value> {
+        MaxFeeUsd::new(&self.signing_fee.clone()?)
+            .ok()?
+            .to_twin_usdc_amount(twin_usdc_decimals)
+            .ok()
     }
 }
 

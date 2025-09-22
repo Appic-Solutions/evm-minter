@@ -115,6 +115,7 @@ pub struct MinterInfo {
     pub swap_contract_address: Option<String>,
     pub twin_usdc_info: Option<CandidTwinUsdcInfo>,
     pub canister_signing_fee_twin_usdc_value: Option<Nat>,
+    pub next_swap_ledger_burn_index: Option<Nat>,
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug, Eq, PartialEq)]

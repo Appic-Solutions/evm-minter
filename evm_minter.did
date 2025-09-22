@@ -42,6 +42,7 @@ type DexOrderArgs = record {
   gas_limit : nat;
   amount_in : nat;
   commands : blob;
+  signing_fee : opt text;
   commands_data : vec text;
 };
 type DexOrderError = variant {
@@ -428,6 +429,7 @@ type MinterInfo = record {
   last_gas_fee_estimate : opt GasFeeEstimate;
   native_twin_token_ledger_id : opt principal;
   helper_smart_contract_address : opt text;
+  next_swap_ledger_burn_index : opt nat;
   swap_canister_id : opt principal;
   minimum_withdrawal_amount : opt nat;
   withdrawal_native_fee : opt nat;

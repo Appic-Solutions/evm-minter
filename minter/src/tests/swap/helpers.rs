@@ -2,16 +2,21 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use alloy_primitives::Address;
-use candid::Int;
+use candid::{Int, Nat, Principal};
 use icrc_ledger_types::icrc1::account::Account;
 use icrc_ledger_types::icrc2::approve::{ApproveArgs, ApproveError};
+use pocket_ic::PocketIc;
 
 use crate::candid_types::chain_data::ChainData;
-use crate::candid_types::{ActivateSwapReqest, AddErc20Token, MinterInfo, RequestScrapingError};
+use crate::candid_types::{
+    ActivateSwapReqest, AddErc20Token, CandidBlockTag, MinterInfo, RequestScrapingError,
+};
 use crate::evm_config::EvmNetwork;
+use crate::lifecycle::{InitArg, MinterArg};
 use crate::tests::dex_types::{
-    CandidMinter, CandidPoolId, CreatePoolArgs, CreatePoolError, MintPositionArgs,
-    MintPositionError, UpgradeArgs as DexUpgradeArgs,
+    CandidMinter, CandidPathKey, CandidPoolId, CandidPoolState, CreatePoolArgs, CreatePoolError,
+    MintPositionArgs, MintPositionError, QuoteArgs, QuoteError, QuoteExactParams,
+    UpgradeArgs as DexUpgradeArgs,
 };
 use crate::tests::lsm_types::{
     AddErc20Arg, AddErc20Error, Erc20Contract, LedgerInitArg, LedgerManagerInfo,
@@ -31,13 +36,11 @@ use crate::tests::pocket_ic_helpers::{
     create_appic_helper_canister, create_evm_rpc_canister, create_icp_ledger_canister,
     create_lsm_canister, create_pic, encode_call_args, five_ticks, icp_principal,
     install_appic_helper_canister, install_evm_rpc_canister, install_icp_ledger_canister,
-    install_lsm_canister, lsm_principal, minter_principal, query_call, update_call,
-    DEX_CANISTER_BYTES, INDEX_WAM_BYTES, LEDGER_WASM_BYTES, PROXY_CANISTER_BYTES, TWENTY_TRILLIONS,
-    TWO_TRILLIONS,
+    install_lsm_canister, lsm_principal, minter_principal, query_call, sender_principal,
+    update_call, DEX_CANISTER_BYTES, INDEX_WAM_BYTES, LEDGER_WASM_BYTES, MINTER_WASM_BYTES,
+    PROXY_CANISTER_BYTES, TWENTY_TRILLIONS, TWO_TRILLIONS,
 };
 use crate::{APPIC_CONTROLLER_PRINCIPAL, RPC_HELPER_PRINCIPAL, SCRAPING_CONTRACT_LOGS_INTERVAL};
-
-use super::*;
 
 use super::super::ledger_arguments::{
     ArchiveOptions, FeatureFlags as LedgerFeatureFlags, IndexArg, IndexInitArg,
@@ -84,7 +87,7 @@ fn install_bsc_minter_canister(pic: &PocketIc, canister_id: Principal) {
         native_ledger_transfer_fee: Nat::from(10_000_000_000_000_u128),
         next_transaction_nonce: Nat::from(0_u128),
         last_scraped_block_number: Nat::from(23_402_960_u128),
-        min_max_priority_fee_per_gas: Nat::from(3_000_000_000_u128),
+        min_max_priority_fee_per_gas: Nat::from(100_000_000_u128),
         ledger_suite_manager_id: "kmcdp-4yaaa-aaaag-ats3q-cai".parse().unwrap(),
         deposit_native_fee: Nat::from(0_u8),
         withdrawal_native_fee: Nat::from(100_000_000_000_000_u64),
@@ -339,7 +342,7 @@ fn install_dex_canister(pic: &PocketIc, canister_id: Principal) {
                 CandidMinter {
                     id: base_minter_principal(),
                     chain_id: 8453,
-                    twin_usdc_principal: base_minter_principal(),
+                    twin_usdc_principal: ic_usdc_base_principal(),
                     usdc_address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913".to_string(),
                 },
             ]),
@@ -598,12 +601,13 @@ pub fn create_and_install_minters_plus_dependency_canisters(pic: &PocketIc) {
     five_ticks(pic);
     five_ticks(pic);
 
-    install_bsc_minter_and_setup(pic);
-
-    five_ticks(pic);
-    five_ticks(pic);
-
     install_base_minter_and_setup(pic);
+
+    five_ticks(pic);
+    five_ticks(pic);
+    five_ticks(pic);
+
+    install_bsc_minter_and_setup(pic);
 
     five_ticks(pic);
     five_ticks(pic);
@@ -817,7 +821,7 @@ pub fn install_bsc_minter_and_setup(pic: &PocketIc) {
             twin_usdc_decimals: 18,
             dex_canister_id,
             // 5 cents
-            canister_signing_fee_twin_usdc_value: Nat::from(50_000_000_000_000_000_u128),
+            canister_signing_fee_twin_usdc_value: Nat::from(30_000_000_000_000_000_u128),
         },
         Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     );
@@ -1200,7 +1204,7 @@ pub fn install_base_minter_and_setup(pic: &PocketIc) {
             twin_usdc_decimals: 6,
             dex_canister_id,
             // 5 cents
-            canister_signing_fee_twin_usdc_value: Nat::from(50_000_u128),
+            canister_signing_fee_twin_usdc_value: Nat::from(30_000_u128),
         },
         Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     );
@@ -1503,4 +1507,34 @@ pub fn create_pools_and_provide_liquidty(pic: &PocketIc) {
         Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     )
     .unwrap();
+
+    //let all_pools = query_call::<(), Vec<(CandidPoolId, CandidPoolState)>>(
+    //    pic,
+    //    dex_principal_id(),
+    //    "get_pools",
+    //    (),
+    //);
+
+    let quote_result = query_call::<QuoteArgs, Result<Nat, QuoteError>>(
+        pic,
+        dex_principal_id(),
+        "quote",
+        QuoteArgs::QuoteExactInputParams(QuoteExactParams {
+            path: vec![
+                CandidPathKey {
+                    fee: Nat::from(100_u8),
+                    intermediary_token: ck_usdc_principal(),
+                },
+                CandidPathKey {
+                    fee: Nat::from(1_000_u128),
+                    intermediary_token: ic_usdc_bsc_principal(),
+                },
+            ],
+            exact_token: ic_usdc_base_principal(),
+            exact_amount: Nat::from(4300966_u128),
+        }),
+    )
+    .unwrap();
+
+    println!("all pools {:?}", quote_result);
 }

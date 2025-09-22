@@ -306,7 +306,6 @@ pub async fn mint_to_appic_dex_and_swap() {
         (
             s.swap_events_to_mint_to_appic_dex(),
             s.dex_canister_id
-                .clone()
                 .expect("Bug: This function should not be called if swapping is not active"),
             s.twin_usdc_info
                 .clone()
@@ -448,7 +447,14 @@ pub async fn mint_to_appic_dex_and_swap() {
             })
             .await
         {
-            Ok(_) => {}
+            Ok(notify_result) => {
+                log!(
+                    INFO,
+                    "Notified appic dex for swap order {:?} with result {:?}",
+                    swap_order,
+                    notify_result
+                );
+            }
             Err(err) => {
                 log!(INFO, "Failed to send a message to the appic dex: {err:?}");
                 error_count += 1;

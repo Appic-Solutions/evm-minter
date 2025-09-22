@@ -116,7 +116,8 @@ fn should_create_and_install_and_upgrade_minter_canister() {
                 native_balance: Nat::from(0_u8),
                 usdc_balance: Nat::from(0_u8)
             }),
-            last_native_token_usd_price_estimate: None
+            last_native_token_usd_price_estimate: None,
+            next_swap_ledger_burn_index: None
         }
     );
 
@@ -177,7 +178,8 @@ fn should_create_and_install_and_upgrade_minter_canister() {
                 native_balance: Nat::from(0_u8),
                 usdc_balance: Nat::from(0_u8)
             }),
-            last_native_token_usd_price_estimate: None
+            last_native_token_usd_price_estimate: None,
+            next_swap_ledger_burn_index: None
         }
     );
 }

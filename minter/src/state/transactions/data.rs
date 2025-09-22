@@ -9,7 +9,7 @@ use minicbor::{Decode, Encode};
 // Existing selectors
 pub const ERC_20_TRANSFER_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("a9059cbb");
 pub const ERC_20_APPROVE_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("095ea7b3");
-pub const EXECUTE_SWAP_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("13178b7a");
+pub const EXECUTE_SWAP_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("4a227646");
 
 // Command enum
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Encode, Decode)]
@@ -197,7 +197,7 @@ impl TransactionCallData {
             }
             EXECUTE_SWAP_FUNCTION_SELECTOR => {
                 // Decode using Alloy
-                let call = executeSwapCall::abi_decode(&data[4..], true)
+                let call = executeSwapCall::abi_decode(data, true)
                     .map_err(|e| format!("Decode error: {e}"))?;
 
                 // Convert back to your types
