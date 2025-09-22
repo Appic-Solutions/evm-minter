@@ -261,32 +261,40 @@ pub fn process_failed_swaps(gas_fee_estimate: GasFeeEstimate) {
         Err(_) => return,
     };
 
+    let all_twin_usdc_fees = max_gas_fee_twin_usdc
+        .checked_add(signing_fee)
+        .unwrap_or(Erc20Value::MAX);
+
     for (_previous_native_ledger_burn_index, request) in
         read_state(|s| s.withdrawal_transactions.failed_swap_requests())
     {
         let amount_in = request
             .erc20_amount_in
-            .checked_sub(max_gas_fee_twin_usdc)
-            .unwrap_or(Erc20Value::ZERO)
-            .checked_sub(signing_fee)
+            .checked_sub(all_twin_usdc_fees)
             .unwrap_or(Erc20Value::ZERO);
 
         if amount_in == Erc20Value::ZERO {
+            log!(
+                INFO,
+                "[create_refund_swap_erquest]: Failed to create refund swap request the request will be Quarantined with swap tx id {:?}",
+                request.swap_tx_id
+            );
+
             mutate_state(|s| process_event(s, EventType::QuarantinedSwapRequest(request.clone())));
         }
 
         let native_ledger_burn_index = match release_gas_from_tank_with_usdc(
-            max_gas_fee_twin_usdc,
+            all_twin_usdc_fees,
             fee_to_be_deducted,
             request.swap_tx_id.clone(),
         ) {
             Ok(native_ledger_burn_index) => native_ledger_burn_index,
             Err(err) => {
                 log!(
-                        INFO,
-                        "[create_refund_withdrawal_request]: Failed to release gas from gas tank low balance {:?}",
-                        err
-                    );
+                    INFO,
+                    "[create_refund_swap_erquest]: Failed to release gas from gas tank low balance {:?}",
+                    err
+                );
                 continue;
             }
         };
@@ -315,6 +323,13 @@ pub fn process_failed_swaps(gas_fee_estimate: GasFeeEstimate) {
             gas_estimate: REFUND_FAILED_SWAP_GAS_LIMIT,
             is_refund: true,
         };
+
+        log!(
+            INFO,
+            "[create_refund_swap_erquest]: Successfully created the refund request for swap {:?} with request {:?}",
+            request.swap_tx_id,
+            request
+        );
 
         mutate_state(|s| process_event(s, EventType::AcceptedSwapRequest(request)))
     }

@@ -1,6 +1,5 @@
 use candid::Principal;
 use ic_canister_log::log;
-use ic_stable_structures::log;
 
 use crate::candid_types::dex_orders::DexOrderError;
 use crate::eth_types::Address;

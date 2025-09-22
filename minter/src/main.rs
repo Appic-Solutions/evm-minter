@@ -1129,8 +1129,9 @@ async fn dex_order(args: DexOrderArgs) -> Result<(), DexOrderError> {
                 Ok(refund_swap_request) => {
                     log!(
                         INFO,
-                        "[dex_order]: Successfully built refund request for tx_id: {:?}",
-                        args.tx_id
+                        "[dex_order]: Successfully built refund request for tx_id: {:?} {:?}",
+                        args.tx_id,
+                        refund_swap_request
                     );
                     mutate_state(|s| {
                         process_event(s, EventType::AcceptedSwapRequest(refund_swap_request))

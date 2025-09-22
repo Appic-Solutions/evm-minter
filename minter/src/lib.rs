@@ -36,9 +36,9 @@ mod tests;
 
 // Log scraping can also be requested manually
 pub const SCRAPING_CONTRACT_LOGS_INTERVAL: Duration = Duration::from_secs(20 * 60);
-pub const PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL: Duration = Duration::from_secs(1 * 60);
-pub const PROCESS_REIMBURSEMENT: Duration = Duration::from_secs(1 * 60);
-pub const PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_RETRY_INTERVAL: Duration = Duration::from_secs(30);
+pub const PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL: Duration = Duration::from_secs(60);
+pub const PROCESS_REIMBURSEMENT: Duration = Duration::from_secs(60);
+pub const PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 pub const MINT_RETRY_DELAY: Duration = Duration::from_secs(30);
 
 pub const APPIC_CONTROLLER_PRINCIPAL: &str =
