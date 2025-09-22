@@ -621,21 +621,6 @@ pub fn create_and_install_minters_plus_dependency_canisters(pic: &PocketIc) {
     create_pools_and_provide_liquidty(pic);
 }
 
-#[test]
-fn add_usdc_tokens_and_create_usdc_pools() {
-    let pic = create_pic();
-    create_and_install_minters_plus_dependency_canisters(&pic);
-
-    five_ticks(&pic);
-    five_ticks(&pic);
-
-    let canister_http_requests = pic.get_canister_http();
-
-    print!("{:?}", canister_http_requests);
-
-    assert!(false)
-}
-
 pub fn install_bsc_minter_and_setup(pic: &PocketIc) {
     // Create and install minter canister for bsc test net
     let bsc_minter_id = create_bsc_minter_canister(pic);

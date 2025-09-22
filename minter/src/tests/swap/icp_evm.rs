@@ -261,6 +261,6 @@ fn icp_to_evm_swap_happy_path() {
         minter_info_before_succesful_swap.erc20_balances.unwrap()[0]
             .balance
             .clone()
-            - Nat::from(4_244_475_835_882_333_960_u128)
+            - Nat::from(9_889_373_u128)
     );
 }

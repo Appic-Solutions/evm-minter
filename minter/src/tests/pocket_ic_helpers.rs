@@ -205,7 +205,10 @@ fn should_create_and_install_all_minter_dependency_canisters() {
                 cycles_top_up_increment: Nat::from(FOUR_TRILLIONS),
             },
             more_controller_ids: vec![sender_principal()],
-            minter_ids: vec![(Nat::from(56_u64), minter_principal())],
+            minter_ids: vec![
+                (Nat::from(56_u64), minter_principal()),
+                (Nat::from(8453_u64), base_minter_principal())
+            ],
             ledger_suite_version: Some(LedgerSuiteVersion {
                 ledger_compressed_wasm_hash: WasmHash::new(LEDGER_WASM_BYTES.to_vec()).to_string(),
                 index_compressed_wasm_hash: WasmHash::new(INDEX_WAM_BYTES.to_vec()).to_string(),
