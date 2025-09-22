@@ -8,7 +8,6 @@ use crate::{
         withdraw_native::{WithdrawalDetail, WithdrawalSearchParameter},
         MinterInfo, RequestScrapingError,
     },
-    eth_types::Address,
     tests::{
         minter_flow_tets::mock_rpc_https_responses::{
             generate_and_submit_mock_http_response, MOCK_BSC_FEE_HISTORY_INNER,

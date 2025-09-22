@@ -135,7 +135,7 @@ pub enum DepositError {
     InsufficientFunds { balance: candid::Nat },
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(CandidType, Deserialize, Debug)]
 pub enum RlpDecodeError {
     InvalidAmount,
     InvalidTokenAddress(String),
@@ -148,7 +148,7 @@ pub enum RlpDecodeError {
     MissingField,
 }
 
-#[derive(CandidType, Deserialize)]
+#[derive(CandidType, Deserialize, Debug)]
 pub enum CrosschainSwapError {
     DepositError(DepositError),
     InvalidEncodedData(RlpDecodeError),

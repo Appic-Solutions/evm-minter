@@ -304,7 +304,7 @@ fn install_base_index_canister(pic: &PocketIc, canister_id: Principal) {
     );
 }
 
-fn dex_principal_id() -> Principal {
+pub fn dex_principal_id() -> Principal {
     Principal::from_text("nbepk-iyaaa-aaaad-qhlma-cai").unwrap()
 }
 
@@ -353,7 +353,7 @@ fn install_dex_canister(pic: &PocketIc, canister_id: Principal) {
     .unwrap();
 }
 
-fn ck_usdc_principal() -> Principal {
+pub fn ck_usdc_principal() -> Principal {
     Principal::from_text("xevnm-gaaaa-aaaar-qafnq-cai").unwrap()
 }
 

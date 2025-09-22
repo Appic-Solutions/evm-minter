@@ -391,7 +391,7 @@ const SAMPLE_CALLDATA_FOR_GET_L1_FEE:&str="49948e0e00000000000000000000000000000
 /// An `Option` containing the new  l1 fee estimate in `Wei` if successful, or `None` if the fetch fails.
 // we se default l1 fee instead of fetching it on-chain becuase its high enough to cover the any
 // sort of transaction cost.
-pub const DEFAULT_L1_BASE_GAS_FEE: Wei = Wei::new(10000000000000_u128);
+pub const DEFAULT_L1_BASE_GAS_FEE: Wei = Wei::new(1000000000000_u128);
 pub async fn lazy_fetch_l1_fee_estimate() -> Option<Wei> {
     let mut attempts = 0;
     const MAX_ATTEMPTS: u32 = 3;
