@@ -1,3 +1,4 @@
+pub mod data;
 #[cfg(test)]
 mod tests;
 
@@ -6,9 +7,11 @@ use crate::candid_types::{
     withdraw_native::WithdrawalStatus, RetrieveWithdrawalStatus, Transaction, TxFinalizedStatus,
 };
 use crate::evm_config::EvmNetwork;
+use crate::logs::INFO;
 use crate::map::MultiKeyMap;
 use crate::numeric::{GasAmount, LedgerMintIndex, TransactionCount, TransactionNonce};
-use crate::rpc_declarations::{Hash, TransactionReceipt, TransactionStatus};
+use crate::rpc_declarations::{Data, Hash, TransactionReceipt, TransactionStatus};
+use crate::state::transactions::data::{Command, TransactionCallData};
 use crate::tx::gas_fees::GasFeeEstimate;
 use crate::tx::{
     Eip1559TransactionRequest, FinalizedEip1559Transaction, ResubmissionStrategy,
@@ -19,11 +22,12 @@ use crate::{
     numeric::{Erc20TokenAmount, Erc20Value, LedgerBurnIndex, Wei},
 };
 use candid::Principal;
+use ic_canister_log::log;
 use icrc_ledger_types::icrc1::account::Account;
 use minicbor::{Decode, Encode};
 use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::fmt;
+use std::{fmt, panic};
 
 #[derive(Clone, Eq, PartialEq, Encode, Decode)]
 #[cbor(transparent)]
@@ -114,6 +118,110 @@ pub struct Erc20WithdrawalRequest {
     pub is_wrapped_mint: Option<bool>,
 }
 
+/// ERC-20(both unlocking erc20 tokens, and minting wrappped icrc tokens) withdrawal request issued by the user.
+#[derive(Clone, Eq, PartialEq, Encode, Decode)]
+pub struct Erc20Approve {
+    /// Amount of burn Native token that can be used to pay for the EVM transaction fees.
+    #[n(0)]
+    pub max_transaction_fee: Wei,
+    /// given approval for erc20_contract address
+    #[n(1)]
+    pub erc20_contract_address: Address,
+    // approval is given to this address
+    #[n(2)]
+    pub swap_contract_address: Address,
+    /// The transaction ID of the Native token burn operation on the native token ledger.
+    #[cbor(n(3), with = "crate::cbor::id")]
+    pub native_ledger_burn_index: LedgerBurnIndex,
+    /// The ERC20 ledger on which the minter burned the ERC20 tokens.
+    #[cbor(n(4), with = "crate::cbor::principal")]
+    pub from: Principal,
+    /// The subaccount from which the minter burned native.
+    #[n(5)]
+    pub from_subaccount: Option<Subaccount>,
+    /// The IC time at which the withdrawal request arrived.
+    #[n(6)]
+    pub created_at: u64,
+    /// Fee consumed for batch l1 submission, only applicable to some l2s like Op, and Base
+    #[n(7)]
+    pub l1_fee: Option<Wei>,
+    /// Fee taken for covering the signing, rpc calls, and other incfraustructure costs
+    #[n(8)]
+    pub withdrawal_fee: Option<Wei>,
+}
+
+///  Defines a struct for an ExecuteSwapRequest
+#[derive(Clone, Eq, PartialEq, Encode, Decode)]
+pub struct ExecuteSwapRequest {
+    /// Maximum amount of native token (e.g., ETH) that can be burned to cover EVM transaction fees
+    #[n(0)]
+    pub max_transaction_fee: Wei,
+    /// Address of the ERC-20 token to be swapped (often USDC as the input token)
+    #[n(1)]
+    pub erc20_token_in: Address,
+    /// Amount of the input ERC-20 token to be swapped
+    #[n(2)]
+    pub erc20_amount_in: Erc20Value,
+    /// Minimum amount of the output token expected from the swap (slippage protection)
+    #[n(3)]
+    pub min_amount_out: Erc20Value,
+    /// Address of the recipient who will receive the output tokens after the swap
+    #[n(4)]
+    pub recipient: Address,
+    /// Deadline for the swap transaction, typically a timestamp after which the transaction is invalid
+    #[n(5)]
+    pub deadline: Erc20Value,
+    /// List of commands to be executed as part of the swap (e.g., specific swap instructions or actions)
+    #[n(6)]
+    pub commands: Vec<Command>,
+    /// Additional data associated with the commands, providing parameters or details for execution
+    #[n(7)]
+    pub commands_data: Vec<Data>,
+
+    #[n(9)]
+    pub swap_contract: Address,
+
+    #[n(10)]
+    pub gas_estimate: GasAmount,
+
+    /// The transaction ID of the Native token burn operation on the native token ledger.
+    #[cbor(n(11), with = "crate::cbor::id")]
+    pub native_ledger_burn_index: LedgerBurnIndex,
+
+    /// The ERC20 ledger on which the minter burned the ERC20 tokens (USDC ledger in most cases).
+    #[cbor(n(12), with = "crate::cbor::principal")]
+    pub erc20_ledger_id: Principal,
+
+    /// The transaction ID of the ERC20 burn operation on the ERC20 ledger.
+    #[cbor(n(13), with = "crate::cbor::id")]
+    pub erc20_ledger_burn_index: LedgerBurnIndex,
+    /// The owner of the account from which the minter burned native.
+
+    #[cbor(n(14), with = "crate::cbor::principal")]
+    pub from: Principal,
+    /// The subaccount from which the minter burned native.
+
+    #[n(15)]
+    pub from_subaccount: Option<Subaccount>,
+    /// The IC time at which the withdrawal request arrived.
+    #[n(16)]
+    pub created_at: u64,
+
+    /// Fee consumed for batch l1 submission, only applicable to some l2s like Op, and Base
+    #[n(17)]
+    pub l1_fee: Option<Wei>,
+
+    /// Fee taken for covering the signing, rpc calls, and other incfraustructure costs
+    #[n(18)]
+    pub withdrawal_fee: Option<Wei>,
+
+    #[n(19)]
+    pub swap_tx_id: String,
+
+    #[n(20)]
+    pub is_refund: bool,
+}
+
 struct DebugPrincipal<'a>(&'a Principal);
 
 impl fmt::Debug for DebugPrincipal<'_> {
@@ -182,6 +290,82 @@ impl fmt::Debug for Erc20WithdrawalRequest {
     }
 }
 
+impl fmt::Debug for Erc20Approve {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        let Erc20Approve {
+            max_transaction_fee,
+            native_ledger_burn_index,
+            erc20_contract_address,
+            from,
+            from_subaccount,
+            created_at,
+            l1_fee,
+            withdrawal_fee,
+            swap_contract_address,
+        } = self;
+        f.debug_struct("Erc20Approve")
+            .field("max_transaction_fee", max_transaction_fee)
+            .field("erc20_contract_address", erc20_contract_address)
+            .field("native_ledger_burn_index", native_ledger_burn_index)
+            .field("from", &DebugPrincipal(from))
+            .field("from_subaccount", from_subaccount)
+            .field("created_at", created_at)
+            .field("l1_fee", l1_fee)
+            .field("withdrawal_fee", withdrawal_fee)
+            .field("swap_contract_address", swap_contract_address)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ExecuteSwapRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        let ExecuteSwapRequest {
+            max_transaction_fee,
+            erc20_token_in,
+            erc20_amount_in,
+            min_amount_out,
+            recipient,
+            deadline,
+            commands,
+            commands_data,
+            swap_contract,
+            gas_estimate,
+            native_ledger_burn_index,
+            erc20_ledger_id,
+            erc20_ledger_burn_index,
+            from,
+            from_subaccount,
+            created_at,
+            l1_fee,
+            withdrawal_fee,
+            swap_tx_id,
+            is_refund,
+        } = self;
+        f.debug_struct("ExecuteSwapRequest")
+            .field("max_transaction_fee", max_transaction_fee)
+            .field("erc20_token_in", erc20_token_in)
+            .field("erc20_amount_in", erc20_amount_in)
+            .field("min_amount_out", min_amount_out)
+            .field("recipient", recipient)
+            .field("deadline", deadline)
+            .field("commands", commands)
+            .field("commands_data", commands_data)
+            .field("swap_contract", swap_contract)
+            .field("gas_estimate", gas_estimate)
+            .field("native_ledger_burn_index", native_ledger_burn_index)
+            .field("erc20_ledger_id", &DebugPrincipal(erc20_ledger_id))
+            .field("erc20_ledger_burn_index", erc20_ledger_burn_index)
+            .field("from", &DebugPrincipal(from))
+            .field("from_subaccount", from_subaccount)
+            .field("created_at", created_at)
+            .field("l1_fee", l1_fee)
+            .field("withdrawal_fee", withdrawal_fee)
+            .field("swap_tx_id", swap_tx_id)
+            .field("is_refund", is_refund)
+            .finish()
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum WithdrawalSearchParameter {
     ByWithdrawalId(LedgerBurnIndex),
@@ -193,6 +377,8 @@ pub enum WithdrawalSearchParameter {
 pub enum WithdrawalRequest {
     Native(NativeWithdrawalRequest),
     Erc20(Erc20WithdrawalRequest),
+    Erc20Approve(Erc20Approve),
+    Swap(ExecuteSwapRequest),
 }
 
 impl WithdrawalRequest {
@@ -200,6 +386,8 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.ledger_burn_index,
             WithdrawalRequest::Erc20(request) => request.native_ledger_burn_index,
+            WithdrawalRequest::Erc20Approve(request) => request.native_ledger_burn_index,
+            WithdrawalRequest::Swap(request) => request.native_ledger_burn_index,
         }
     }
 
@@ -207,6 +395,8 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.created_at,
             WithdrawalRequest::Erc20(request) => Some(request.created_at),
+            WithdrawalRequest::Erc20Approve(request) => Some(request.created_at),
+            WithdrawalRequest::Swap(request) => Some(request.created_at),
         }
     }
 
@@ -215,6 +405,10 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.destination,
             WithdrawalRequest::Erc20(request) => request.destination,
+            WithdrawalRequest::Erc20Approve(_request) => {
+                panic!("Bug: Approval tx should not have a payee")
+            }
+            WithdrawalRequest::Swap(request) => request.recipient,
         }
     }
 
@@ -222,6 +416,8 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.l1_fee,
             WithdrawalRequest::Erc20(request) => request.l1_fee,
+            WithdrawalRequest::Erc20Approve(request) => request.l1_fee,
+            WithdrawalRequest::Swap(request) => request.l1_fee,
         }
     }
 
@@ -229,6 +425,8 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.withdrawal_fee,
             WithdrawalRequest::Erc20(request) => request.withdrawal_fee,
+            WithdrawalRequest::Erc20Approve(request) => request.withdrawal_fee,
+            WithdrawalRequest::Swap(request) => request.withdrawal_fee,
         }
     }
 
@@ -237,6 +435,8 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.destination,
             WithdrawalRequest::Erc20(request) => request.erc20_contract_address,
+            WithdrawalRequest::Erc20Approve(request) => request.erc20_contract_address,
+            WithdrawalRequest::Swap(request) => request.swap_contract,
         }
     }
 
@@ -244,6 +444,8 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => request.from,
             WithdrawalRequest::Erc20(request) => request.from,
+            WithdrawalRequest::Erc20Approve(request) => request.from,
+            WithdrawalRequest::Swap(request) => request.from,
         }
     }
 
@@ -251,6 +453,8 @@ impl WithdrawalRequest {
         match self {
             WithdrawalRequest::Native(request) => &request.from_subaccount,
             WithdrawalRequest::Erc20(request) => &request.from_subaccount,
+            WithdrawalRequest::Erc20Approve(request) => &request.from_subaccount,
+            WithdrawalRequest::Swap(request) => &request.from_subaccount,
         }
     }
 
@@ -260,6 +464,10 @@ impl WithdrawalRequest {
                 EventType::AcceptedNativeWithdrawalRequest(request)
             }
             WithdrawalRequest::Erc20(request) => EventType::AcceptedErc20WithdrawalRequest(request),
+            WithdrawalRequest::Erc20Approve(_request) => {
+                panic!("Bug: Approval tx is not a withdrawal tx")
+            }
+            WithdrawalRequest::Swap(request) => EventType::AcceptedSwapRequest(request),
         }
     }
 
@@ -284,6 +492,18 @@ impl From<NativeWithdrawalRequest> for WithdrawalRequest {
 impl From<Erc20WithdrawalRequest> for WithdrawalRequest {
     fn from(value: Erc20WithdrawalRequest) -> Self {
         WithdrawalRequest::Erc20(value)
+    }
+}
+
+impl From<ExecuteSwapRequest> for WithdrawalRequest {
+    fn from(value: ExecuteSwapRequest) -> Self {
+        WithdrawalRequest::Swap(value)
+    }
+}
+
+impl From<Erc20Approve> for WithdrawalRequest {
+    fn from(value: Erc20Approve) -> Self {
+        WithdrawalRequest::Erc20Approve(value)
     }
 }
 
@@ -341,6 +561,14 @@ impl From<&WithdrawalRequest> for ReimbursementIndex {
                     }
                 }
             }
+            WithdrawalRequest::Erc20Approve(request) => ReimbursementIndex::Native {
+                ledger_burn_index: request.native_ledger_burn_index,
+            },
+            WithdrawalRequest::Swap(request) => ReimbursementIndex::Erc20 {
+                native_ledger_burn_index: request.native_ledger_burn_index,
+                ledger_id: request.erc20_ledger_id,
+                erc20_ledger_burn_index: request.erc20_ledger_burn_index,
+            },
         }
     }
 }
@@ -436,8 +664,11 @@ pub enum ReimbursedError {
 ///    The others sent transactions for that nonce were never mined and can be discarded.
 /// 6. If a given transaction fails the minter will reimburse the user who requested the
 ///    withdrawal with the corresponding amount minus fees.
-/// #[derive(Clone, Debug, Eq, PartialEq)]
-
+///
+/// 7. If a swap requests transactions fails it will be converted into a Erc20 withdrawal requests to refund the
+///    users with USDC equivalent
+///
+/// 8. If the swap refund fails for any reason(low usdc amount or etc) it will be quarantined.
 #[derive(Clone, Debug, Eq, PartialEq)]
 
 pub struct WithdrawalTransactions {
@@ -456,6 +687,10 @@ pub struct WithdrawalTransactions {
     pub(in crate::state) maybe_reimburse: BTreeSet<LedgerBurnIndex>,
     pub(in crate::state) reimbursement_requests: BTreeMap<ReimbursementIndex, ReimbursementRequest>,
     pub(in crate::state) reimbursed: BTreeMap<ReimbursementIndex, ReimbursedResult>,
+
+    // Key = swap_tx_id
+    pub(in crate::state) failed_swap_requests: BTreeMap<String, ExecuteSwapRequest>,
+    pub(in crate::state) quarantined_swap_requests: BTreeMap<String, ExecuteSwapRequest>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -489,6 +724,8 @@ impl WithdrawalTransactions {
             maybe_reimburse: Default::default(),
             reimbursement_requests: Default::default(),
             reimbursed: Default::default(),
+            failed_swap_requests: Default::default(),
+            quarantined_swap_requests: Default::default(),
         }
     }
 
@@ -588,11 +825,25 @@ impl WithdrawalTransactions {
         match &withdrawal_request {
             WithdrawalRequest::Native(req) => {
                 assert!(
-                    req.withdrawal_amount > transaction.amount,
-                    "BUG: transaction amount should be the withdrawal amount deducted from transaction fees"
-                );
+                            req.withdrawal_amount > transaction.amount,
+                            "BUG: transaction amount should be the withdrawal amount deducted from transaction fees"
+                        );
             }
             WithdrawalRequest::Erc20(_req) => {
+                assert_eq!(
+                    Wei::ZERO,
+                    transaction.amount,
+                    "BUG: ERC-20 transaction amount should be zero"
+                );
+            }
+            WithdrawalRequest::Erc20Approve(_req) => {
+                assert_eq!(
+                    Wei::ZERO,
+                    transaction.amount,
+                    "BUG: ERC-20 transaction amount should be zero"
+                );
+            }
+            WithdrawalRequest::Swap(_req) => {
                 assert_eq!(
                     Wei::ZERO,
                     transaction.amount,
@@ -615,6 +866,12 @@ impl WithdrawalTransactions {
                 },
                 WithdrawalRequest::Erc20(erc20) => ResubmissionStrategy::GuaranteeEthAmount {
                     allowed_max_transaction_fee: erc20.max_transaction_fee,
+                },
+                WithdrawalRequest::Erc20Approve(req) => ResubmissionStrategy::GuaranteeEthAmount {
+                    allowed_max_transaction_fee: req.max_transaction_fee,
+                },
+                WithdrawalRequest::Swap(req) => ResubmissionStrategy::GuaranteeEthAmount {
+                    allowed_max_transaction_fee: req.max_transaction_fee,
                 },
             },
         };
@@ -821,7 +1078,29 @@ impl WithdrawalTransactions {
                     );
                 }
             }
+            WithdrawalRequest::Erc20Approve(_request) => {
+                if receipt.status == TransactionStatus::Failure {
+                    log!(INFO,"ERC20 approval failed, and there is no reimbursment for failed erc20 transactions");
+                }
+            }
+
+            WithdrawalRequest::Swap(request) => {
+                if receipt.status == TransactionStatus::Failure {
+                    self.record_failed_swap_request(request.clone());
+                }
+            }
         }
+    }
+
+    pub fn record_failed_swap_request(&mut self, request: ExecuteSwapRequest) {
+        self.failed_swap_requests
+            .insert(request.swap_tx_id.clone(), request);
+    }
+
+    pub fn record_quarantined_swap_request(&mut self, request: ExecuteSwapRequest) {
+        self.failed_swap_requests.remove(&request.swap_tx_id);
+        self.quarantined_swap_requests
+            .insert(request.swap_tx_id.clone(), request);
     }
 
     pub fn record_reimbursement_request(
@@ -874,7 +1153,7 @@ impl WithdrawalTransactions {
                     reimbursed_in_block,
                     reimbursed_amount: reimbursement_request.reimbursed_amount,
                     transaction_hash: reimbursement_request.transaction_hash,
-                    transfer_fee: transfer_fee
+                    transfer_fee,
                 }),
             ),
             None
@@ -912,7 +1191,7 @@ impl WithdrawalTransactions {
                         (request, WithdrawalStatus::TxFinalized(status), Some(tx))
                     }
                     _ => {
-                        panic!("Status of processed request is not found {:?}", request)
+                        panic!("Status of processed request is not found {request:?}")
                     }
                 }
             });
@@ -1104,6 +1383,10 @@ impl WithdrawalTransactions {
         self.finalized_tx.iter()
     }
 
+    pub fn failed_swap_requests(&self) -> Vec<(String, ExecuteSwapRequest)> {
+        self.failed_swap_requests.clone().into_iter().collect()
+    }
+
     pub fn is_sent_tx_empty(&self) -> bool {
         self.sent_tx.is_empty()
     }
@@ -1112,10 +1395,19 @@ impl WithdrawalTransactions {
         !self.pending_withdrawal_requests.is_empty()
             || !self.created_tx.is_empty()
             || !self.sent_tx.is_empty()
+            || !self.failed_swap_requests.is_empty()
+    }
+
+    pub fn is_failed_swaps_requests_empty(&self) -> bool {
+        self.failed_swap_requests.is_empty()
     }
 
     fn remove_withdrawal_request(&mut self, request: &WithdrawalRequest) {
         self.pending_withdrawal_requests.retain(|r| r != request);
+    }
+
+    pub fn remove_failed_swap_request_by_swap_tx_id(&mut self, swap_tx_id: &str) {
+        self.failed_swap_requests.remove(swap_tx_id);
     }
 
     fn expect_last_sent_tx_entry<'a>(
@@ -1269,52 +1561,85 @@ pub fn create_transaction(
                 access_list: Default::default(),
             })
         }
-    }
-}
+        WithdrawalRequest::Erc20Approve(request) => {
+            let request_max_fee_per_gas = request
+                .max_transaction_fee
+                .into_wei_per_gas(gas_limit)
+                .expect("BUG: gas_limit should be non-zero");
 
-// First 4 bytes of keccak256(transfer(address,uint256))
-const ERC_20_TRANSFER_FUNCTION_SELECTOR: [u8; 4] = hex_literal::hex!("a9059cbb");
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum TransactionCallData {
-    Erc20Transfer { to: Address, value: Erc20Value },
-}
-
-impl TransactionCallData {
-    /// Encode the transaction call data to interact with an Ethereum smart contract.
-    /// See the [Contract ABI Specification](https://docs.soliditylang.org/en/develop/abi-spec.html#contract-abi-specification).
-    pub fn encode(&self) -> Vec<u8> {
-        match self {
-            TransactionCallData::Erc20Transfer { to, value } => {
-                let mut data = Vec::with_capacity(68);
-                data.extend(ERC_20_TRANSFER_FUNCTION_SELECTOR);
-                data.extend(<[u8; 32]>::from(to));
-                data.extend(value.to_be_bytes());
-                data
+            let actual_min_max_fee_per_gas = gas_fee_estimate.min_max_fee_per_gas();
+            if actual_min_max_fee_per_gas > request_max_fee_per_gas {
+                return Err(CreateTransactionError::InsufficientTransactionFee {
+                    native_ledger_burn_index: request.native_ledger_burn_index,
+                    allowed_max_transaction_fee: request.max_transaction_fee,
+                    actual_max_transaction_fee: actual_min_max_fee_per_gas
+                        .transaction_cost(gas_limit)
+                        .unwrap_or(Wei::MAX),
+                });
             }
-        }
-    }
-
-    pub fn decode<T: AsRef<[u8]>>(data: T) -> Result<Self, String> {
-        let data = data.as_ref();
-        match data.get(0..4) {
-            Some(selector) if selector == ERC_20_TRANSFER_FUNCTION_SELECTOR => {
-                if data.len() != 68 {
-                    return Err("Invalid data length".to_string());
+            Ok(Eip1559TransactionRequest {
+                chain_id: evm_network.chain_id(),
+                nonce,
+                max_priority_fee_per_gas: gas_fee_estimate.max_priority_fee_per_gas,
+                max_fee_per_gas: request_max_fee_per_gas,
+                gas_limit,
+                destination: request.erc20_contract_address,
+                amount: Wei::ZERO,
+                data: TransactionCallData::Erc20Approve {
+                    spender: request.swap_contract_address,
+                    value: Erc20Value::MAX.checked_sub(Erc20Value::from(1_u8)).unwrap(),
                 }
-                let address = <[u8; 32]>::try_from(&data[4..36]).unwrap();
-                let to = Address::try_from(&address).unwrap();
+                .encode(),
+                access_list: Default::default(),
+            })
+        }
+        WithdrawalRequest::Swap(request) => {
+            // The transaction fee is already paid and must be at most
+            // the `max_transaction_fee` in the withdrawal request, which, given a gas limit, gives us an upper bound on
+            // the `max_fee_per_gas`. We allocate the maximum from the beginning to minimize
+            // transaction resubmissions: even if the `base_fee_per_gas` increases considerably,
+            // the transaction could still make it as long as `transaction.max_fee_per_gas >=  block.base_fee_per_gas`,
+            // since the `priority_fee_per_gas` received by the miner is capped to (see https://eips.ethereum.org/EIPS/eip-1559)
+            // min(transaction.max_priority_fee_per_gas, transaction.max_fee_per_gas - block.base_fee_per_gas).
 
-                let value = <[u8; 32]>::try_from(&data[36..]).unwrap();
-                let value = Erc20Value::from_be_bytes(value);
+            let request_max_fee_per_gas = request
+                .max_transaction_fee
+                .into_wei_per_gas(gas_limit)
+                .expect("BUG: gas_limit should be non-zero");
 
-                Ok(TransactionCallData::Erc20Transfer { to, value })
+            let actual_min_max_fee_per_gas = gas_fee_estimate.min_max_fee_per_gas();
+            if actual_min_max_fee_per_gas > request_max_fee_per_gas {
+                return Err(CreateTransactionError::InsufficientTransactionFee {
+                    native_ledger_burn_index: request.native_ledger_burn_index,
+                    allowed_max_transaction_fee: request.max_transaction_fee,
+                    actual_max_transaction_fee: actual_min_max_fee_per_gas
+                        .transaction_cost(gas_limit)
+                        .unwrap_or(Wei::MAX),
+                });
             }
-            Some(selector) => Err(format!(
-                "Unknown function selector 0x{:?}",
-                hex::encode(selector)
-            )),
-            None => Err("missing function selector".to_string()),
+
+            Ok(Eip1559TransactionRequest {
+                chain_id: evm_network.chain_id(),
+                nonce,
+                max_priority_fee_per_gas: gas_fee_estimate.max_priority_fee_per_gas,
+                max_fee_per_gas: request_max_fee_per_gas,
+                gas_limit,
+                destination: request.swap_contract,
+                amount: Wei::ZERO,
+                data: TransactionCallData::ExecuteSwap {
+                    commands: request.commands.clone(),
+                    data: request.commands_data.clone(),
+                    token_in: request.erc20_token_in,
+                    amount_in: request.erc20_amount_in,
+                    min_amount_out: request.min_amount_out,
+                    deadline: request.deadline,
+                    encoded_data: Data(Vec::new()),
+                    recipient: request.recipient,
+                    bridge_to_minter: false,
+                }
+                .encode(),
+                access_list: Default::default(),
+            })
         }
     }
 }

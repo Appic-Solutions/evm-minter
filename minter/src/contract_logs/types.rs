@@ -1,5 +1,6 @@
 use std::fmt;
 
+use crate::contract_logs::swap::swap_logs::ReceivedSwapEvent;
 use crate::eth_types::Address;
 use crate::numeric::{BlockNumber, Erc20Value, IcrcValue, LogIndex, Wei};
 use crate::rpc_declarations::Hash;
@@ -102,6 +103,12 @@ impl From<ReceivedBurnEvent> for ReceivedContractEvent {
 impl From<ReceivedWrappedIcrcDeployedEvent> for ReceivedContractEvent {
     fn from(event: ReceivedWrappedIcrcDeployedEvent) -> Self {
         ReceivedContractEvent::WrappedIcrcDeployed(event)
+    }
+}
+
+impl From<ReceivedSwapEvent> for ReceivedContractEvent {
+    fn from(event: ReceivedSwapEvent) -> Self {
+        ReceivedContractEvent::ReceivedSwapOrder(event)
     }
 }
 

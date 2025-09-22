@@ -37,7 +37,7 @@ use ic_canister_log::log;
 use num_traits::ToPrimitive;
 
 // We expect most of the calls to contain zero events.
-const ETH_GET_LOGS_INITIAL_RESPONSE_SIZE_ESTIMATE: u64 = 100;
+const ETH_GET_LOGS_INITIAL_RESPONSE_SIZE_ESTIMATE: u64 = 20_000;
 
 // This constant is our approximation of the expected header size.
 // The HTTP standard doesn't define any limit, and many implementations limit
@@ -238,10 +238,10 @@ impl RpcClient {
                     block: EvmBlockTag::Latest,
                 })
                 .await;
-            return results
+            results
                 .reduce()
                 .reduce_with_min_by_key(|transaction_count| *transaction_count)
-                .result;
+                .result
         } else {
             Err(MultiCallError::ConsistentEvmRpcCanisterError(String::from(
                 "EVM RPC canister can not be None",

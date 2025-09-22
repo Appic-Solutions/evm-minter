@@ -1,16 +1,16 @@
-use std::str::FromStr;
+//use std::str::FromStr;
 
 use crate::eth_types::Address;
 use crate::numeric::BlockNumber;
-use crate::rpc_declarations::{FixedSizeData, Topic};
+use crate::rpc_declarations::Topic;
 use crate::state::State;
 
 use super::parser::{LogParser, ReceivedEventsLogParser};
-use super::types::{
-    RECEIVED_DEPLOYED_WRAPPED_ICRC_TOKEN_EVENT_TOPIC,
-    RECEIVED_DEPOSITED_AND_BURNT_TOKENS_EVENT_TOPIC_NEW_CONTRACT,
-    RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT,
-};
+//use super::types::{
+//    RECEIVED_DEPLOYED_WRAPPED_ICRC_TOKEN_EVENT_TOPIC,
+//    RECEIVED_DEPOSITED_AND_BURNT_TOKENS_EVENT_TOPIC_NEW_CONTRACT,
+//    RECEIVED_DEPOSITED_TOKEN_EVENT_TOPIC_OLD_CONTRACT,
+//};
 
 pub struct Scrape {
     pub contract_addresses: Vec<Address>,
@@ -33,7 +33,7 @@ impl LogScraping for ReceivedEventsLogScraping {
     type Parser = ReceivedEventsLogParser;
 
     fn next_scrape(state: &State) -> Option<Scrape> {
-        let contract_addresses = state
+        let mut contract_addresses = state
             .helper_contract_addresses
             .clone()
             .expect("Scraping not activated");
@@ -41,14 +41,18 @@ impl LogScraping for ReceivedEventsLogScraping {
         let last_scraped_block_number = state.last_scraped_block_number;
 
         // We add native token address as 0;
-        let mut token_contract_addresses =
-            state.erc20_tokens.alt_keys().cloned().collect::<Vec<_>>();
+        //let mut token_contract_addresses =
+        //    state.erc20_tokens.alt_keys().cloned().collect::<Vec<_>>();
+
+        if let Some(swap_contract_address) = state.swap_contract_address {
+            contract_addresses.push(swap_contract_address);
+        }
 
         // Add native token
-        token_contract_addresses.push(
-            Address::from_str("0x0000000000000000000000000000000000000000")
-                .expect("Should not fail converting zero address"),
-        );
+        //token_contract_addresses.push(
+        //    Address::from_str("0x0000000000000000000000000000000000000000")
+        //        .expect("Should not fail converting zero address"),
+        //);
 
         let topics: Vec<_> = vec![
         //Topic::from(vec![

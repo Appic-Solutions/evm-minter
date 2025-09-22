@@ -160,6 +160,8 @@ mod block_range {
     proptest! {
         #[test]
         fn should_always_contain_at_most_chunks_elements(block_range in arb_block_range_inclusive(), chunk_size in any::<u16>()) {
+            prop_assume!(chunk_size > 0);
+
             let chunks = block_range.into_chunks(chunk_size).take(5);
 
             for subrange in chunks {

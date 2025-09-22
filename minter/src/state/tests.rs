@@ -14,6 +14,7 @@ use crate::numeric::{
 use crate::rpc_declarations::BlockTag;
 use crate::rpc_declarations::{TransactionReceipt, TransactionStatus};
 use crate::state::audit::apply_state_transition;
+use crate::state::balances::GasTank;
 use crate::state::event::{Event, EventType};
 use crate::state::transactions::{Erc20WithdrawalRequest, ReimbursementIndex};
 use crate::state::{Erc20Balances, State};
@@ -950,6 +951,8 @@ pub fn state_equivalence() {
             Ok(Reimbursed {transaction_hash:Some("0x06afc3c693dc2ba2c19b5c287c4dddce040d766bea5fd13c8a7268b04aa94f2d".parse().unwrap())
                 ,reimbursed_in_block:LedgerMintIndex::new(150),reimbursed_amount:Erc20TokenAmount::new(10_000_000_000_000),burn_in_block:LedgerBurnIndex::new(6), transfer_fee: None }),
         },
+        failed_swap_requests: Default::default(),
+        quarantined_swap_requests: Default::default(),
     };
     let mut erc20_tokens = DedupMultiKeyMap::default();
     erc20_tokens
@@ -1021,7 +1024,7 @@ pub fn state_equivalence() {
         native_ledger_transfer_fee: Wei::new(2_000_000_000_000_000),
         min_max_priority_fee_per_gas: WeiPerGas::new(1000),
         ledger_suite_manager_id: None,
-        swap_canister_id: None,
+        dex_canister_id: None,
         last_observed_block_time: None,
         withdrawal_native_fee: None,
         events_to_release: Default::default(),
@@ -1030,6 +1033,17 @@ pub fn state_equivalence() {
         icrc_balances: Default::default(),
         wrapped_icrc_tokens: Default::default(),
         last_log_scraping_time: None,
+        twin_usdc_info: None,
+        swap_contract_address: None,
+        is_swapping_active: false,
+        swap_events_to_mint_to_appic_dex: Default::default(),
+        last_native_token_usd_price_estimate: None,
+        canister_signing_fee_twin_usdc_amount: None,
+        gas_tank: GasTank::default(),
+        next_swap_ledger_burn_index: None,
+        quarantined_dex_orders: Default::default(),
+        swap_events_to_be_notified: Default::default(),
+        notified_swap_events: Default::default(),
     };
 
     assert_eq!(
@@ -1386,6 +1400,9 @@ mod native_balance {
         let erc20_balance_after_successful_withdrawal =
             state_after_successful_withdrawal.erc20_balances.clone();
 
+        let gas_tank_after_successful_withdrawal =
+            state_after_successful_withdrawal.gas_tank.clone();
+
         assert_eq!(
             native_balance_after_successful_withdrawal,
             NativeBalance {
@@ -1399,15 +1416,16 @@ mod native_balance {
                     .total_effective_tx_fees
                     .checked_add(Wei::from(98_449_949_997_000_u64))
                     .unwrap(),
-                total_unspent_tx_fees: native_balance_before_withdrawal
-                    .total_unspent_tx_fees
-                    .checked_add(Wei::from(65_945_724_957_000_u64))
-                    .unwrap(),
-                total_collected_operation_native_fee: native_balance_before_withdrawal
-                    .total_collected_operation_native_fee
-                    .checked_add(withdrawal_native_fee)
-                    .unwrap(),
+                total_unspent_tx_fees: Wei::ZERO,
+                total_collected_operation_native_fee: Wei::ZERO,
             }
+        );
+
+        assert_eq!(
+            gas_tank_after_successful_withdrawal.native_balance,
+            withdrawal_native_fee
+                .checked_add(Wei::from(65_945_724_957_000_u64))
+                .unwrap()
         );
 
         assert_eq!(
@@ -1461,10 +1479,7 @@ mod native_balance {
             &EventType::AcceptedDeposit(received_deposit_event()),
         );
 
-        let withdrawal_fee = state_before_withdrawal
-            .withdrawal_native_fee
-            .clone()
-            .unwrap();
+        let withdrawal_fee = state_before_withdrawal.withdrawal_native_fee.unwrap();
 
         let mut state_after_successful_withdrawal = state_before_withdrawal.clone();
         let native_balance_before_withdrawal = state_before_withdrawal.native_balance.clone();
@@ -1497,6 +1512,8 @@ mod native_balance {
         let erc20_balance_after_successful_withdrawal =
             state_after_successful_withdrawal.erc20_balances.clone();
 
+        let gas_tank_after_successful_withdrawal = state_after_successful_withdrawal.gas_tank;
+
         let charged_transaction_fee = withdrawal_request.max_transaction_fee;
         let effective_transaction_fee = effective_gas_price
             .transaction_cost(effective_gas_used)
@@ -1504,6 +1521,7 @@ mod native_balance {
         let unspent_tx_fee = charged_transaction_fee
             .checked_sub(effective_transaction_fee)
             .unwrap();
+
         assert_eq!(
             native_balance_after_successful_withdrawal,
             NativeBalance {
@@ -1517,16 +1535,16 @@ mod native_balance {
                     .total_effective_tx_fees
                     .checked_add(effective_transaction_fee)
                     .unwrap(),
-                total_unspent_tx_fees: native_balance_before_withdrawal
-                    .total_unspent_tx_fees
-                    .checked_add(unspent_tx_fee)
-                    .unwrap(),
-                total_collected_operation_native_fee: native_balance_before_withdrawal
-                    .total_collected_operation_native_fee
-                    .checked_add(withdrawal_fee)
-                    .unwrap()
+                total_unspent_tx_fees: Wei::ZERO,
+                total_collected_operation_native_fee: Wei::ZERO
             }
         );
+
+        assert_eq!(
+            gas_tank_after_successful_withdrawal.native_balance,
+            withdrawal_fee.checked_add(unspent_tx_fee).unwrap()
+        );
+
         assert_eq!(
             checked_sub(
                 erc20_balance_before_withdrawal.clone(),
@@ -1545,6 +1563,12 @@ mod native_balance {
             state_after_failed_withdrawal.native_balance.clone();
         let erc20_balance_after_failed_withdrawal =
             state_after_failed_withdrawal.erc20_balances.clone();
+        let gas_tank_after_failed_withdrawal = state_after_failed_withdrawal.gas_tank;
+
+        assert_eq!(
+            gas_tank_after_failed_withdrawal.native_balance,
+            gas_tank_after_successful_withdrawal.native_balance
+        );
         assert_eq!(
             native_balance_after_successful_withdrawal,
             native_balance_after_failed_withdrawal
@@ -1589,6 +1613,12 @@ mod native_balance {
                 }
                 WithdrawalRequest::Erc20(erc20_request) => {
                     EventType::AcceptedErc20WithdrawalRequest(erc20_request.clone())
+                }
+                WithdrawalRequest::Erc20Approve(erc20_approve) => {
+                    EventType::AcceptedSwapActivationRequest(erc20_approve.clone())
+                }
+                WithdrawalRequest::Swap(swap_request) => {
+                    EventType::AcceptedSwapRequest(swap_request.clone())
                 }
             };
             apply_state_transition(state, &accepted_withdrawal_request_event);
@@ -1824,7 +1854,7 @@ fn checked_sub(lhs: Erc20Balances, rhs: Erc20Balances) -> BTreeMap<Address, Erc2
                 .all(|rhs_erc20_contract| {
                     lhs.balance_by_erc20_contract
                         .contains_key(rhs_erc20_contract)
-                }), "BUG: Cannot subtract rhs {:?} to lhs {:?} since some ERC-20 contracts are missing in the lhs", rhs, lhs);
+                }), "BUG: Cannot subtract rhs {rhs:?} to lhs {lhs:?} since some ERC-20 contracts are missing in the lhs");
     let mut result = lhs.balance_by_erc20_contract.clone();
     for (erc20_contract, rhs_value) in rhs.balance_by_erc20_contract.into_iter() {
         match lhs.balance_by_erc20_contract.get(&erc20_contract).unwrap() {
@@ -1835,8 +1865,7 @@ fn checked_sub(lhs: Erc20Balances, rhs: Erc20Balances) -> BTreeMap<Address, Erc2
                 result.insert(erc20_contract, lhs_value.checked_sub(rhs_value).unwrap());
             }
             lhs_value => panic!(
-                "BUG: Cannot subtract rhs {:?} to lhs {:?} since it would underflow",
-                rhs_value, lhs_value
+                "BUG: Cannot subtract rhs {rhs_value:?} to lhs {lhs_value:?} since it would underflow"
             ),
         }
     }

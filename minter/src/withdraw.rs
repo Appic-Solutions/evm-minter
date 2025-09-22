@@ -2,16 +2,20 @@ use crate::evm_config::EvmNetwork;
 use crate::guard::TimerGuard;
 use crate::icrc_client::runtime::IcrcBoundedRuntime;
 use crate::logs::{DEBUG, INFO};
-use crate::numeric::{Erc20TokenAmount, GasAmount, LedgerBurnIndex, LedgerMintIndex};
+use crate::numeric::{
+    Erc20TokenAmount, Erc20Value, GasAmount, LedgerBurnIndex, LedgerMintIndex, Wei,
+};
 use crate::rpc_client::{MultiCallError, RpcClient};
 use crate::rpc_declarations::{SendRawTransactionResult, TransactionReceipt};
 use crate::state::audit::{process_event, EventType};
+use crate::state::balances::release_gas_from_tank_with_usdc;
 use crate::state::transactions::{
-    create_transaction, CreateTransactionError, Reimbursed, ReimbursementIndex,
+    create_transaction, CreateTransactionError, ExecuteSwapRequest, Reimbursed, ReimbursementIndex,
     ReimbursementRequest, WithdrawalRequest,
 };
 use crate::state::{mutate_state, State, TaskType};
-use crate::tx::gas_fees::{lazy_refresh_gas_fee_estimate, GasFeeEstimate};
+use crate::tx::gas_fees::{lazy_refresh_gas_fee_estimate, GasFeeEstimate, DEFAULT_L1_BASE_GAS_FEE};
+use crate::tx::gas_usd::MaxFeeUsd;
 use crate::{numeric::TransactionCount, state::read_state};
 use candid::Nat;
 use futures::future::join_all;
@@ -34,8 +38,16 @@ const TRANSACTIONS_TO_SEND_BATCH_SIZE: usize = 5;
 pub const NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(21_000);
 pub const ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(66_000);
 
+pub const ERC20_APPROVAL_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(50_000);
+
 // used for mining wrapped icrc transactions
 pub const ERC20_MINT_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(100_000);
+
+pub const REFUND_FAILED_SWAP_GAS_LIMIT: GasAmount = GasAmount::new(100_000);
+
+// the deadline is valid for 20 years and it is used for the the failed swaps that will be
+// converted to usdc transfer
+pub const UNLIMITED_DEADLINE: Erc20Value = Erc20Value::new(2388441600);
 
 pub async fn process_reimbursement() {
     let _guard = match TimerGuard::new(TaskType::Reimbursement) {
@@ -114,7 +126,7 @@ pub async fn process_reimbursement() {
                     .as_ref()
                     .map(|subaccount| subaccount.0),
             },
-            fee: transfer_fee.map(|fee| Nat::from(fee)),
+            fee: transfer_fee.map(Nat::from),
             created_at_time: None,
             memo: Some(reimbursement_request.clone().into()),
             amount: amount.clone(),
@@ -191,6 +203,138 @@ pub async fn process_reimbursement() {
     }
 }
 
+pub fn process_failed_swaps(gas_fee_estimate: GasFeeEstimate) {
+    if read_state(|s| {
+        s.withdrawal_transactions.is_failed_swaps_requests_empty() || !s.is_swapping_active
+    }) {
+        return;
+    }
+
+    let (
+        evm_network,
+        last_native_token_usd_price_estimate,
+        twin_usdc_info,
+        signing_fee,
+        swap_contract_address,
+    ) = read_state(|s| {
+        (
+            s.evm_network(),
+            s.last_native_token_usd_price_estimate,
+            s.twin_usdc_info.clone(),
+            s.canister_signing_fee_twin_usdc_amount,
+            s.swap_contract_address,
+        )
+    });
+
+    let twin_usdc_info =
+        twin_usdc_info.expect("BUG: twin USDC info should be available if swapping is active");
+
+    let last_native_token_usd_price_estimate = last_native_token_usd_price_estimate
+        .expect("BUG: native token USD price should be available if swapping is active");
+
+    let signing_fee = signing_fee.expect(
+        "BUG: canister signing fee twin USDC amount should be available if swapping is active",
+    );
+
+    let swap_contract_address = swap_contract_address
+        .expect("BUG: swap contract address should be available if swapping is active");
+
+    let erc20_tx_fee = gas_fee_estimate
+        .to_price(REFUND_FAILED_SWAP_GAS_LIMIT)
+        .max_transaction_fee();
+
+    let l1_fee = match evm_network {
+        EvmNetwork::Base => Some(DEFAULT_L1_BASE_GAS_FEE),
+        _ => None,
+    };
+
+    let fee_to_be_deducted = erc20_tx_fee
+        .checked_add(l1_fee.unwrap_or(Wei::ZERO))
+        .expect("Bug: Tx_fee plus l1_fee should fit in u256");
+
+    let max_gas_fee_twin_usdc = match MaxFeeUsd::twin_usdc_from_native_wei(
+        fee_to_be_deducted,
+        last_native_token_usd_price_estimate.1,
+        twin_usdc_info.decimals,
+    ) {
+        Ok(usdc_amount) => usdc_amount,
+        Err(_) => return,
+    };
+
+    let all_twin_usdc_fees = max_gas_fee_twin_usdc
+        .checked_add(signing_fee)
+        .unwrap_or(Erc20Value::MAX);
+
+    for (_previous_native_ledger_burn_index, request) in
+        read_state(|s| s.withdrawal_transactions.failed_swap_requests())
+    {
+        let amount_in = request
+            .erc20_amount_in
+            .checked_sub(all_twin_usdc_fees)
+            .unwrap_or(Erc20Value::ZERO);
+
+        if amount_in == Erc20Value::ZERO {
+            log!(
+                INFO,
+                "[create_refund_swap_erquest]: Failed to create refund swap request the request will be Quarantined with swap tx id {:?}",
+                request.swap_tx_id
+            );
+
+            mutate_state(|s| process_event(s, EventType::QuarantinedSwapRequest(request.clone())));
+        }
+
+        let native_ledger_burn_index = match release_gas_from_tank_with_usdc(
+            all_twin_usdc_fees,
+            fee_to_be_deducted,
+            request.swap_tx_id.clone(),
+        ) {
+            Ok(native_ledger_burn_index) => native_ledger_burn_index,
+            Err(err) => {
+                log!(
+                    INFO,
+                    "[create_refund_swap_erquest]: Failed to release gas from gas tank low balance {:?}",
+                    err
+                );
+                continue;
+            }
+        };
+
+        let now = ic_cdk::api::time();
+
+        let request = ExecuteSwapRequest {
+            max_transaction_fee: erc20_tx_fee,
+            native_ledger_burn_index,
+            erc20_ledger_id: twin_usdc_info.ledger_id,
+            erc20_ledger_burn_index: request.erc20_ledger_burn_index,
+            from: request.from,
+            from_subaccount: None,
+            created_at: now,
+            l1_fee,
+            withdrawal_fee: None,
+            swap_tx_id: request.swap_tx_id,
+            erc20_token_in: twin_usdc_info.address,
+            erc20_amount_in: amount_in,
+            min_amount_out: amount_in,
+            recipient: request.recipient,
+            deadline: UNLIMITED_DEADLINE,
+            commands: vec![],
+            commands_data: vec![],
+            swap_contract: swap_contract_address,
+            gas_estimate: REFUND_FAILED_SWAP_GAS_LIMIT,
+            is_refund: true,
+        };
+
+        log!(
+            INFO,
+            "[create_refund_swap_erquest]: Successfully created the refund request for swap {:?} with request {:?}",
+            request.swap_tx_id,
+            request
+        );
+
+        mutate_state(|s| process_event(s, EventType::AcceptedSwapRequest(request)))
+    }
+}
+
 pub async fn process_retrieve_tokens_requests() {
     let _guard = match TimerGuard::new(TaskType::RetrieveEth) {
         Ok(guard) => guard,
@@ -220,10 +364,11 @@ pub async fn process_retrieve_tokens_requests() {
 
     let latest_transaction_count = latest_transaction_count().await;
     resubmit_transactions_batch(latest_transaction_count, &gas_fee_estimate).await;
-    create_transactions_batch(gas_fee_estimate);
+    create_transactions_batch(gas_fee_estimate.clone());
     sign_transactions_batch().await;
     send_transactions_batch(latest_transaction_count).await;
     finalize_transactions_batch().await;
+    process_failed_swaps(gas_fee_estimate);
 
     if read_state(|s| s.withdrawal_transactions.has_pending_requests()) {
         ic_cdk_timers::set_timer(
@@ -522,5 +667,7 @@ pub fn estimate_gas_limit(withdrawal_request: &WithdrawalRequest) -> GasAmount {
                 ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT
             }
         }
+        WithdrawalRequest::Erc20Approve(_) => ERC20_APPROVAL_TRANSACTION_GAS_LIMIT,
+        WithdrawalRequest::Swap(request) => request.gas_estimate,
     }
 }

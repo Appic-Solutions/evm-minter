@@ -543,7 +543,7 @@ mod withdrawal_transactions {
             expected_address: &Address,
             expected_amount: &Erc20Value,
         ) -> Vec<u8> {
-            use crate::state::transactions::ERC_20_TRANSFER_FUNCTION_SELECTOR;
+            use crate::state::transactions::data::ERC_20_TRANSFER_FUNCTION_SELECTOR;
             use ethers_core::abi::{Param, ParamType, Token};
 
             let erc20_transfer = ethers_core::abi::Function {
@@ -874,13 +874,17 @@ mod withdrawal_transactions {
                     TransactionCount::ZERO,
                     test.price_at_tx_resubmission.clone(),
                 );
+
                 let expected_resubmitted_tx_amount = match withdrawal_request {
                     WithdrawalRequest::Native(_) => initial_tx
                         .amount
                         .checked_sub(test.resubmitted_native_tx_amount_deduction)
                         .unwrap(),
                     WithdrawalRequest::Erc20(_) => initial_tx.amount,
+                    WithdrawalRequest::Erc20Approve(_) => initial_tx.amount,
+                    WithdrawalRequest::Swap(_) => initial_tx.amount,
                 };
+
                 let expected_resubmitted_tx = Eip1559TransactionRequest {
                     max_fee_per_gas: test.resubmitted_tx_max_fee_per_gas,
                     max_priority_fee_per_gas: test.resubmitted_tx_max_priority_fee_per_gas,
@@ -2225,6 +2229,8 @@ mod oldest_incomplete_withdrawal_timestamp {
         match withdrawal_request {
             WithdrawalRequest::Native(request) => request.created_at = Some(created_at),
             WithdrawalRequest::Erc20(request) => request.created_at = created_at,
+            WithdrawalRequest::Erc20Approve(request) => request.created_at = created_at,
+            WithdrawalRequest::Swap(request) => request.created_at = created_at,
         }
     }
 }
@@ -2237,7 +2243,7 @@ mod native_withdrawal_request {
     fn should_have_readable_debug_representation() {
         let request = native_withdrawal_request_with_index(LedgerBurnIndex::new(131));
         let expected_debug = "NativeWithdrawalRequest { withdrawal_amount: 1_100_000_000_000_000, destination: 0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34, ledger_burn_index: 131, from: k2t6j-2nvnp-4zjm3-25dtz-6xhaa-c7boj-5gayf-oj3xs-i43lp-teztq-6ae, from_subaccount: Some(1111111111111111111111111111111111111111111111111111111111111111), created_at: Some(1699527697000000000), l1_fee: None, withdrawal_fee: None }";
-        assert_eq!(format!("{:?}", request), expected_debug);
+        assert_eq!(format!("{request:?}"), expected_debug);
     }
 }
 
@@ -2250,7 +2256,7 @@ mod erc_20_withdrawal_request {
         let request =
             erc20_withdrawal_request_with_index(LedgerBurnIndex::new(131), LedgerBurnIndex::new(2));
         let expected_debug = "Erc20WithdrawalRequest { max_transaction_fee: 30_000_000_000_000_000, withdrawal_amount: 1_100_000_000_000_000, erc20_contract_address: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, destination: 0xb44B5e756A894775FC32EDdf3314Bb1B1944dC34, native_ledger_burn_index: 131, erc20_ledger_id: sa4so-piaaa-aaaar-qacnq-cai, erc20_ledger_burn_index: 2, from: k2t6j-2nvnp-4zjm3-25dtz-6xhaa-c7boj-5gayf-oj3xs-i43lp-teztq-6ae, from_subaccount: Some(1111111111111111111111111111111111111111111111111111111111111111), created_at: 1699527697000000000, l1_fee: None, withdrawal_fee: None, is_wrapped_mint: Some(false) }";
-        assert_eq!(format!("{:?}", request), expected_debug);
+        assert_eq!(format!("{request:?}"), expected_debug);
     }
 }
 

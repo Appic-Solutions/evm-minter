@@ -111,6 +111,8 @@ pub enum BurnMemo {
         #[n(1)]
         to_address: Address,
     },
+    #[n(5)]
+    GasTankCharged,
 }
 
 impl From<BurnMemo> for Memo {
@@ -121,7 +123,6 @@ impl From<BurnMemo> for Memo {
 
 impl From<&ReceivedContractEvent> for Memo {
     fn from(event: &ReceivedContractEvent) -> Self {
-        //todo!()
         match event {
             ReceivedContractEvent::NativeDeposit(received_native_event) => MintMemo::Convert {
                 from_address: received_native_event.from_address,
@@ -135,6 +136,9 @@ impl From<&ReceivedContractEvent> for Memo {
             ReceivedContractEvent::WrappedIcrcDeployed(_received_wrapped_icrc_deployed_event) => {
                 panic!("Bug: this event is not mintable")
             }
+            ReceivedContractEvent::ReceivedSwapOrder(received_swap_event) => MintMemo::Convert {
+                from_address: received_swap_event.from_address,
+            },
         }
         .into()
     }

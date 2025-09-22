@@ -11,6 +11,8 @@ use types::{
 
 use crate::{
     checked_amount::CheckedAmountOf,
+    contract_logs::swap::swap_logs::ReceivedSwapEvent,
+    eth_types::Address,
     logs::{DEBUG, INFO},
     numeric::{BlockNumber, LogIndex},
     rpc_declarations::{FixedSizeData, Hash},
@@ -21,6 +23,7 @@ mod test;
 
 pub mod parser;
 pub mod scraping;
+pub mod swap;
 pub mod types;
 
 /// A unique identifier of the event source: the source transaction hash and the log
@@ -54,6 +57,8 @@ pub enum ReceivedContractEvent {
     // new contract events
     WrappedIcrcBurn(ReceivedBurnEvent),
     WrappedIcrcDeployed(ReceivedWrappedIcrcDeployedEvent),
+    // Swap contract event
+    ReceivedSwapOrder(ReceivedSwapEvent),
 }
 
 impl ReceivedContractEvent {
@@ -67,6 +72,7 @@ impl ReceivedContractEvent {
             ReceivedContractEvent::Erc20Deposit(evt) => evt.source(),
             ReceivedContractEvent::WrappedIcrcBurn(evt) => evt.source(),
             ReceivedContractEvent::WrappedIcrcDeployed(evt) => evt.source(),
+            ReceivedContractEvent::ReceivedSwapOrder(evt) => evt.source(),
         }
     }
     pub fn block_number(&self) -> BlockNumber {
@@ -75,6 +81,7 @@ impl ReceivedContractEvent {
             ReceivedContractEvent::Erc20Deposit(evt) => evt.block_number,
             ReceivedContractEvent::WrappedIcrcBurn(evt) => evt.block_number,
             ReceivedContractEvent::WrappedIcrcDeployed(evt) => evt.block_number,
+            ReceivedContractEvent::ReceivedSwapOrder(evt) => evt.block_number,
         }
     }
     pub fn log_index(&self) -> LogIndex {
@@ -83,6 +90,7 @@ impl ReceivedContractEvent {
             ReceivedContractEvent::Erc20Deposit(evt) => evt.log_index,
             ReceivedContractEvent::WrappedIcrcBurn(evt) => evt.log_index,
             ReceivedContractEvent::WrappedIcrcDeployed(evt) => evt.log_index,
+            ReceivedContractEvent::ReceivedSwapOrder(evt) => evt.log_index,
         }
     }
     pub fn transaction_hash(&self) -> Hash {
@@ -91,6 +99,17 @@ impl ReceivedContractEvent {
             ReceivedContractEvent::Erc20Deposit(evt) => evt.transaction_hash,
             ReceivedContractEvent::WrappedIcrcBurn(evt) => evt.transaction_hash,
             ReceivedContractEvent::WrappedIcrcDeployed(evt) => evt.transaction_hash,
+            ReceivedContractEvent::ReceivedSwapOrder(evt) => evt.transaction_hash,
+        }
+    }
+
+    pub fn from_address(&self) -> Address {
+        match self {
+            ReceivedContractEvent::NativeDeposit(evt) => evt.from_address,
+            ReceivedContractEvent::Erc20Deposit(evt) => evt.from_address,
+            ReceivedContractEvent::WrappedIcrcBurn(evt) => evt.from_address,
+            ReceivedContractEvent::WrappedIcrcDeployed(_evt) => Address::ZERO,
+            ReceivedContractEvent::ReceivedSwapOrder(evt) => evt.from_address,
         }
     }
 }
@@ -102,6 +121,7 @@ pub enum ReceivedContractEventError {
         source: EventSource,
         error: EventSourceError,
     },
+    SameChainSwap,
 }
 
 pub fn report_transaction_error(error: ReceivedContractEventError) {
@@ -117,6 +137,12 @@ pub fn report_transaction_error(error: ReceivedContractEventError) {
                 INFO,
                 "[report_transaction_error]: cannot process {source} due to {error}",
             );
+        }
+        ReceivedContractEventError::SameChainSwap => {
+            log!(
+                INFO,
+                "same chain swap order detected, will not process for further steps"
+            )
         }
     }
 }

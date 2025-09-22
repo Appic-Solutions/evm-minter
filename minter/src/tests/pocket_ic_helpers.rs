@@ -15,22 +15,24 @@ use pocket_ic::{
     RejectResponse,
 };
 
-const MINTER_WASM_BYTES: &[u8] =
+pub const MINTER_WASM_BYTES: &[u8] =
     include_bytes!("../../../target/wasm32-unknown-unknown/release/evm_minter.wasm");
-const LEDGER_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/ledger_canister_u256.wasm.gz");
-const INDEX_WAM_BYTES: &[u8] = include_bytes!("../../../wasm/index_ng_canister_u256.wasm.gz");
-const ARCHIVE_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/archive_canister_u256.wasm.gz");
-const LSM_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/lsm.wasm");
-const EVM_RPC_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/evm_rpc.wasm");
-const APPIC_HELPER_BYTES: &[u8] = include_bytes!("../../../wasm/appic_helper.wasm");
+pub const LEDGER_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/ledger_canister_u256.wasm.gz");
+pub const INDEX_WAM_BYTES: &[u8] = include_bytes!("../../../wasm/index_ng_canister_u256.wasm.gz");
+pub const ARCHIVE_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/archive_canister_u256.wasm.gz");
+pub const LSM_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/lsm.wasm");
+pub const EVM_RPC_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/evm_rpc.wasm");
+pub const APPIC_HELPER_BYTES: &[u8] = include_bytes!("../../../wasm/appic_helper.wasm");
+pub const DEX_CANISTER_BYTES: &[u8] = include_bytes!("../../../wasm/appic_dex.wasm");
+pub const PROXY_CANISTER_BYTES: &[u8] = include_bytes!("../../../wasm/proxy_canister.wasm");
 
-const TWENTY_TRILLIONS: u64 = 20_000_000_000_000;
+pub const TWENTY_TRILLIONS: u64 = 20_000_000_000_000;
 
-const FIVE_TRILLIONS: u64 = 5_000_000_000_000;
+pub const FIVE_TRILLIONS: u64 = 5_000_000_000_000;
 
-const FOUR_TRILLIONS: u64 = 4_000_000_000_000;
+pub const FOUR_TRILLIONS: u64 = 4_000_000_000_000;
 
-const TWO_TRILLIONS: u64 = 2_000_000_000_000;
+pub const TWO_TRILLIONS: u64 = 2_000_000_000_000;
 
 use candid::{CandidType, Nat, Principal};
 use evm_rpc_client::evm_rpc_types::InstallArgs;
@@ -47,7 +49,7 @@ use super::ledger_arguments::{
 };
 
 use crate::{
-    candid_types::{CandidBlockTag, Erc20Token, MinterInfo},
+    candid_types::{CandidBlockTag, Erc20Token, GasTankBalance, MinterInfo},
     evm_config::EvmNetwork,
     lifecycle::{InitArg, MinterArg, UpgradeArg},
     lsm_client::WasmHash,
@@ -57,6 +59,7 @@ use crate::{
             AddErc20Arg, AddErc20Error, CyclesManagement, Erc20Contract, LedgerInitArg,
             LedgerSuiteVersion, ManagedCanisterStatus, ManagedCanisters,
         },
+        swap::helpers::{base_minter_principal, bsc_minter_principal},
     },
 };
 //use ic_icrc1_index_ng::{IndexArg, InitArg as IndexInitArg};
@@ -103,7 +106,18 @@ fn should_create_and_install_and_upgrade_minter_canister() {
             wrapped_icrc_tokens: Some(vec![]),
             helper_smart_contract_addresses: Some(vec![
                 "0x733a1BEeF5A02990aAD285d7ED93fc1b622EeF1d".to_string()
-            ])
+            ]),
+            is_swapping_active: false,
+            dex_canister_id: None,
+            swap_contract_address: None,
+            twin_usdc_info: None,
+            canister_signing_fee_twin_usdc_value: None,
+            gas_tank: Some(GasTankBalance {
+                native_balance: Nat::from(0_u8),
+                usdc_balance: Nat::from(0_u8)
+            }),
+            last_native_token_usd_price_estimate: None,
+            next_swap_ledger_burn_index: None
         }
     );
 
@@ -135,7 +149,6 @@ fn should_create_and_install_and_upgrade_minter_canister() {
             helper_smart_contract_address: Some(
                 "0x733a1BEeF5A02990aAD285d7ED93fc1b622EeF1d".to_string()
             ),
-
             helper_smart_contract_addresses: Some(vec![
                 "0x733a1BEeF5A02990aAD285d7ED93fc1b622EeF1d".to_string(),
                 "0xa2dD817c2fDc3a2996f1A5174CF8f1AaED466E82".to_string()
@@ -155,7 +168,18 @@ fn should_create_and_install_and_upgrade_minter_canister() {
             ledger_suite_manager_id: Some("kmcdp-4yaaa-aaaag-ats3q-cai".parse().unwrap()),
             total_collected_operation_fee: Some(Nat::from(0_u128)),
             icrc_balances: Some(vec![]),
-            wrapped_icrc_tokens: Some(vec![])
+            wrapped_icrc_tokens: Some(vec![]),
+            is_swapping_active: false,
+            dex_canister_id: None,
+            swap_contract_address: None,
+            twin_usdc_info: None,
+            canister_signing_fee_twin_usdc_value: None,
+            gas_tank: Some(GasTankBalance {
+                native_balance: Nat::from(0_u8),
+                usdc_balance: Nat::from(0_u8)
+            }),
+            last_native_token_usd_price_estimate: None,
+            next_swap_ledger_burn_index: None
         }
     );
 }
@@ -181,7 +205,10 @@ fn should_create_and_install_all_minter_dependency_canisters() {
                 cycles_top_up_increment: Nat::from(FOUR_TRILLIONS),
             },
             more_controller_ids: vec![sender_principal()],
-            minter_ids: vec![(Nat::from(97_u64), minter_principal())],
+            minter_ids: vec![
+                (Nat::from(56_u64), minter_principal()),
+                (Nat::from(8453_u64), base_minter_principal())
+            ],
             ledger_suite_version: Some(LedgerSuiteVersion {
                 ledger_compressed_wasm_hash: WasmHash::new(LEDGER_WASM_BYTES.to_vec()).to_string(),
                 index_compressed_wasm_hash: WasmHash::new(INDEX_WAM_BYTES.to_vec()).to_string(),
@@ -251,7 +278,7 @@ fn should_install_lsm_canister_and_create_ledger_suite() {
         "add_erc20_ls",
         AddErc20Arg {
             contract: Erc20Contract {
-                chain_id: EvmNetwork::BSCTestnet.chain_id().into(),
+                chain_id: EvmNetwork::BSC.chain_id().into(),
                 address: "0xdac17f958d2ee523a2206206994597c13d831ec7".to_string(),
             },
             ledger_init_arg: LedgerInitArg {
@@ -301,7 +328,7 @@ fn should_install_lsm_canister_and_create_ledger_suite() {
         .find(|ls| {
             ls.erc20_contract
                 == Erc20Contract {
-                    chain_id: Nat::from(97_u64),
+                    chain_id: Nat::from(56_u64),
                     address: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
                 }
         })
@@ -325,7 +352,7 @@ fn should_install_lsm_canister_and_create_ledger_suite() {
         .find(|ls| {
             ls.erc20_contract
                 == Erc20Contract {
-                    chain_id: Nat::from(97_u64),
+                    chain_id: Nat::from(56_u64),
                     address: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
                 }
         })
@@ -339,7 +366,7 @@ fn should_install_lsm_canister_and_create_ledger_suite() {
         .find(|ls| {
             ls.erc20_contract
                 == Erc20Contract {
-                    chain_id: Nat::from(97_u64),
+                    chain_id: Nat::from(56_u64),
                     address: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
                 }
         })
@@ -353,13 +380,13 @@ fn should_install_lsm_canister_and_create_ledger_suite() {
             .find(|ls| ls.erc20_contract
                 == Erc20Contract {
                     address: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-                    chain_id: 97_u64.into()
+                    chain_id: 56_u64.into()
                 })
             .unwrap(),
         ManagedCanisters {
             erc20_contract: Erc20Contract {
                 address: "0xdAC17F958D2ee523a2206206994597C13D831ec7".to_string(),
-                chain_id: 97_u64.into()
+                chain_id: 56_u64.into()
             },
             twin_erc20_token_symbol: "icUSDT".to_string(),
             ledger: Some(ManagedCanisterStatus::Installed {
@@ -443,7 +470,7 @@ where
 {
     match result {
         Ok(bytes) => Ok(candid::decode_one(&bytes).unwrap()),
-        Err(e) => panic!("{:?}", e),
+        Err(e) => panic!("{e:?}"),
     }
 }
 
@@ -462,7 +489,7 @@ fn create_minter_canister(pic: &PocketIc) -> Principal {
 
 fn install_minter_canister(pic: &PocketIc, canister_id: Principal) {
     let init_args = MinterArg::InitArg(InitArg {
-        evm_network: crate::evm_config::EvmNetwork::BSCTestnet,
+        evm_network: crate::evm_config::EvmNetwork::BSC,
         ecdsa_key_name: "key_1".to_string(),
         helper_contract_address: Some("0x733a1beef5a02990aad285d7ed93fc1b622eef1d".to_string()),
         native_ledger_id: "n44gr-qyaaa-aaaam-qbuha-cai".parse().unwrap(),
@@ -488,7 +515,7 @@ fn install_minter_canister(pic: &PocketIc, canister_id: Principal) {
     );
 }
 
-fn create_lsm_canister(pic: &PocketIc) -> Principal {
+pub fn create_lsm_canister(pic: &PocketIc) -> Principal {
     pic.create_canister_with_id(
         Some(sender_principal()),
         None,
@@ -497,10 +524,13 @@ fn create_lsm_canister(pic: &PocketIc) -> Principal {
     .expect("Should create the canister")
 }
 
-fn install_lsm_canister(pic: &PocketIc, canister_id: Principal) {
+pub fn install_lsm_canister(pic: &PocketIc, canister_id: Principal) {
     let lsm_init_bytes = LSMarg::Init(LsmInitArgs {
         more_controller_ids: vec![sender_principal()],
-        minter_ids: vec![(Nat::from(97_u64), minter_principal())],
+        minter_ids: vec![
+            (Nat::from(56_u64), bsc_minter_principal()),
+            (Nat::from(8453_u64), base_minter_principal()),
+        ],
         cycles_management: None,
         twin_ls_creation_fee_icp_token: Nat::from(2_500_000_000_u64),
         twin_ls_creation_fee_appic_token: None,
@@ -513,7 +543,7 @@ fn install_lsm_canister(pic: &PocketIc, canister_id: Principal) {
     );
 }
 
-fn create_appic_helper_canister(pic: &PocketIc) -> Principal {
+pub fn create_appic_helper_canister(pic: &PocketIc) -> Principal {
     pic.create_canister_with_id(
         Some(sender_principal()),
         None,
@@ -522,10 +552,10 @@ fn create_appic_helper_canister(pic: &PocketIc) -> Principal {
     .expect("Should create the canister")
 }
 
-fn install_appic_helper_canister(pic: &PocketIc, canister_id: Principal) {
+pub fn install_appic_helper_canister(pic: &PocketIc, canister_id: Principal) {
     let appic_helper_init = LoggerArgs::Init(InitArgs {
         minters: vec![MinterArgs {
-            chain_id: Nat::from(97_u64),
+            chain_id: Nat::from(56_u64),
             minter_id: minter_principal(),
             operator: super::appic_helper_types::Operator::AppicMinter,
             last_observed_event: Nat::from(0_u8),
@@ -542,7 +572,7 @@ fn install_appic_helper_canister(pic: &PocketIc, canister_id: Principal) {
     );
 }
 
-fn create_icp_ledger_canister(pic: &PocketIc) -> Principal {
+pub fn create_icp_ledger_canister(pic: &PocketIc) -> Principal {
     pic.create_canister_with_id(
         Some(sender_principal()),
         None,
@@ -551,7 +581,7 @@ fn create_icp_ledger_canister(pic: &PocketIc) -> Principal {
     .expect("Should create the canister")
 }
 
-fn install_icp_ledger_canister(pic: &PocketIc, canister_id: Principal) {
+pub fn install_icp_ledger_canister(pic: &PocketIc, canister_id: Principal) {
     use icrc_ledger_types::icrc1::account::Account as LedgerAccount;
 
     const LEDGER_FEE_SUBACCOUNT: [u8; 32] = [
@@ -598,10 +628,8 @@ fn install_icp_ledger_canister(pic: &PocketIc, canister_id: Principal) {
             num_blocks_to_archive: 1_000,
             node_max_memory_size_bytes: Some(THREE_GIGA_BYTES),
             max_message_size_bytes: None,
-            controller_id: Principal::from_text("kmcdp-4yaaa-aaaag-ats3q-cai")
-                .unwrap()
-                .into(),
-            more_controller_ids: Some(vec![sender_principal().into()]),
+            controller_id: Principal::from_text("kmcdp-4yaaa-aaaag-ats3q-cai").unwrap(),
+            more_controller_ids: Some(vec![sender_principal()]),
             cycles_for_archive_creation: Some(2_000_000_000_000_u64),
             max_transactions_per_response: None,
         },
@@ -618,7 +646,7 @@ fn install_icp_ledger_canister(pic: &PocketIc, canister_id: Principal) {
     );
 }
 
-fn create_evm_rpc_canister(pic: &PocketIc) -> Principal {
+pub fn create_evm_rpc_canister(pic: &PocketIc) -> Principal {
     pic.create_canister_with_id(
         Some(sender_principal()),
         None,
@@ -627,7 +655,7 @@ fn create_evm_rpc_canister(pic: &PocketIc) -> Principal {
     .expect("Should create the canister")
 }
 
-fn install_evm_rpc_canister(pic: &PocketIc, canister_id: Principal) {
+pub fn install_evm_rpc_canister(pic: &PocketIc, canister_id: Principal) {
     let install_args = InstallArgs::default();
     pic.install_canister(
         canister_id,
@@ -678,10 +706,8 @@ fn install_native_ledger_canister(pic: &PocketIc, canister_id: Principal) {
             num_blocks_to_archive: 1_000,
             node_max_memory_size_bytes: Some(THREE_GIGA_BYTES),
             max_message_size_bytes: None,
-            controller_id: Principal::from_text("kmcdp-4yaaa-aaaag-ats3q-cai")
-                .unwrap()
-                .into(),
-            more_controller_ids: Some(vec![sender_principal().into()]),
+            controller_id: Principal::from_text("kmcdp-4yaaa-aaaag-ats3q-cai").unwrap(),
+            more_controller_ids: Some(vec![sender_principal()]),
             cycles_for_archive_creation: Some(2_000_000_000_000_u64),
             max_transactions_per_response: None,
         },
@@ -775,40 +801,40 @@ pub mod initialize_minter {
         // Create and install appic helper
         let appic_helper_id = create_appic_helper_canister(pic);
         pic.add_cycles(appic_helper_id, TWENTY_TRILLIONS.into());
-        install_appic_helper_canister(&pic, appic_helper_id);
-        five_ticks(&pic);
-        five_ticks(&pic);
+        install_appic_helper_canister(pic, appic_helper_id);
+        five_ticks(pic);
+        five_ticks(pic);
 
         // Create and install lsm canister
-        let lsm_canister_id = create_lsm_canister(&pic);
+        let lsm_canister_id = create_lsm_canister(pic);
         pic.add_cycles(lsm_canister_id, TWENTY_TRILLIONS.into());
-        install_lsm_canister(&pic, lsm_canister_id);
-        five_ticks(&pic);
-        five_ticks(&pic);
+        install_lsm_canister(pic, lsm_canister_id);
+        five_ticks(pic);
+        five_ticks(pic);
 
         // Create and install evm rpc canister
-        let evm_rpc_canister_id = create_evm_rpc_canister(&pic);
+        let evm_rpc_canister_id = create_evm_rpc_canister(pic);
         pic.add_cycles(evm_rpc_canister_id, TWO_TRILLIONS.into());
-        install_evm_rpc_canister(&pic, evm_rpc_canister_id);
-        five_ticks(&pic);
+        install_evm_rpc_canister(pic, evm_rpc_canister_id);
+        five_ticks(pic);
 
         // Create and install native ledger canister
-        let native_ledger_canister_id = create_native_ledger_canister(&pic);
+        let native_ledger_canister_id = create_native_ledger_canister(pic);
         pic.add_cycles(native_ledger_canister_id, TWO_TRILLIONS.into());
-        install_native_ledger_canister(&pic, native_ledger_canister_id);
-        five_ticks(&pic);
+        install_native_ledger_canister(pic, native_ledger_canister_id);
+        five_ticks(pic);
 
         // Create and install native index canister
-        let native_index_canister_id = create_index_canister(&pic);
+        let native_index_canister_id = create_index_canister(pic);
         pic.add_cycles(native_index_canister_id, TWO_TRILLIONS.into());
-        install_index_canister(&pic, native_index_canister_id);
-        five_ticks(&pic);
+        install_index_canister(pic, native_index_canister_id);
+        five_ticks(pic);
 
         // Create and install minter canister for bsc test net
-        let minter_id = create_minter_canister(&pic);
+        let minter_id = create_minter_canister(pic);
         pic.add_cycles(minter_id, 1_000_000_000_000);
-        install_minter_canister(&pic, minter_id);
-        five_ticks(&pic);
+        install_minter_canister(pic, minter_id);
+        five_ticks(pic);
     }
 }
 

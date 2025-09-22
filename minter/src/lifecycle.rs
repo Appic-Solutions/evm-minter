@@ -6,6 +6,7 @@ use crate::logs::INFO;
 use crate::numeric::{BlockNumber, TransactionNonce, Wei, WeiPerGas};
 use crate::rpc_declarations::BlockTag;
 use crate::state::audit::{process_event, replay_events, EventType};
+use crate::state::balances::GasTank;
 use crate::state::transactions::WithdrawalTransactions;
 use crate::state::{mutate_state, InvalidStateError, State, STATE};
 use crate::storage::total_event_count;
@@ -74,14 +75,14 @@ impl TryFrom<InitArg> for State {
         use std::str::FromStr;
 
         let initial_nonce = TransactionNonce::try_from(next_transaction_nonce)
-            .map_err(|e| InvalidStateError::InvalidTransactionNonce(format!("ERROR: {}", e)))?;
+            .map_err(|e| InvalidStateError::InvalidTransactionNonce(format!("ERROR: {e}")))?;
         let native_minimum_withdrawal_amount = Wei::try_from(native_minimum_withdrawal_amount)
             .map_err(|e| {
-                InvalidStateError::InvalidMinimumWithdrawalAmount(format!("ERROR: {}", e))
+                InvalidStateError::InvalidMinimumWithdrawalAmount(format!("ERROR: {e}"))
             })?;
         let native_ledger_transfer_fee =
             Wei::try_from(native_ledger_transfer_fee).map_err(|e| {
-                InvalidStateError::InvalidMinimumLedgerTransferFee(format!("ERROR: {}", e))
+                InvalidStateError::InvalidMinimumLedgerTransferFee(format!("ERROR: {e}"))
             })?;
         let native_symbol = ERC20TokenSymbol::new(native_symbol);
 
@@ -89,20 +90,17 @@ impl TryFrom<InitArg> for State {
             Some(address_string) => match Address::from_str(&address_string) {
                 Ok(address) => Ok(Some(vec![address])),
                 Err(e) => Err(InvalidStateError::InvalidHelperContractAddress(format!(
-                    "ERROR: {}",
-                    e
+                    "ERROR: {e}"
                 ))),
             },
             None => Ok(None),
         }?;
 
-        let last_scraped_block_number =
-            BlockNumber::try_from(last_scraped_block_number).map_err(|e| {
-                InvalidStateError::InvalidLastScrapedBlockNumber(format!("ERROR: {}", e))
-            })?;
+        let last_scraped_block_number = BlockNumber::try_from(last_scraped_block_number)
+            .map_err(|e| InvalidStateError::InvalidLastScrapedBlockNumber(format!("ERROR: {e}")))?;
         let min_max_priority_fee_per_gas: WeiPerGas =
             WeiPerGas::try_from(min_max_priority_fee_per_gas).map_err(|e| {
-                InvalidStateError::InvalidMinimumMaximumPriorityFeePerGas(format!("ERROR: {}", e))
+                InvalidStateError::InvalidMinimumMaximumPriorityFeePerGas(format!("ERROR: {e}"))
             })?;
         let first_scraped_block_number =
             last_scraped_block_number
@@ -115,7 +113,7 @@ impl TryFrom<InitArg> for State {
 
         // Conversion to Wei tag
         let deposit_native_fee_converted = Wei::try_from(deposit_native_fee)
-            .map_err(|e| InvalidStateError::InvalidFeeInput(format!("ERROR: {}", e)))?;
+            .map_err(|e| InvalidStateError::InvalidFeeInput(format!("ERROR: {e}")))?;
 
         // If fee is set to zero it should be remapped to None
         let _deposit_native_fee = if deposit_native_fee_converted == Wei::ZERO {
@@ -126,7 +124,7 @@ impl TryFrom<InitArg> for State {
 
         // Conversion to Wei tag
         let withdrawal_native_fee_converted = Wei::try_from(withdrawal_native_fee)
-            .map_err(|e| InvalidStateError::InvalidFeeInput(format!("ERROR: {}", e)))?;
+            .map_err(|e| InvalidStateError::InvalidFeeInput(format!("ERROR: {e}")))?;
 
         // If fee is set to zero it should be remapped to None
         let withdrawal_native_fee = if withdrawal_native_fee_converted == Wei::ZERO {
@@ -164,7 +162,7 @@ impl TryFrom<InitArg> for State {
             erc20_balances: Default::default(),
             evm_canister_id: Principal::from_text("sosge-5iaaa-aaaag-alcla-cai").unwrap(),
             min_max_priority_fee_per_gas,
-            swap_canister_id: None,
+            dex_canister_id: None,
             withdrawal_native_fee,
             events_to_release: Default::default(),
             released_events: Default::default(),
@@ -172,6 +170,17 @@ impl TryFrom<InitArg> for State {
             icrc_balances: Default::default(),
             wrapped_icrc_tokens: Default::default(),
             last_log_scraping_time: None,
+            twin_usdc_info: None,
+            swap_contract_address: None,
+            swap_events_to_mint_to_appic_dex: Default::default(),
+            last_native_token_usd_price_estimate: None,
+            canister_signing_fee_twin_usdc_amount: None,
+            is_swapping_active: false,
+            gas_tank: GasTank::default(),
+            next_swap_ledger_burn_index: None,
+            quarantined_dex_orders: Default::default(),
+            swap_events_to_be_notified: Default::default(),
+            notified_swap_events: Default::default(),
         };
         state.validate_config()?;
         Ok(state)

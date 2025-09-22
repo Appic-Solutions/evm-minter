@@ -10,6 +10,10 @@ use crate::{
     rpc_client::{MultiCallError, RpcClient},
     rpc_declarations::{BlockSpec, BlockTag, CallParams, FeeHistory, FeeHistoryParams, Quantity},
     state::{mutate_state, read_state, TaskType},
+    withdraw::{
+        ERC20_APPROVAL_TRANSACTION_GAS_LIMIT, ERC20_MINT_TRANSACTION_GAS_LIMIT,
+        ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
+    },
 };
 
 /// Represents an estimate of gas fees.
@@ -288,6 +292,46 @@ pub fn estimate_transaction_fee(
     Ok(gas_fee_estimate)
 }
 
+pub async fn estimate_erc20_transaction_fee() -> Option<Wei> {
+    lazy_refresh_gas_fee_estimate()
+        .await
+        .map(|gas_fee_estimate| {
+            gas_fee_estimate
+                .to_price(ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT)
+                .max_transaction_fee()
+        })
+}
+
+pub async fn estimate_icrc_wrap_transaction_fee() -> Option<Wei> {
+    lazy_refresh_gas_fee_estimate()
+        .await
+        .map(|gas_fee_estimate| {
+            gas_fee_estimate
+                .to_price(ERC20_MINT_TRANSACTION_GAS_LIMIT)
+                .max_transaction_fee()
+        })
+}
+
+pub async fn estimate_usdc_approval_fee() -> Option<Wei> {
+    lazy_refresh_gas_fee_estimate()
+        .await
+        .map(|gas_fee_estimate| {
+            gas_fee_estimate
+                .to_price(ERC20_APPROVAL_TRANSACTION_GAS_LIMIT)
+                .max_transaction_fee()
+        })
+}
+
+pub async fn estimate_dex_order_fee(gas_estimate: GasAmount) -> Option<Wei> {
+    lazy_refresh_gas_fee_estimate()
+        .await
+        .map(|gas_fee_estimate| {
+            gas_fee_estimate
+                .to_price(gas_estimate)
+                .max_transaction_fee()
+        })
+}
+
 /// Computes the median of a slice of values.
 ///
 /// # Arguments
@@ -347,7 +391,7 @@ const SAMPLE_CALLDATA_FOR_GET_L1_FEE:&str="49948e0e00000000000000000000000000000
 /// An `Option` containing the new  l1 fee estimate in `Wei` if successful, or `None` if the fetch fails.
 // we se default l1 fee instead of fetching it on-chain becuase its high enough to cover the any
 // sort of transaction cost.
-pub const DEFAULT_L1_BASE_GAS_FEE: Wei = Wei::new(10000000000000_u128);
+pub const DEFAULT_L1_BASE_GAS_FEE: Wei = Wei::new(1000000000000_u128);
 pub async fn lazy_fetch_l1_fee_estimate() -> Option<Wei> {
     let mut attempts = 0;
     const MAX_ATTEMPTS: u32 = 3;

@@ -10,4 +10,5 @@ use candid::{CandidType, Deserialize};
 pub struct ChainData {
     pub latest_block_number: Nat,
     pub fee_history: String,
+    pub native_token_usd_price: Option<f64>,
 }

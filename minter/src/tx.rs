@@ -1,4 +1,5 @@
 pub mod gas_fees;
+pub mod gas_usd;
 
 use ethnum::u256;
 use gas_fees::{GasFeeEstimate, TransactionPrice};

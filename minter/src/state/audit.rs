@@ -159,7 +159,7 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
             event_source,
             reason,
         } => {
-            state.record_invalid_event(event_source.clone(), reason.clone());
+            state.record_invalid_event(*event_source, reason.clone());
         }
         EventType::DeployedWrappedIcrcToken(received_wrapped_icrc_deployed_event) => {
             state.record_contract_events(&received_wrapped_icrc_deployed_event.clone().into());
@@ -169,7 +169,7 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
             release_event,
         } => {
             state.record_quarantined_release(
-                event_source.clone(),
+                *event_source,
                 ReceivedContractEvent::WrappedIcrcBurn(release_event.clone()),
             );
         }
@@ -212,6 +212,73 @@ pub fn apply_state_transition(state: &mut State, payload: &EventType) {
                     reimbursed.reimbursed_in_block,
                     reimbursed.transfer_fee,
                 );
+        }
+        EventType::AcceptedSwapActivationRequest(erc20_approve) => {
+            state
+                .withdrawal_transactions
+                .record_withdrawal_request(erc20_approve.clone());
+        }
+        EventType::SwapContractActivated {
+            swap_contract_address,
+            usdc_contract_address,
+            twin_usdc_ledger_id,
+            twin_usdc_decimals,
+            canister_signing_fee_twin_usdc_value,
+            dex_canister_id,
+        } => {
+            state.activate_swap_feature(
+                (*usdc_contract_address, *twin_usdc_ledger_id),
+                *swap_contract_address,
+                *twin_usdc_decimals,
+                *dex_canister_id,
+                *canister_signing_fee_twin_usdc_value,
+            );
+        }
+        EventType::ReceivedSwapOrder(received_swap_event) => {
+            state.record_contract_events(&received_swap_event.clone().into());
+        }
+        EventType::ReleasedGasFromGasTankWithUsdc {
+            usdc_amount,
+            gas_amount,
+            swap_tx_id: _,
+        } => state.release_gas_from_tank_with_usdc(*usdc_amount, *gas_amount),
+        EventType::AcceptedSwapRequest(execute_swap_request) => {
+            state.record_swap_request(execute_swap_request.clone())
+        }
+        EventType::QuarantinedDexOrder(dex_order_args) => {
+            state.record_quarantined_dex_order(dex_order_args.clone())
+        }
+        EventType::QuarantinedSwapRequest(execute_swap_request) => {
+            state
+                .withdrawal_transactions
+                .record_quarantined_swap_request(execute_swap_request.clone());
+        }
+        EventType::MintedToAppicDex {
+            event_source,
+            mint_block_index,
+            minted_token,
+            erc20_contract_address,
+            tx_id,
+        } => {
+            state.record_successful_mint_to_dex(
+                *event_source,
+                *mint_block_index,
+                *minted_token,
+                *erc20_contract_address,
+                tx_id.clone(),
+            );
+        }
+        EventType::NotifiedSwapEventOrderToAppicDex {
+            event_source,
+            tx_id,
+        } => {
+            state.record_notified_swap_event_to_appic_dex(*event_source, tx_id.clone());
+        }
+        EventType::GasTankUpdate {
+            usdc_withdrawn,
+            native_deposited,
+        } => {
+            state.update_gas_tank_balance(*usdc_withdrawn, *native_deposited);
         }
     }
 }

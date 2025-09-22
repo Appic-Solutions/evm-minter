@@ -14,6 +14,7 @@ use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
 pub mod chain_data;
+pub mod dex_orders;
 pub mod events;
 pub mod withdraw_erc20;
 pub mod withdraw_native;
@@ -69,6 +70,12 @@ impl From<crate::erc20::ERC20Token> for Erc20Token {
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct GasTankBalance {
+    pub native_balance: Nat,
+    pub usdc_balance: Nat,
+}
+
+#[derive(CandidType, Deserialize, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Erc20Balance {
     pub erc20_contract_address: String,
     pub balance: Nat,
@@ -94,19 +101,40 @@ pub struct MinterInfo {
     pub native_balance: Option<Nat>,
     pub total_collected_operation_fee: Option<Nat>,
     pub last_gas_fee_estimate: Option<GasFeeEstimate>,
+    pub last_native_token_usd_price_estimate: Option<NativeTokenUsdPriceEstimate>,
     pub erc20_balances: Option<Vec<Erc20Balance>>,
     pub icrc_balances: Option<Vec<IcrcBalance>>,
+    pub gas_tank: Option<GasTankBalance>,
     pub last_scraped_block_number: Option<Nat>,
     pub native_twin_token_ledger_id: Option<Principal>,
     pub swap_canister_id: Option<Principal>,
     pub ledger_suite_manager_id: Option<Principal>,
     pub wrapped_icrc_tokens: Option<Vec<WrappedIcrcToken>>,
+    pub is_swapping_active: bool,
+    pub dex_canister_id: Option<Principal>,
+    pub swap_contract_address: Option<String>,
+    pub twin_usdc_info: Option<CandidTwinUsdcInfo>,
+    pub canister_signing_fee_twin_usdc_value: Option<Nat>,
+    pub next_swap_ledger_burn_index: Option<Nat>,
+}
+
+#[derive(CandidType, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct CandidTwinUsdcInfo {
+    pub address: String,
+    pub ledger_id: Principal,
+    pub decimals: u8,
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug, Eq, PartialEq)]
 pub struct GasFeeEstimate {
     pub max_fee_per_gas: Nat,
     pub max_priority_fee_per_gas: Nat,
+    pub timestamp: u64,
+}
+
+#[derive(CandidType, Deserialize, Eq, Clone, Debug, PartialEq)]
+pub struct NativeTokenUsdPriceEstimate {
+    pub price: String,
     pub timestamp: u64,
 }
 
@@ -198,7 +226,7 @@ impl Display for RetrieveWithdrawalStatus {
             RetrieveWithdrawalStatus::TxFinalized(tx_status) => match tx_status {
                 TxFinalizedStatus::Success {
                     transaction_hash, ..
-                } => write!(f, "Confirmed({})", transaction_hash),
+                } => write!(f, "Confirmed({transaction_hash})"),
                 TxFinalizedStatus::PendingReimbursement(tx) => {
                     write!(f, "PendingReimbursement({})", tx.transaction_hash)
                 }
@@ -208,8 +236,7 @@ impl Display for RetrieveWithdrawalStatus {
                     reimbursed_amount,
                 } => write!(
                     f,
-                    "Failure({}, reimbursed: {} Wei in block: {})",
-                    transaction_hash, reimbursed_amount, reimbursed_in_block
+                    "Failure({transaction_hash}, reimbursed: {reimbursed_amount} Wei in block: {reimbursed_in_block})"
                 ),
             },
         }
@@ -238,4 +265,13 @@ pub enum RequestScrapingError {
     CalledTooManyTimes,
     InvalidBlockNumber,
     BlockAlreadyObserved,
+}
+
+#[derive(CandidType, Deserialize, Clone, Debug, PartialEq)]
+pub struct ActivateSwapReqest {
+    pub twin_usdc_ledger_id: Principal,
+    pub swap_contract_address: String,
+    pub twin_usdc_decimals: u8,
+    pub dex_canister_id: Principal,
+    pub canister_signing_fee_twin_usdc_value: Nat,
 }

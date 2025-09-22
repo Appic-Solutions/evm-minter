@@ -2,7 +2,9 @@ use candid::Principal;
 use minicbor::{Decode, Encode};
 
 use crate::{
+    candid_types::dex_orders::DexOrderArgs,
     contract_logs::{
+        swap::swap_logs::ReceivedSwapEvent,
         types::{
             ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent,
             ReceivedWrappedIcrcDeployedEvent,
@@ -12,9 +14,14 @@ use crate::{
     erc20::ERC20Token,
     eth_types::Address,
     lifecycle::{InitArg, UpgradeArg},
-    numeric::{BlockNumber, IcrcValue, LedgerBurnIndex, LedgerMintIndex, LedgerReleaseIndex, Wei},
+    numeric::{
+        BlockNumber, Erc20TokenAmount, Erc20TokenAmountTag, Erc20Value, IcrcValue, LedgerBurnIndex,
+        LedgerMintIndex, LedgerReleaseIndex, Wei,
+    },
     rpc_declarations::TransactionReceipt,
+    state::transactions::{Erc20Approve, ExecuteSwapRequest},
     tx::{Eip1559TransactionRequest, SignedEip1559TransactionRequest},
+    tx_id::SwapTxId,
 };
 
 use super::transactions::{
@@ -218,6 +225,71 @@ pub enum EventType {
         #[n(2)]
         reimbursed: Reimbursed,
     },
+    #[n(31)]
+    AcceptedSwapActivationRequest(#[n(0)] Erc20Approve),
+    #[n(32)]
+    SwapContractActivated {
+        #[n(0)]
+        swap_contract_address: Address,
+        #[n(1)]
+        usdc_contract_address: Address,
+        #[cbor(n(2), with = "crate::cbor::principal")]
+        twin_usdc_ledger_id: Principal,
+        #[n(3)]
+        twin_usdc_decimals: u8,
+        #[n(4)]
+        canister_signing_fee_twin_usdc_value: Erc20Value,
+        #[cbor(n(5), with = "crate::cbor::principal")]
+        dex_canister_id: Principal,
+    },
+    #[n(33)]
+    ReceivedSwapOrder(#[n(0)] ReceivedSwapEvent),
+    #[n(34)]
+    MintedToAppicDex {
+        /// The unique identifier of the deposit on the Ethereum network.
+        #[n(0)]
+        event_source: EventSource,
+        /// The transaction index on the native ledger.
+        #[cbor(n(1), with = "crate::cbor::id")]
+        mint_block_index: LedgerMintIndex,
+        #[cbor(n(2), with = "crate::cbor::principal")]
+        minted_token: Principal,
+        #[n(3)]
+        erc20_contract_address: Address,
+        #[n(4)]
+        tx_id: SwapTxId,
+    },
+    #[n(35)]
+    NotifiedSwapEventOrderToAppicDex {
+        /// The unique identifier of the deposit on the Ethereum network.
+        #[n(0)]
+        event_source: EventSource,
+        #[n(4)]
+        tx_id: SwapTxId,
+    },
+    #[n(36)]
+    ReleasedGasFromGasTankWithUsdc {
+        #[n(0)]
+        usdc_amount: Erc20Value,
+        #[n(1)]
+        gas_amount: Wei,
+        #[n(2)]
+        swap_tx_id: String,
+    },
+    #[n(37)]
+    AcceptedSwapRequest(#[n(0)] ExecuteSwapRequest),
+    #[n(38)]
+    QuarantinedDexOrder(#[n(0)] DexOrderArgs),
+
+    #[n(39)]
+    QuarantinedSwapRequest(#[n(0)] ExecuteSwapRequest),
+    #[n(40)]
+    GasTankUpdate {
+        #[n(0)]
+        usdc_withdrawn: Erc20Value,
+        #[n(1)]
+        native_deposited: Wei,
+    },
 }
 
 impl ReceivedContractEvent {
@@ -230,6 +302,9 @@ impl ReceivedContractEvent {
             }
             ReceivedContractEvent::WrappedIcrcDeployed(event) => {
                 EventType::DeployedWrappedIcrcToken(event)
+            }
+            ReceivedContractEvent::ReceivedSwapOrder(received_swap_event) => {
+                EventType::ReceivedSwapOrder(received_swap_event)
             }
         }
     }

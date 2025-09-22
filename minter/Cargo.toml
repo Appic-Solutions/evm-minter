@@ -6,7 +6,6 @@ edition = "2021"
 
 
 [dependencies]
-
 evm_rpc_client = { path = "../evm_rpc_client" }
 askama = { version = "0.12.1", features = ["serde-json"] }
 candid = "0.10.6"
@@ -36,6 +35,8 @@ num-bigint="0.4.6"
 rlp="0.5.2"
 num-traits="0.2.19"
 thousands="0.2.0"
+rust_decimal = {version = "1.37", features=["maths"]}
+
 
 serde = { version = "1.0.203", features = ["derive"] }
 serde_bytes = "0.11.15"
@@ -58,6 +59,8 @@ bytes = "1.7.1"
 time = { version = "0.3.36", features = ["formatting"] }
 async-trait = "0.1.88"
 
+alloy = { version = "0.2", features = ["sol-types"] }
+alloy-primitives = "0.2"
 
 
 [dev-dependencies]
