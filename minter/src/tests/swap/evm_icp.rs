@@ -1,22 +1,14 @@
 use std::time::Duration;
 
-use candid::{types::principal::PrincipalError, Nat, Principal};
+use candid::{Nat, Principal};
 use icrc_ledger_types::icrc1::account::Account;
 
 use crate::{
-    candid_types::{
-        chain_data::ChainData,
-        withdraw_native::{WithdrawalDetail, WithdrawalSearchParameter},
-        MinterInfo, RequestScrapingError,
-    },
+    candid_types::{chain_data::ChainData, RequestScrapingError},
     tests::{
         minter_flow_tets::mock_rpc_https_responses::{
             generate_and_submit_mock_http_response, MOCK_BSC_FEE_HISTORY_INNER,
-            MOCK_FAILED_TRANSACTION_RECEIPT_SWAP_BSC, MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
-            MOCK_GET_SWAP_CONTRACT_BASE_LOGS_EVM_TO_ICP, MOCK_SEND_TRANSACTION_ERROR,
-            MOCK_SEND_TRANSACTION_SUCCESS, MOCK_SWAP_BASE_BLOCK_NUMBER,
-            MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC, MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC,
-            MOCK_TRANSACTION_RECEIPT_SWAP_BSC, MOCK_TRANSACTION_RECEIPT_SWAP_BSC_REFUND,
+            MOCK_GET_SWAP_CONTRACT_BASE_LOGS_EVM_TO_ICP, MOCK_SWAP_BASE_BLOCK_NUMBER,
         },
         pocket_ic_helpers::{create_pic, five_ticks, query_call, update_call},
         swap::helpers::{
@@ -79,9 +71,6 @@ fn evm_to_icp_swap_happy_path() {
         MOCK_SWAP_BASE_BLOCK_NUMBER,
     );
 
-    let minter_info_before_succesful_swap =
-        query_call::<(), MinterInfo>(&pic, bsc_minter_principal(), "get_minter_info", ());
-
     five_ticks(&pic);
     five_ticks(&pic);
 
@@ -92,30 +81,6 @@ fn evm_to_icp_swap_happy_path() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_GET_SWAP_CONTRACT_BASE_LOGS_EVM_TO_ICP,
-    );
-
-    // Ankr mock submission
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_GET_SWAP_CONTRACT_BASE_LOGS_EVM_TO_ICP,
-    );
-
-    // Drpc mock submission
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_GET_SWAP_CONTRACT_BASE_LOGS_EVM_TO_ICP,
-    );
-
-    // Alchemy mock submissios
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_GET_SWAP_CONTRACT_BASE_LOGS_EVM_TO_ICP,
     );
 

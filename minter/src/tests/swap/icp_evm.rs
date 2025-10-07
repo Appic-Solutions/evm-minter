@@ -1,24 +1,19 @@
-use std::time::Duration;
-
 use candid::{Nat, Principal};
 
 use crate::{
-    candid_types::{chain_data::ChainData, MinterInfo, RequestScrapingError},
+    candid_types::{chain_data::ChainData, MinterInfo},
     tests::{
         dex_types::{CrosschainSwapArgs, CrosschainSwapError},
         minter_flow_tets::mock_rpc_https_responses::{
             generate_and_submit_mock_http_response, MOCK_BASE_FEE_HISTORY_INNER,
-            MOCK_BSC_FEE_HISTORY_INNER, MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
             MOCK_SEND_TRANSACTION_ERROR, MOCK_SEND_TRANSACTION_SUCCESS,
-            MOCK_SWAP_BASE_BLOCK_NUMBER, MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BASE,
-            MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC, MOCK_TRANSACTION_COUNT_LATEST_SWAP_BASE,
-            MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC, MOCK_TRANSACTION_RECEIPT_SWAP_BASE,
-            MOCK_TRANSACTION_RECEIPT_SWAP_BSC, MOCK_TRANSACTION_RECEIPT_SWAP_BSC_REFUND,
+            MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BASE, MOCK_TRANSACTION_COUNT_LATEST_SWAP_BASE,
+            MOCK_TRANSACTION_RECEIPT_SWAP_BASE,
         },
         pocket_ic_helpers::{create_pic, five_ticks, query_call, update_call},
         swap::helpers::{
-            base_minter_principal, bsc_minter_principal,
-            create_and_install_minters_plus_dependency_canisters, dex_principal_id,
+            base_minter_principal, create_and_install_minters_plus_dependency_canisters,
+            dex_principal_id,
         },
     },
     APPIC_CONTROLLER_PRINCIPAL, RPC_HELPER_PRINCIPAL,
@@ -73,28 +68,6 @@ fn icp_to_evm_swap_happy_path() {
         MOCK_TRANSACTION_COUNT_LATEST_SWAP_BASE,
     );
 
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_COUNT_LATEST_SWAP_BASE,
-    );
-
-    // Generating the latest transaction count for inserting the correct nonce
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_COUNT_LATEST_SWAP_BASE,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
-        MOCK_TRANSACTION_COUNT_LATEST_SWAP_BASE,
-    );
-
     five_ticks(&pic);
     five_ticks(&pic);
     //
@@ -121,23 +94,6 @@ fn icp_to_evm_swap_happy_path() {
         MOCK_SEND_TRANSACTION_ERROR,
     );
 
-    // Drpc request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-
-    // Alchemy request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-    // getting the finalized transaction count after sending transaction was successful.
-
     five_ticks(&pic);
     let canister_http_requests = pic.get_canister_http();
 
@@ -145,27 +101,6 @@ fn icp_to_evm_swap_happy_path() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BASE,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BASE,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BASE,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BASE,
     );
 
@@ -182,30 +117,6 @@ fn icp_to_evm_swap_happy_path() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_RECEIPT_SWAP_BASE,
-    );
-
-    // ankr
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_RECEIPT_SWAP_BASE,
-    );
-
-    // public_node
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_RECEIPT_SWAP_BASE,
-    );
-
-    // ankr
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_RECEIPT_SWAP_BASE,
     );
 

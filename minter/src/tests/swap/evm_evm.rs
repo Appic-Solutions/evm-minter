@@ -84,30 +84,6 @@ fn evm_to_evm_swap_happy_path() {
         MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
     );
 
-    // Ankr mock submission
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
-    );
-
-    // Drpc mock submission
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
-    );
-
-    // Alchemy mock submissios
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
-        MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
-    );
-
     five_ticks(&pic);
     five_ticks(&pic);
     five_ticks(&pic);
@@ -122,28 +98,6 @@ fn evm_to_evm_swap_happy_path() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC,
-    );
-
-    // Generating the latest transaction count for inserting the correct nonce
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC,
     );
 
@@ -173,21 +127,6 @@ fn evm_to_evm_swap_happy_path() {
         MOCK_SEND_TRANSACTION_ERROR,
     );
 
-    // Drpc request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-
-    // Alchemy request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
     // getting the finalized transaction count after sending transaction was successful.
 
     five_ticks(&pic);
@@ -197,27 +136,6 @@ fn evm_to_evm_swap_happy_path() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC,
     );
 
@@ -234,30 +152,6 @@ fn evm_to_evm_swap_happy_path() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_RECEIPT_SWAP_BSC,
-    );
-
-    // ankr
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_RECEIPT_SWAP_BSC,
-    );
-
-    // public_node
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_RECEIPT_SWAP_BSC,
-    );
-
-    // ankr
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_RECEIPT_SWAP_BSC,
     );
 
@@ -377,30 +271,6 @@ fn evm_to_evm_swap_refund_path() {
         MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
     );
 
-    // Ankr mock submission
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
-    );
-
-    // Drpc mock submission
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
-    );
-
-    // Alchemy mock submissios
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
-        MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
-    );
-
     five_ticks(&pic);
     five_ticks(&pic);
     five_ticks(&pic);
@@ -415,28 +285,6 @@ fn evm_to_evm_swap_refund_path() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC,
-    );
-
-    // Generating the latest transaction count for inserting the correct nonce
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC,
     );
 
@@ -466,23 +314,6 @@ fn evm_to_evm_swap_refund_path() {
         MOCK_SEND_TRANSACTION_ERROR,
     );
 
-    // Drpc request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-
-    // Alchemy request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-    // getting the finalized transaction count after sending transaction was successful.
-
     five_ticks(&pic);
     let canister_http_requests = pic.get_canister_http();
 
@@ -490,27 +321,6 @@ fn evm_to_evm_swap_refund_path() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC,
     );
 
@@ -527,30 +337,6 @@ fn evm_to_evm_swap_refund_path() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_RECEIPT_SWAP_BSC_REFUND,
-    );
-
-    // ankr
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_RECEIPT_SWAP_BSC_REFUND,
-    );
-
-    // public_node
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_RECEIPT_SWAP_BSC_REFUND,
-    );
-
-    // ankr
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_RECEIPT_SWAP_BSC_REFUND,
     );
 
@@ -597,7 +383,7 @@ fn evm_to_evm_swap_refund_path() {
             .unwrap()
             .usdc_balance
         // usdc max gas fee plus the signing fee
-            + Nat::from(63_008_030_000_000_000_u128)
+            + Nat::from(69_609_636_000_000_000_u128)
     );
 
     assert_eq!(
@@ -606,7 +392,7 @@ fn evm_to_evm_swap_refund_path() {
         minter_info_before_succesful_swap.erc20_balances.unwrap()[0]
             .balance
             .clone()
-            - Nat::from(4_268_227_805_882_333_960_u128)
+            - Nat::from(4_261_626_199_882_333_960_u128)
     );
 }
 
@@ -668,30 +454,6 @@ fn evm_to_evm_swap_refund_after_failed_evm_swap() {
         MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
     );
 
-    // Ankr mock submission
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
-    );
-
-    // Drpc mock submission
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
-    );
-
-    // Alchemy mock submissios
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
-        MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
-    );
-
     five_ticks(&pic);
     five_ticks(&pic);
     five_ticks(&pic);
@@ -706,28 +468,6 @@ fn evm_to_evm_swap_refund_after_failed_evm_swap() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC,
-    );
-
-    // Generating the latest transaction count for inserting the correct nonce
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC,
     );
 
@@ -757,23 +497,6 @@ fn evm_to_evm_swap_refund_after_failed_evm_swap() {
         MOCK_SEND_TRANSACTION_ERROR,
     );
 
-    // Drpc request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-
-    // Alchemy request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-    // getting the finalized transaction count after sending transaction was successful.
-
     five_ticks(&pic);
     let canister_http_requests = pic.get_canister_http();
 
@@ -781,27 +504,6 @@ fn evm_to_evm_swap_refund_after_failed_evm_swap() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC,
     );
 
@@ -818,30 +520,6 @@ fn evm_to_evm_swap_refund_after_failed_evm_swap() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_FAILED_TRANSACTION_RECEIPT_SWAP_BSC,
-    );
-
-    // ankr
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_FAILED_TRANSACTION_RECEIPT_SWAP_BSC,
-    );
-
-    // public_node
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_FAILED_TRANSACTION_RECEIPT_SWAP_BSC,
-    );
-
-    // ankr
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_FAILED_TRANSACTION_RECEIPT_SWAP_BSC,
     );
 

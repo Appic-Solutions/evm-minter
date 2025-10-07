@@ -11,6 +11,7 @@ use crate::{
     evm_config::EvmNetwork,
     logs::{PrintProxySink, INFO, TRACE_HTTP},
     numeric::{BlockNumber, GasAmount, LogIndex, TransactionCount, Wei, WeiPerGas},
+    rpc_client::providers::get_custom_providers,
     rpc_declarations::{
         AccessList, Block, BlockSpec, BlockTag, CallParams, Data, FeeHistory, FeeHistoryParams,
         FixedSizeData, GetLogsParam, Hash, LogEntry, Quantity, SendRawTransactionResult, Topic,
@@ -84,6 +85,35 @@ impl RpcClient {
         client
     }
 
+    pub fn from_state_custom_providers(state: &State, providers: Vec<Provider>) -> Self {
+        let mut client = Self {
+            evm_rpc_client: None,
+            chain: state.evm_network,
+        };
+        const MIN_ATTACHED_CYCLES: u128 = 30_000_000_000;
+
+        let providers = get_custom_providers(client.chain, providers);
+
+        client.evm_rpc_client = Some(
+            EvmRpcClient::builder(CallerService {}, TRACE_HTTP)
+                .with_providers(providers)
+                .with_evm_canister_id(state.evm_canister_id)
+                .with_min_attached_cycles(MIN_ATTACHED_CYCLES)
+                .with_override_rpc_config(OverrideRpcConfig {
+                    eth_get_logs: Some(EvmRpcConfig {
+                        response_size_estimate: Some(
+                            ETH_GET_LOGS_INITIAL_RESPONSE_SIZE_ESTIMATE + HEADER_SIZE_LIMIT,
+                        ),
+                        response_consensus: None,
+                    }),
+                    ..Default::default()
+                })
+                .build(),
+        );
+
+        client
+    }
+
     pub fn from_state_one_provider(state: &State, provider: Provider) -> Self {
         let mut client = Self {
             evm_rpc_client: None,
@@ -119,7 +149,7 @@ impl RpcClient {
                 .eth_call(into_evm_call_args(params))
                 .await
                 .reduce();
-            return result.result;
+            result.result
         } else {
             Err(MultiCallError::ConsistentEvmRpcCanisterError(String::from(
                 "EVM RPC canister can not be None",
@@ -145,7 +175,7 @@ impl RpcClient {
                 })
                 .await
                 .reduce();
-            return result.result;
+            result.result
         } else {
             Err(MultiCallError::ConsistentEvmRpcCanisterError(String::from(
                 "EVM RPC canister can not be None",
@@ -162,7 +192,7 @@ impl RpcClient {
                 .eth_get_block_by_number(into_evm_block_tag(block))
                 .await
                 .reduce();
-            return result.result;
+            result.result
         } else {
             Err(MultiCallError::ConsistentEvmRpcCanisterError(String::from(
                 "EVM RPC canister can not be None",
@@ -200,7 +230,7 @@ impl RpcClient {
                 })
                 .await
                 .reduce();
-            return result.result;
+            result.result
         } else {
             Err(MultiCallError::ConsistentEvmRpcCanisterError(String::from(
                 "EVM RPC canister can not be None",
@@ -219,7 +249,7 @@ impl RpcClient {
                     block: EvmBlockTag::Finalized,
                 })
                 .await;
-            return results.reduce().reduce_with_equality().result;
+            results.reduce().reduce_with_equality().result
         } else {
             Err(MultiCallError::ConsistentEvmRpcCanisterError(String::from(
                 "EVM RPC canister can not be None",
@@ -258,7 +288,7 @@ impl RpcClient {
                 .eth_send_raw_transaction(raw_signed_transaction_hex)
                 .await
                 .reduce();
-            return result.result;
+            result.result
         } else {
             Err(MultiCallError::ConsistentEvmRpcCanisterError(String::from(
                 "EVM RPC canister can not be None",
@@ -278,7 +308,7 @@ impl From<EvmRpcError> for SingleCallError {
     fn from(value: EvmRpcError) -> Self {
         match value {
             EvmRpcError::ProviderError(e) => SingleCallError::EvmRpcError(e.to_string()),
-            EvmRpcError::HttpOutcallError(e) => SingleCallError::HttpOutcallError(e.into()),
+            EvmRpcError::HttpOutcallError(e) => SingleCallError::HttpOutcallError(e),
             EvmRpcError::JsonRpcError(e) => SingleCallError::JsonRpcError {
                 code: e.code,
                 message: e.message,
@@ -306,7 +336,7 @@ impl<T: Clone> MultiCallError<T> {
             MultiCallError::ConsistentJsonRpcError { .. } => false,
             MultiCallError::InconsistentResults(results) => {
                 results
-                    .into_iter()
+                    .iter()
                     .any(|(_rpcservice, rpc_result)| match rpc_result {
                         Ok(_) => false,
                         Err(rpc_error) => match rpc_error {
@@ -411,7 +441,7 @@ impl<T: std::fmt::Debug + std::cmp::PartialEq + Clone> ReducedResult<T> {
                                 .map_err(|e| SingleCallError::EvmRpcError(e.to_string())),
                             Err(error) => Err(error),
                         };
-                        return (rpc_service, mapped_response);
+                        (rpc_service, mapped_response)
                     })
                     .collect();
                 Err(MultiCallError::<U>::InconsistentResults(
@@ -431,7 +461,7 @@ impl<T: std::fmt::Debug + std::cmp::PartialEq + Clone> ReducedResult<T> {
                         Err(MultiCallError::ConsistentEvmRpcCanisterError(e.to_string()))
                     }
                     EvmRpcError::HttpOutcallError(e) => {
-                        Err(MultiCallError::ConsistentHttpOutcallError(e.into()))
+                        Err(MultiCallError::ConsistentHttpOutcallError(e))
                     }
                     EvmRpcError::JsonRpcError(e) => Err(MultiCallError::ConsistentJsonRpcError {
                         code: e.code,
@@ -554,27 +584,25 @@ impl<T: std::fmt::Debug + std::cmp::PartialEq + Clone> ReducedResult<T> {
                     );
                     match tally.len() {
                         0 => panic!("BUG: tally should be non-empty"),
-                        1 => {
-                            return ReducedResult {
-                                result: Ok(tally
-                                    .pop()
-                                    .and_then(|(_key, mut ballot)| ballot.pop_last())
-                                    .expect("BUG: tally is non-empty")
-                                    .1),
-                            }
-                        }
+                        1 => ReducedResult {
+                            result: Ok(tally
+                                .pop()
+                                .and_then(|(_key, mut ballot)| ballot.pop_last())
+                                .expect("BUG: tally is non-empty")
+                                .1),
+                        },
                         _ => {
                             let mut first =
                                 tally.pop().expect("BUG: tally has at least 2 elements");
                             let second = tally.pop().expect("BUG: tally has at least 2 elements");
                             if first.1.len() > second.1.len() {
-                                return ReducedResult {
+                                ReducedResult {
                                     result: Ok(first
                                         .1
                                         .pop_last()
                                         .expect("BUG: tally should be non-empty")
                                         .1),
-                                };
+                                }
                             } else {
                                 let error = MultiCallError::InconsistentResults(
                                     first
@@ -586,7 +614,7 @@ impl<T: std::fmt::Debug + std::cmp::PartialEq + Clone> ReducedResult<T> {
                                 );
 
                                 log!( INFO,"[reduce_with_strict_majority_by_key]: no strict majority {error:?}");
-                                return ReducedResult { result: Err(error) };
+                                ReducedResult { result: Err(error) }
                             }
                         }
                     }
@@ -622,9 +650,9 @@ impl<T: std::fmt::Debug + std::cmp::PartialEq + Clone> ReducedResult<T> {
                         .map(|(_rpc_service, result)| result)
                         .min_by_key(extractor)
                         .expect("BUG: ok_results is guaranteed to be non-empty");
-                    return ReducedResult {
+                    ReducedResult {
                         result: Ok(mapped_to_consistent),
-                    };
+                    }
                 }
                 Err(multi_call_error) => ReducedResult {
                     result: Err(multi_call_error),
@@ -691,10 +719,10 @@ impl Reduce for EvmMultiRpcResult<Vec<EvmLogEntry>> {
                 removed: log.removed,
             })
         }
-        let mapped_logs = ReducedResult::from_multi_result(self)
+
+        ReducedResult::from_multi_result(self)
             .reduce_with_equality()
-            .map_reduce(&map_logs);
-        mapped_logs
+            .map_reduce(&map_logs)
     }
 }
 
@@ -702,8 +730,7 @@ impl Reduce for EvmMultiRpcResult<Vec<LogEntry>> {
     type Item = Vec<LogEntry>;
 
     fn reduce(self) -> ReducedResult<Self::Item> {
-        let mapped_logs = ReducedResult::from_multi_result(self).reduce_with_equality();
-        mapped_logs
+        ReducedResult::from_multi_result(self).reduce_with_equality()
     }
 }
 
@@ -740,10 +767,9 @@ impl Reduce for EvmMultiRpcResult<Option<EvmTransactionReceipt>> {
                 .transpose()
         }
 
-        let mapped_transaction_receipt = ReducedResult::from_multi_result(self)
+        ReducedResult::from_multi_result(self)
             .reduce_with_equality()
-            .map_reduce(&map_transaction_receipt);
-        mapped_transaction_receipt
+            .map_reduce(&map_transaction_receipt)
     }
 }
 
@@ -751,9 +777,7 @@ impl Reduce for EvmMultiRpcResult<Option<TransactionReceipt>> {
     type Item = Option<TransactionReceipt>;
 
     fn reduce(self) -> ReducedResult<Self::Item> {
-        let mapped_transaction_receipt =
-            ReducedResult::from_multi_result(self).reduce_with_equality();
-        mapped_transaction_receipt
+        ReducedResult::from_multi_result(self).reduce_with_equality()
     }
 }
 
@@ -774,10 +798,9 @@ impl Reduce for EvmMultiRpcResult<Option<EvmFeeHistory>> {
             })
         }
 
-        let mapped_fee_history = ReducedResult::from_multi_result(self)
+        ReducedResult::from_multi_result(self)
             .map_reduce(&map_fee_history)
-            .reduce_with_strict_majority_by_key(|fee_history| fee_history.oldest_block);
-        mapped_fee_history
+            .reduce_with_strict_majority_by_key(|fee_history| fee_history.oldest_block)
     }
 }
 
@@ -789,14 +812,13 @@ impl Reduce for EvmMultiRpcResult<EvmSendRawTransactionStatus> {
     type Item = SendRawTransactionResult;
 
     fn reduce(self) -> ReducedResult<Self::Item> {
-        let mapped_send_raw_transaction = ReducedResult::from_multi_result(self)
+        ReducedResult::from_multi_result(self)
             .map_reduce(&|tx_status| {
                 Ok::<SendRawTransactionResult, Infallible>(SendRawTransactionResult::from(
                     tx_status,
                 ))
             })
-            .reduce_with_only_one_key();
-        mapped_send_raw_transaction
+            .reduce_with_only_one_key()
     }
 }
 
@@ -804,18 +826,16 @@ impl Reduce for EvmMultiRpcResult<EvmSendRawTransactionStatus> {
 impl Reduce for EvmMultiRpcResult<Nat256> {
     type Item = TransactionCount;
     fn reduce(self) -> ReducedResult<Self::Item> {
-        let mapped_transaction_count = ReducedResult::from_multi_result(self)
-            .map_reduce(&|transaction_count: Nat256| TransactionCount::try_from(transaction_count));
-        mapped_transaction_count
+        ReducedResult::from_multi_result(self)
+            .map_reduce(&|transaction_count: Nat256| TransactionCount::try_from(transaction_count))
     }
 }
 
 impl Reduce for EvmMultiRpcResult<Nat> {
     type Item = TransactionCount;
     fn reduce(self) -> ReducedResult<Self::Item> {
-        let mapped_transaction_count = ReducedResult::from_multi_result(self)
-            .map_reduce(&|transaction_count: Nat| TransactionCount::try_from(transaction_count));
-        mapped_transaction_count
+        ReducedResult::from_multi_result(self)
+            .map_reduce(&|transaction_count: Nat| TransactionCount::try_from(transaction_count))
     }
 }
 
@@ -824,7 +844,7 @@ fn into_evm_blob_version_hashes(hashes: Vec<Hash>) -> Vec<Hex32> {
 }
 
 fn into_evm_blobs(blobs: Vec<Vec<u8>>) -> Vec<Hex> {
-    blobs.into_iter().map(|blob| Hex::from(blob)).collect()
+    blobs.into_iter().map(Hex::from).collect()
 }
 fn into_evm_access_list(access_list: AccessList) -> EvmAccessList {
     let entries: Vec<EvmAccessListEntry> = access_list
@@ -878,10 +898,7 @@ pub fn is_response_too_large(error: &HttpOutcallError) -> bool {
 pub fn into_evm_call_args(call_params: CallParams) -> CallArgs {
     CallArgs {
         transaction: TransactionRequest {
-            tx_type: call_params
-                .transaction
-                .tx_type
-                .map(|tx_type| HexByte::from(tx_type)),
+            tx_type: call_params.transaction.tx_type.map(HexByte::from),
             nonce: call_params
                 .transaction
                 .nonce
@@ -902,7 +919,7 @@ pub fn into_evm_call_args(call_params: CallParams) -> CallArgs {
                 .transaction
                 .value
                 .map(|value| Nat256::from_be_bytes(value.to_be_bytes())),
-            input: call_params.transaction.input.map(|input| Hex::from(input)),
+            input: call_params.transaction.input.map(Hex::from),
             gas_price: call_params
                 .transaction
                 .gas_price
@@ -924,21 +941,15 @@ pub fn into_evm_call_args(call_params: CallParams) -> CallArgs {
             access_list: call_params
                 .transaction
                 .access_list
-                .map(|access_list| into_evm_access_list(access_list)),
+                .map(into_evm_access_list),
             blob_versioned_hashes: call_params
                 .transaction
                 .blob_versioned_hashes
-                .map(|hashes| into_evm_blob_version_hashes(hashes)),
-            blobs: call_params
-                .transaction
-                .blobs
-                .map(|blobs| into_evm_blobs(blobs)),
-            chain_id: call_params
-                .transaction
-                .chain_id
-                .map(|chain_id| Nat256::from(chain_id)),
+                .map(into_evm_blob_version_hashes),
+            blobs: call_params.transaction.blobs.map(into_evm_blobs),
+            chain_id: call_params.transaction.chain_id.map(Nat256::from),
         },
-        block: call_params.block.map(|block| into_evm_block_tag(block)),
+        block: call_params.block.map(into_evm_block_tag),
     }
 }
 
@@ -960,19 +971,19 @@ pub fn filter_inconsistent_error_results<T>(
 }
 
 pub fn only_inconsistent_ok_results_without_providers<T: Clone>(
-    inconsistent_results: &Vec<(EvmRpcService, Result<T, SingleCallError>)>,
+    inconsistent_results: &[(EvmRpcService, Result<T, SingleCallError>)],
 ) -> Vec<T> {
     inconsistent_results
-        .into_iter()
-        .filter_map(|(_rpc_service, result)| result.clone().ok().map(|value| value))
+        .iter()
+        .filter_map(|(_rpc_service, result)| result.clone().ok())
         .collect()
 }
 
 pub fn only_inconsistent_error_results_without_providers<T: Clone>(
-    inconsistent_results: &Vec<(EvmRpcService, Result<T, SingleCallError>)>,
+    inconsistent_results: &[(EvmRpcService, Result<T, SingleCallError>)],
 ) -> Vec<SingleCallError> {
     inconsistent_results
-        .into_iter()
-        .filter_map(|(_rpc_service, result)| result.clone().err().map(|error| error))
+        .iter()
+        .filter_map(|(_rpc_service, result)| result.clone().err())
         .collect()
 }

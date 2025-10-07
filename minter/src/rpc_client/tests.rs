@@ -44,14 +44,12 @@ mod providers {
     #[test]
     fn should_retrieve_at_least_four_providers() {
         for network in EvmNetwork::iter() {
-            match get_providers(network) {
-                evm_rpc_client::evm_rpc_types::RpcServices::Custom {
-                    chain_id: _,
-                    services,
-                } => {
-                    assert!(services.len() >= 2)
-                }
-                _ => (),
+            if let evm_rpc_client::evm_rpc_types::RpcServices::Custom {
+                chain_id: _,
+                services,
+            } = get_providers(network)
+            {
+                assert!(services.len() >= 2)
             }
         }
     }

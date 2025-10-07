@@ -141,6 +141,31 @@ pub fn get_one_provider(network: EvmNetwork, provider: Provider) -> RpcServices 
     }
 }
 
+pub fn get_custom_providers(network: EvmNetwork, providers: Vec<Provider>) -> RpcServices {
+    let config = get_network_config(network);
+    let chain_id = network.chain_id();
+
+    let rpc_apis = providers
+        .iter()
+        .map(|provider| {
+            let url = match provider {
+                Provider::Ankr => config.ankr_url,
+                Provider::LlamaNodes => config.llama_nodes_url.unwrap(),
+                Provider::PublicNode => config.public_node_url,
+                Provider::DRPC => config.drpc_url,
+                Provider::Alchemy => config.alchemy_url,
+            };
+
+            create_rpc_service(url, *provider)
+        })
+        .collect();
+
+    RpcServices::Custom {
+        chain_id,
+        services: rpc_apis,
+    }
+}
+
 pub fn get_providers(network: EvmNetwork) -> RpcServices {
     let config = get_network_config(network);
     let chain_id = network.chain_id();

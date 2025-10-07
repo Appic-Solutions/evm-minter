@@ -598,7 +598,9 @@ async fn scrape_until_block(last_block_number: BlockNumber, max_block_spread: u1
         DEBUG,
         "[scrape_contract_logs]: Scraping logs in block range {block_range}",
     );
-    let rpc_client = read_state(RpcClient::from_state_all_providers);
+    let rpc_client =
+        read_state(|s| RpcClient::from_state_custom_providers(s, vec![Provider::Alchemy]));
+
     for block_range in block_range.into_chunks(max_block_spread) {
         match scrape_block_range(
             &rpc_client,
@@ -640,10 +642,17 @@ async fn scrape_block_range(
             topics: topics.clone(),
         };
 
-        let result = rpc_client
-            .get_logs(request)
+        let mut result = rpc_client
+            .get_logs(request.clone())
             .await
             .map(ReceivedEventsLogParser::parse_all_logs);
+
+        if result.is_err() {
+            result = rpc_client
+                .get_logs(request)
+                .await
+                .map(ReceivedEventsLogParser::parse_all_logs);
+        }
 
         match result {
             Ok((events, errors)) => {

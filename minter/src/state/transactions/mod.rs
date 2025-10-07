@@ -1587,7 +1587,7 @@ pub fn create_transaction(
                 amount: Wei::ZERO,
                 data: TransactionCallData::Erc20Approve {
                     spender: request.swap_contract_address,
-                    value: Erc20Value::MAX.checked_sub(Erc20Value::from(1_u8)).unwrap(),
+                    value: Erc20Value::MAX,
                 }
                 .encode(),
                 access_list: Default::default(),

@@ -11,16 +11,12 @@ use crate::candid_types::chain_data::ChainData;
 use crate::candid_types::{
     ActivateSwapReqest, AddErc20Token, CandidBlockTag, MinterInfo, RequestScrapingError,
 };
-use crate::evm_config::EvmNetwork;
 use crate::lifecycle::{InitArg, MinterArg};
 use crate::tests::dex_types::{
-    CandidMinter, CandidPathKey, CandidPoolId, CandidPoolState, CreatePoolArgs, CreatePoolError,
-    MintPositionArgs, MintPositionError, QuoteArgs, QuoteError, QuoteExactParams,
-    UpgradeArgs as DexUpgradeArgs,
+    CandidMinter, CandidPathKey, CandidPoolId, CreatePoolArgs, CreatePoolError, MintPositionArgs,
+    MintPositionError, QuoteArgs, QuoteError, QuoteExactParams, UpgradeArgs as DexUpgradeArgs,
 };
-use crate::tests::lsm_types::{
-    AddErc20Arg, AddErc20Error, Erc20Contract, LedgerInitArg, LedgerManagerInfo,
-};
+
 use crate::tests::minter_flow_tets::mock_rpc_https_responses::{
     generate_and_submit_mock_http_response, MOCK_BASE_BLOCK_NUMBER, MOCK_BASE_FEE_HISTORY_INNER,
     MOCK_BASE_FEE_HISTORY_RESPONSE, MOCK_BASE_HIGHER_BLOCK_NUMBER, MOCK_BSC_BLOCK_NUMBER,
@@ -29,18 +25,17 @@ use crate::tests::minter_flow_tets::mock_rpc_https_responses::{
     MOCK_SEND_TRANSACTION_ERROR, MOCK_SEND_TRANSACTION_SUCCESS,
     MOCK_TRANSACTION_COUNT_BASE_FINALIZED, MOCK_TRANSACTION_COUNT_BASE_LATEST,
     MOCK_TRANSACTION_COUNT_BSC_FINALIZED, MOCK_TRANSACTION_COUNT_BSC_LATEST,
-    MOCK_TRANSACTION_COUNT_LATEST_ERC20, MOCK_TRANSACTION_RECEIPT_APPROVE_BASE_ERC20,
-    MOCK_TRANSACTION_RECEIPT_APPROVE_BSC_ERC20, MOCK_TRANSACTION_RECEIPT_APPROVE_ERC20,
+    MOCK_TRANSACTION_RECEIPT_APPROVE_BASE_ERC20, MOCK_TRANSACTION_RECEIPT_APPROVE_BSC_ERC20,
 };
 use crate::tests::pocket_ic_helpers::{
     create_appic_helper_canister, create_evm_rpc_canister, create_icp_ledger_canister,
-    create_lsm_canister, create_pic, encode_call_args, five_ticks, icp_principal,
+    create_lsm_canister, encode_call_args, five_ticks, icp_principal,
     install_appic_helper_canister, install_evm_rpc_canister, install_icp_ledger_canister,
-    install_lsm_canister, lsm_principal, minter_principal, query_call, sender_principal,
-    update_call, DEX_CANISTER_BYTES, INDEX_WAM_BYTES, LEDGER_WASM_BYTES, MINTER_WASM_BYTES,
+    install_lsm_canister, lsm_principal, query_call, sender_principal, update_call,
+    DEX_CANISTER_BYTES, INDEX_WAM_BYTES, LEDGER_WASM_BYTES, MINTER_WASM_BYTES,
     PROXY_CANISTER_BYTES, TWENTY_TRILLIONS, TWO_TRILLIONS,
 };
-use crate::{APPIC_CONTROLLER_PRINCIPAL, RPC_HELPER_PRINCIPAL, SCRAPING_CONTRACT_LOGS_INTERVAL};
+use crate::{APPIC_CONTROLLER_PRINCIPAL, RPC_HELPER_PRINCIPAL};
 
 use super::super::ledger_arguments::{
     ArchiveOptions, FeatureFlags as LedgerFeatureFlags, IndexArg, IndexInitArg,
@@ -657,15 +652,6 @@ pub fn install_bsc_minter_and_setup(pic: &PocketIc) {
     // public_node mock submission
     generate_and_submit_mock_http_response(pic, &canister_http_requests, 0, MOCK_GET_LOGS_EMPTY);
 
-    // Ankr mock submission
-    generate_and_submit_mock_http_response(pic, &canister_http_requests, 1, MOCK_GET_LOGS_EMPTY);
-
-    // Drpc mock submission
-    generate_and_submit_mock_http_response(pic, &canister_http_requests, 2, MOCK_GET_LOGS_EMPTY);
-
-    // Alchemy mock submissios
-    generate_and_submit_mock_http_response(pic, &canister_http_requests, 3, MOCK_GET_LOGS_EMPTY);
-
     five_ticks(pic);
     five_ticks(pic);
 
@@ -724,30 +710,6 @@ pub fn install_bsc_minter_and_setup(pic: &PocketIc) {
         pic,
         &canister_http_requests,
         0,
-        MOCK_GET_BSC_LOGS_ERC20,
-    );
-
-    // Ankr mock submission
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        1,
-        MOCK_GET_BSC_LOGS_ERC20,
-    );
-
-    // Drpc mock submission
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        2,
-        MOCK_GET_BSC_LOGS_ERC20,
-    );
-
-    // Alchemy mock submission
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        3,
         MOCK_GET_BSC_LOGS_ERC20,
     );
 
@@ -824,28 +786,6 @@ pub fn install_bsc_minter_and_setup(pic: &PocketIc) {
         MOCK_TRANSACTION_COUNT_BSC_LATEST,
     );
 
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_COUNT_BSC_LATEST,
-    );
-
-    // Generating the latest transaction count for inserting the correct nonce
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_COUNT_BSC_LATEST,
-    );
-
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        3,
-        MOCK_TRANSACTION_COUNT_BSC_LATEST,
-    );
-
     five_ticks(pic);
     five_ticks(pic);
     //
@@ -872,23 +812,6 @@ pub fn install_bsc_minter_and_setup(pic: &PocketIc) {
         MOCK_SEND_TRANSACTION_ERROR,
     );
 
-    // Drpc request
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        2,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-
-    // Alchemy request
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        3,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-    // getting the finalized transaction count after sending transaction was successful.
-
     five_ticks(pic);
     let canister_http_requests = pic.get_canister_http();
 
@@ -896,27 +819,6 @@ pub fn install_bsc_minter_and_setup(pic: &PocketIc) {
         pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_COUNT_BSC_FINALIZED,
-    );
-
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_COUNT_BSC_FINALIZED,
-    );
-
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_COUNT_BSC_FINALIZED,
-    );
-
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_COUNT_BSC_FINALIZED,
     );
 
@@ -933,30 +835,6 @@ pub fn install_bsc_minter_and_setup(pic: &PocketIc) {
         pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_RECEIPT_APPROVE_BSC_ERC20,
-    );
-
-    // ankr
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_RECEIPT_APPROVE_BSC_ERC20,
-    );
-
-    // public_node
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_RECEIPT_APPROVE_BSC_ERC20,
-    );
-
-    // ankr
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_RECEIPT_APPROVE_BSC_ERC20,
     );
 
@@ -1014,15 +892,6 @@ pub fn install_base_minter_and_setup(pic: &PocketIc) {
 
     // public_node mock submission
     generate_and_submit_mock_http_response(pic, &canister_http_requests, 0, MOCK_GET_LOGS_EMPTY);
-
-    // Ankr mock submission
-    generate_and_submit_mock_http_response(pic, &canister_http_requests, 1, MOCK_GET_LOGS_EMPTY);
-
-    // Drpc mock submission
-    generate_and_submit_mock_http_response(pic, &canister_http_requests, 2, MOCK_GET_LOGS_EMPTY);
-
-    // Alchemy mock submissios
-    generate_and_submit_mock_http_response(pic, &canister_http_requests, 3, MOCK_GET_LOGS_EMPTY);
 
     five_ticks(pic);
 
@@ -1109,30 +978,6 @@ pub fn install_base_minter_and_setup(pic: &PocketIc) {
         MOCK_GET_BASE_LOGS_ERC20,
     );
 
-    // Ankr mock submission
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        1,
-        MOCK_GET_BASE_LOGS_ERC20,
-    );
-
-    // Drpc mock submission
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        2,
-        MOCK_GET_BASE_LOGS_ERC20,
-    );
-
-    // Alchemy mock submission
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        3,
-        MOCK_GET_BASE_LOGS_ERC20,
-    );
-
     five_ticks(pic);
     five_ticks(pic);
 
@@ -1207,28 +1052,6 @@ pub fn install_base_minter_and_setup(pic: &PocketIc) {
         MOCK_TRANSACTION_COUNT_BASE_LATEST,
     );
 
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_COUNT_BASE_LATEST,
-    );
-
-    // Generating the latest transaction count for inserting the correct nonce
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_COUNT_BASE_LATEST,
-    );
-
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        3,
-        MOCK_TRANSACTION_COUNT_BASE_LATEST,
-    );
-
     five_ticks(pic);
     five_ticks(pic);
     //
@@ -1255,23 +1078,6 @@ pub fn install_base_minter_and_setup(pic: &PocketIc) {
         MOCK_SEND_TRANSACTION_ERROR,
     );
 
-    // Drpc request
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        2,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-
-    // Alchemy request
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        3,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-    // getting the finalized transaction count after sending transaction was successful.
-
     five_ticks(pic);
     let canister_http_requests = pic.get_canister_http();
 
@@ -1279,27 +1085,6 @@ pub fn install_base_minter_and_setup(pic: &PocketIc) {
         pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_COUNT_BASE_FINALIZED,
-    );
-
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_COUNT_BASE_FINALIZED,
-    );
-
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_COUNT_BASE_FINALIZED,
-    );
-
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_COUNT_BASE_FINALIZED,
     );
 
@@ -1316,30 +1101,6 @@ pub fn install_base_minter_and_setup(pic: &PocketIc) {
         pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_RECEIPT_APPROVE_BASE_ERC20,
-    );
-
-    // ankr
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_RECEIPT_APPROVE_BASE_ERC20,
-    );
-
-    // public_node
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_RECEIPT_APPROVE_BASE_ERC20,
-    );
-
-    // ankr
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_RECEIPT_APPROVE_BASE_ERC20,
     );
 
@@ -1492,13 +1253,6 @@ pub fn create_pools_and_provide_liquidty(pic: &PocketIc) {
         Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     )
     .unwrap();
-
-    //let all_pools = query_call::<(), Vec<(CandidPoolId, CandidPoolState)>>(
-    //    pic,
-    //    dex_principal_id(),
-    //    "get_pools",
-    //    (),
-    //);
 
     let quote_result = query_call::<QuoteArgs, Result<Nat, QuoteError>>(
         pic,

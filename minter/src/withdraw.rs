@@ -5,6 +5,7 @@ use crate::logs::{DEBUG, INFO};
 use crate::numeric::{
     Erc20TokenAmount, Erc20Value, GasAmount, LedgerBurnIndex, LedgerMintIndex, Wei,
 };
+use crate::rpc_client::providers::Provider;
 use crate::rpc_client::{MultiCallError, RpcClient};
 use crate::rpc_declarations::{SendRawTransactionResult, TransactionReceipt};
 use crate::state::audit::{process_event, EventType};
@@ -38,12 +39,12 @@ const TRANSACTIONS_TO_SEND_BATCH_SIZE: usize = 5;
 pub const NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(21_000);
 pub const ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(66_000);
 
-pub const ERC20_APPROVAL_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(50_000);
+pub const ERC20_APPROVAL_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(70_000);
 
 // used for mining wrapped icrc transactions
 pub const ERC20_MINT_TRANSACTION_GAS_LIMIT: GasAmount = GasAmount::new(100_000);
 
-pub const REFUND_FAILED_SWAP_GAS_LIMIT: GasAmount = GasAmount::new(100_000);
+pub const REFUND_FAILED_SWAP_GAS_LIMIT: GasAmount = GasAmount::new(120_000);
 
 // the deadline is valid for 20 years and it is used for the the failed swaps that will be
 // converted to usdc transfer
@@ -379,7 +380,7 @@ pub async fn process_retrieve_tokens_requests() {
 }
 
 async fn latest_transaction_count() -> Option<TransactionCount> {
-    match read_state(RpcClient::from_state_all_providers)
+    match read_state(|s| RpcClient::from_state_custom_providers(s, vec![Provider::Alchemy]))
         .get_latest_transaction_count(crate::state::minter_address().await)
         .await
     {
@@ -533,7 +534,9 @@ async fn send_transactions_batch(latest_transaction_count: Option<TransactionCou
     });
 
     log!(INFO, "Transactions to send {:?}", transactions_to_send);
-    let rpc_client = read_state(RpcClient::from_state_all_providers);
+    let rpc_client = read_state(|s| {
+        RpcClient::from_state_custom_providers(s, vec![Provider::Alchemy, Provider::DRPC])
+    });
     let results = join_all(
         transactions_to_send
             .iter()
@@ -578,7 +581,8 @@ async fn finalize_transactions_batch() {
 
             let expected_finalized_withdrawal_ids: BTreeSet<_> =
                 txs_to_finalize.values().cloned().collect();
-            let rpc_client = read_state(RpcClient::from_state_all_providers);
+            let rpc_client =
+                read_state(|s| RpcClient::from_state_custom_providers(s, vec![Provider::Alchemy]));
 
             let results = join_all(
                 txs_to_finalize
@@ -644,13 +648,13 @@ async fn finalized_transaction_count() -> Result<TransactionCount, MultiCallErro
 {
     let evm_netowrk = read_state(|s| s.evm_network());
     match evm_netowrk {
-        EvmNetwork::Ethereum | EvmNetwork::Sepolia | EvmNetwork::BSC => {
-            read_state(RpcClient::from_state_all_providers)
+        EvmNetwork::Ethereum => {
+            read_state(|s| RpcClient::from_state_custom_providers(s, vec![Provider::Alchemy]))
                 .get_finalized_transaction_count(crate::state::minter_address().await)
                 .await
         }
         _ => {
-            read_state(RpcClient::from_state_all_providers)
+            read_state(|s| RpcClient::from_state_custom_providers(s, vec![Provider::Alchemy]))
                 .get_latest_transaction_count(crate::state::minter_address().await)
                 .await
         }

@@ -81,30 +81,6 @@ fn should_release_and_lock() {
         MOCK_WRAPPED_ICRC_DEPLOYED_AND_DEPOSIT,
     );
 
-    // Ankr mock submission
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_WRAPPED_ICRC_DEPLOYED_AND_DEPOSIT,
-    );
-
-    // Drpc mock submission
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_WRAPPED_ICRC_DEPLOYED_AND_DEPOSIT,
-    );
-
-    // Alchemy mock submission
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
-        MOCK_WRAPPED_ICRC_DEPLOYED_AND_DEPOSIT,
-    );
-
     five_ticks(&pic);
     five_ticks(&pic);
     five_ticks(&pic);
@@ -218,28 +194,6 @@ fn should_release_and_lock() {
         MOCK_TRANSACTION_COUNT_LATEST,
     );
 
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_COUNT_LATEST,
-    );
-
-    // Generating the latest transaction count for inserting the correct nonce
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_COUNT_LATEST,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
-        MOCK_TRANSACTION_COUNT_LATEST,
-    );
-
     five_ticks(&pic);
     five_ticks(&pic);
     //
@@ -266,22 +220,6 @@ fn should_release_and_lock() {
         MOCK_SEND_TRANSACTION_ERROR,
     );
 
-    // Drpc request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-
-    // Alchemy request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-
     five_ticks(&pic);
 
     // getting the finalized transaction count after sending transaction was successful.
@@ -291,27 +229,6 @@ fn should_release_and_lock() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_TRANSACTION_COUNT_FINALIZED,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_TRANSACTION_COUNT_FINALIZED,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_TRANSACTION_COUNT_FINALIZED,
-    );
-
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_TRANSACTION_COUNT_FINALIZED,
     );
 
@@ -327,30 +244,6 @@ fn should_release_and_lock() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_MINT_WRAPPED_ICRC_RECEIPT,
-    );
-
-    // ankr
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_MINT_WRAPPED_ICRC_RECEIPT,
-    );
-
-    // public_node
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_MINT_WRAPPED_ICRC_RECEIPT,
-    );
-
-    // ankr
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_MINT_WRAPPED_ICRC_RECEIPT,
     );
 
@@ -406,30 +299,6 @@ fn should_release_and_lock() {
         &pic,
         &canister_http_requests,
         0,
-        MOCK_ICRC_RELEASE_REUQEST,
-    );
-
-    // Ankr mock submission
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_ICRC_RELEASE_REUQEST,
-    );
-
-    // Drpc mock submission
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        2,
-        MOCK_ICRC_RELEASE_REUQEST,
-    );
-
-    // Alchemy mock submission
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        3,
         MOCK_ICRC_RELEASE_REUQEST,
     );
 
