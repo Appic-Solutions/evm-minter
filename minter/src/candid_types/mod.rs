@@ -1,3 +1,4 @@
+use crate::candid_types::withdraw_native::SwapDetails;
 use crate::candid_types::wrapped_icrc::WrappedIcrcToken;
 use crate::eth_types::Address;
 use crate::numeric::LedgerBurnIndex;
@@ -16,6 +17,7 @@ use std::str::FromStr;
 pub mod chain_data;
 pub mod dex_orders;
 pub mod events;
+pub mod swap_status;
 pub mod withdraw_erc20;
 pub mod withdraw_native;
 pub mod wrapped_icrc;
@@ -250,6 +252,30 @@ pub enum DepositStatus {
     Accepted,
     Quarantined,
     Released,
+}
+
+pub type CandidSwapTxId = String;
+
+#[derive(CandidType, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
+pub enum SwapStatus {
+    // from minter status
+    AcceptedSwap,
+    MintedToAppicDex(CandidSwapTxId),
+    NotifiedAppicDex(CandidSwapTxId),
+
+    // to minter status
+    PendingSwap(SwapDetails),
+    SwapTxCreated(SwapDetails),
+    SwapTxSent(Transaction),
+    SwapTxFinalized(TxFinalizedStatus),
+    // in case the swap tx is failed and the refund is being processed
+    PendingFailedSwap(SwapDetails),
+    PendingRefundSwap(SwapDetails),
+    RefundSwapTxCreated(SwapDetails),
+    RefundSwapTxSent(Transaction),
+    RefundSwapTxFinalized(TxFinalizedStatus),
+
+    QuarantinedSwap,
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug, PartialEq)]

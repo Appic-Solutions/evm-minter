@@ -3,6 +3,8 @@ pub mod data;
 mod tests;
 
 use super::audit::EventType;
+use crate::candid_types::withdraw_native::SwapDetails;
+use crate::candid_types::SwapStatus;
 use crate::candid_types::{
     withdraw_native::WithdrawalStatus, RetrieveWithdrawalStatus, Transaction, TxFinalizedStatus,
 };
@@ -17,6 +19,7 @@ use crate::tx::{
     Eip1559TransactionRequest, FinalizedEip1559Transaction, ResubmissionStrategy,
     SignedEip1559TransactionRequest, SignedTransactionRequest, TransactionRequest,
 };
+use crate::tx_id::SwapTxId;
 use crate::{
     eth_types::Address,
     numeric::{Erc20TokenAmount, Erc20Value, LedgerBurnIndex, Wei},
@@ -1466,6 +1469,127 @@ impl WithdrawalTransactions {
             .chain(self.maybe_reimburse_requests_iter())
             .flat_map(|req| req.created_at().into_iter())
             .min()
+    }
+
+    pub fn get_swap_status_by_tx_id(&self, tx_id: SwapTxId) -> Option<SwapStatus> {
+        // if the swap is quarantined
+        if self.quarantined_swap_requests.contains_key(&tx_id.0) {
+            return Some(SwapStatus::QuarantinedSwap);
+        }
+
+        if let Some(failed_swap) = self.failed_swap_requests.get(&tx_id.0) {
+            return Some(SwapStatus::PendingFailedSwap(SwapDetails {
+                tx_id: tx_id.0,
+                withdrawal_id: failed_swap.native_ledger_burn_index.get(),
+                token_in: failed_swap.erc20_token_in.to_string(),
+                amount_in: failed_swap.erc20_amount_in.into(),
+                min_amount_out: failed_swap.min_amount_out.into(),
+                recipient: failed_swap.recipient.to_string(),
+                deadline: failed_swap.deadline.into(),
+                is_refund: failed_swap.is_refund,
+            }));
+        }
+
+        // in case there is a pending request
+        if let Some(swap_request) =
+            self.pending_withdrawal_requests
+                .iter()
+                .find_map(|request| match request {
+                    WithdrawalRequest::Swap(swap_request) => {
+                        if swap_request.swap_tx_id == tx_id.0 {
+                            Some(swap_request)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                })
+        {
+            let swap_detials = SwapDetails {
+                tx_id: tx_id.0,
+                withdrawal_id: swap_request.native_ledger_burn_index.get(),
+                token_in: swap_request.erc20_token_in.to_string(),
+                amount_in: swap_request.erc20_amount_in.into(),
+                min_amount_out: swap_request.min_amount_out.into(),
+                recipient: swap_request.recipient.to_string(),
+                deadline: swap_request.deadline.into(),
+                is_refund: swap_request.is_refund,
+            };
+            if !swap_request.is_refund {
+                return Some(SwapStatus::PendingRefundSwap(swap_detials));
+            } else {
+                return Some(SwapStatus::PendingSwap(swap_detials));
+            }
+        }
+
+        // if there is a processed request
+        if let Some(latest_processed_swap_request) = self
+            .processed_withdrawal_requests
+            .iter()
+            .filter_map(|(_burn_index, request)| match request {
+                WithdrawalRequest::Swap(swap_request) => {
+                    if swap_request.swap_tx_id == tx_id.0 {
+                        Some(swap_request)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .next_back()
+        {
+            let burn_index = latest_processed_swap_request.native_ledger_burn_index;
+            let swap_detials = SwapDetails {
+                tx_id: tx_id.0,
+                withdrawal_id: latest_processed_swap_request.native_ledger_burn_index.get(),
+                token_in: latest_processed_swap_request.erc20_token_in.to_string(),
+                amount_in: latest_processed_swap_request.erc20_amount_in.into(),
+                min_amount_out: latest_processed_swap_request.min_amount_out.into(),
+                recipient: latest_processed_swap_request.recipient.to_string(),
+                deadline: latest_processed_swap_request.deadline.into(),
+                is_refund: latest_processed_swap_request.is_refund,
+            };
+
+            if let Some(_tx) = self.created_tx.get_alt(&burn_index) {
+                if latest_processed_swap_request.is_refund {
+                    return Some(SwapStatus::RefundSwapTxCreated(swap_detials));
+                } else {
+                    return Some(SwapStatus::SwapTxCreated(swap_detials));
+                }
+            }
+
+            if let Some(tx) = self.sent_tx.get_alt(&burn_index).and_then(|txs| txs.last()) {
+                if latest_processed_swap_request.is_refund {
+                    return Some(SwapStatus::RefundSwapTxSent(Transaction::from(tx.as_ref())));
+                } else {
+                    return Some(SwapStatus::SwapTxSent(Transaction::from(tx.as_ref())));
+                }
+            }
+
+            if let Some(tx) = self.finalized_tx.get_alt(&burn_index) {
+                if tx.transaction_status() == &TransactionStatus::Success {
+                    if latest_processed_swap_request.is_refund {
+                        return Some(SwapStatus::RefundSwapTxFinalized(
+                            TxFinalizedStatus::Success {
+                                transaction_hash: tx.transaction_hash().to_string(),
+                                effective_transaction_fee: Some(
+                                    tx.effective_transaction_fee().into(),
+                                ),
+                            },
+                        ));
+                    } else {
+                        return Some(SwapStatus::SwapTxFinalized(TxFinalizedStatus::Success {
+                            transaction_hash: tx.transaction_hash().to_string(),
+                            effective_transaction_fee: Some(tx.effective_transaction_fee().into()),
+                        }));
+                    }
+                } else {
+                    return None;
+                }
+            }
+        };
+
+        None
     }
 }
 

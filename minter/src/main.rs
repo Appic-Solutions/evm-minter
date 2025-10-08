@@ -20,6 +20,7 @@ use evm_minter::deposit::{
 use evm_minter::candid_types::{
     self, ActivateSwapReqest, AddErc20Token, CandidTwinUsdcInfo, DepositStatus, GasTankBalance,
     Icrc28TrustedOriginsResponse, IcrcBalance, NativeTokenUsdPriceEstimate, RequestScrapingError,
+    SwapStatus,
 };
 use evm_minter::candid_types::{
     withdraw_erc20::RetrieveErc20Request, withdraw_erc20::WithdrawErc20Arg,
@@ -63,6 +64,7 @@ use evm_minter::tx::gas_fees::{
     estimate_erc20_transaction_fee, estimate_icrc_wrap_transaction_fee, estimate_transaction_fee,
     estimate_usdc_approval_fee, lazy_refresh_gas_fee_estimate, DEFAULT_L1_BASE_GAS_FEE,
 };
+use evm_minter::tx_id::SwapTxId;
 use evm_minter::withdraw::{
     process_reimbursement, process_retrieve_tokens_requests,
     ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT, NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
@@ -385,9 +387,22 @@ async fn request_scraping_logs() -> Result<(), RequestScrapingError> {
 }
 
 #[query]
-async fn retrieve_deposit_status(tx_hash: String) -> Option<DepositStatus> {
+fn retrieve_deposit_status(tx_hash: String) -> Option<DepositStatus> {
     read_state(|s| {
         s.get_deposit_status(Hash::from_str(&tx_hash).expect("Invalid transaction hash"))
+    })
+}
+
+#[query]
+fn retrieve_swap_status_by_hash(tx_hash: String) -> Option<SwapStatus> {
+    read_state(|s| s.get_swap_status(Hash::from_str(&tx_hash).expect("Invalid transaction hash")))
+}
+
+#[query]
+fn retrieve_swap_status_by_swap_tx_id(tx_id: String) -> Option<SwapStatus> {
+    read_state(|s| {
+        s.withdrawal_transactions
+            .get_swap_status_by_tx_id(SwapTxId(tx_id))
     })
 }
 

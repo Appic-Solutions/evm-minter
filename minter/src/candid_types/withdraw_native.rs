@@ -79,3 +79,15 @@ pub enum WithdrawalStatus {
     TxSent(Transaction),
     TxFinalized(TxFinalizedStatus),
 }
+
+#[derive(CandidType, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
+pub struct SwapDetails {
+    pub tx_id: CandidSwapTxId,
+    pub withdrawal_id: u64,
+    pub token_in: String,
+    pub amount_in: Nat,
+    pub min_amount_out: Nat,
+    pub recipient: String,
+    pub deadline: Nat,
+    pub is_refund: bool,
+}

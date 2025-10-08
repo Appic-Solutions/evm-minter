@@ -7,7 +7,7 @@ pub mod event;
 pub mod transactions;
 
 use crate::{
-    candid_types::dex_orders::DexOrderArgs,
+    candid_types::{dex_orders::DexOrderArgs, SwapStatus},
     numeric::Erc20Value,
     state::{
         balances::GasTank,
@@ -643,6 +643,34 @@ impl State {
             .any(|event_source| event_source.transaction_hash() == tx_hash)
         {
             return Some(DepositStatus::Accepted);
+        }
+
+        None
+    }
+
+    pub fn get_swap_status(&self, tx_hash: Hash) -> Option<SwapStatus> {
+        if self
+            .swap_events_to_mint_to_appic_dex
+            .keys()
+            .any(|event_source| event_source.transaction_hash == tx_hash)
+        {
+            return Some(SwapStatus::AcceptedSwap);
+        }
+
+        if let Some((_source, minted_order)) = self
+            .swap_events_to_be_notified
+            .iter()
+            .find(|(source, _)| source.transaction_hash == tx_hash)
+        {
+            return Some(SwapStatus::MintedToAppicDex(minted_order.tx_id.0.clone()));
+        }
+
+        if let Some((_source, notified_event)) = self
+            .notified_swap_events
+            .iter()
+            .find(|(source, _)| source.transaction_hash == tx_hash)
+        {
+            return Some(SwapStatus::NotifiedAppicDex(notified_event.tx_id.0.clone()));
         }
 
         None
