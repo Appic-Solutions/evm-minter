@@ -22,7 +22,7 @@
         }
       ]
     },
-    "minter_bsc_testnet": {
+    "minter_eth": {
       "candid": "../../evm_minter.did",
       "package": "evm_minter",
       "type": "custom",

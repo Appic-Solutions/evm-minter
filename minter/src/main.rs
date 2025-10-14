@@ -395,7 +395,26 @@ fn retrieve_deposit_status(tx_hash: String) -> Option<DepositStatus> {
 
 #[query]
 fn retrieve_swap_status_by_hash(tx_hash: String) -> Option<SwapStatus> {
-    read_state(|s| s.get_swap_status(Hash::from_str(&tx_hash).expect("Invalid transaction hash")))
+    let status_by_hash = read_state(|s| {
+        s.get_swap_status(Hash::from_str(&tx_hash).expect("Invalid transaction hash"))
+    })?;
+
+    // check if the swap that was sent to appic dex was returned to the origin minter(this
+    // minter) for refund due to failures on the appic dex(decoding data,slippage problems or etc..)
+    // then we search for the status of the refund swap request which should have the same
+    // swap_tx_id as the origin swap_tx_id
+    // in case there is no refund swap tx found just return the swap_tx_id for the swap that is
+    // notified to appic dex
+    match status_by_hash {
+        SwapStatus::NotifiedAppicDex(ref tx_id) => Some(
+            read_state(|s| {
+                s.withdrawal_transactions
+                    .get_swap_status_by_tx_id(SwapTxId(tx_id.to_string()))
+            })
+            .unwrap_or(status_by_hash),
+        ),
+        _ => Some(status_by_hash),
+    }
 }
 
 #[query]

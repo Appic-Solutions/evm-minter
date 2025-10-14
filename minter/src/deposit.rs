@@ -302,15 +302,14 @@ pub async fn mint_to_appic_dex_and_swap() {
         Err(_) => return,
     };
 
-    let (swap_events_to_mint, dex_canister_id, ledger_canister_id, chain_id) = read_state(|s| {
+    let (swap_events_to_mint, dex_canister_id, twin_usdc_info, chain_id) = read_state(|s| {
         (
             s.swap_events_to_mint_to_appic_dex(),
             s.dex_canister_id
                 .expect("Bug: This function should not be called if swapping is not active"),
             s.twin_usdc_info
                 .clone()
-                .expect("Bug: This function should not be called if swapping is not active")
-                .ledger_id,
+                .expect("Bug: This function should not be called if swapping is not active"),
             s.evm_network.chain_id().to_string(),
         )
     });
@@ -330,6 +329,7 @@ pub async fn mint_to_appic_dex_and_swap() {
                 )
             });
         });
+
         let amount = match &event {
             ReceivedContractEvent::ReceivedSwapOrder(swap_order) => {
                 Nat::from(swap_order.amount_out)
@@ -340,7 +340,7 @@ pub async fn mint_to_appic_dex_and_swap() {
 
         let client = ICRC1Client {
             runtime: IcrcBoundedRuntime,
-            ledger_canister_id,
+            ledger_canister_id: twin_usdc_info.ledger_id,
         };
 
         // Mint tokens for the user
@@ -369,7 +369,8 @@ pub async fn mint_to_appic_dex_and_swap() {
             Err(err) => {
                 log!(
                     INFO,
-                    "Failed to send a message to the ledger ({ledger_canister_id}): {err:?}"
+                    "Failed to send a message to the ledger ({0}): {err:?}",
+                    twin_usdc_info.ledger_id
                 );
                 error_count += 1;
                 // minting failed, defuse guard
@@ -391,7 +392,7 @@ pub async fn mint_to_appic_dex_and_swap() {
                         EventType::MintedToAppicDex {
                             event_source: swap_order.source(),
                             mint_block_index: LedgerMintIndex::new(block_index),
-                            minted_token: ledger_canister_id,
+                            minted_token: twin_usdc_info.ledger_id,
                             erc20_contract_address: swap_order.token_out,
                             tx_id,
                         }
@@ -850,7 +851,7 @@ pub fn apply_safe_threshold_to_latest_block_numner(
         // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
         {
             latest_block
-                .checked_sub(BlockNumber::from(12_u32))
+                .checked_sub(BlockNumber::from(1_u32))
                 .expect("Removing 12 blocks from latest block should never fail")
         }
         EvmNetwork::Sepolia =>
@@ -872,12 +873,12 @@ pub fn apply_safe_threshold_to_latest_block_numner(
                 .expect("Removing 12 blocks from latest block should never fail")
         }
         EvmNetwork::Polygon =>
-        // If your application deals with extremely high-value transactions or sensitive data,
-        // you might want to consider waiting for a slightly longer period, such as 12 blocks.
-        // This can provide an additional layer of security, especially if you're dealing with particularly critical transactions.
+        //Post-Heimdall v2 and Bhilai (July 2025): Finality now ~3-6 seconds (down from 60-90 seconds pre-v2),
+        // with maximum reorg depth limited to 2 blocks. Checkpoints remain ~30 minutes for L1 anchoring, but milestones handle most use cases.
+        // This supports 1,000+ TPS with low fees (<$0.01).
         {
             latest_block
-                .checked_sub(BlockNumber::from(12_u32))
+                .checked_sub(BlockNumber::from(2_u32))
                 .expect("Removing 12 blocks from latest block should never fail")
         }
     }

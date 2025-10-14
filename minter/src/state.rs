@@ -357,6 +357,7 @@ impl State {
     /// since it's called inside the clean-up callback, when an unexpected panic did occur before.
     fn record_quarantined_deposit(&mut self, source: EventSource) -> bool {
         self.events_to_mint.remove(&source);
+        self.swap_events_to_mint_to_appic_dex.remove(&source);
         match self.invalid_events.entry(source) {
             btree_map::Entry::Occupied(_) => false,
             btree_map::Entry::Vacant(entry) => {
@@ -438,6 +439,8 @@ impl State {
 
                 self.swap_events_to_mint_to_appic_dex
                     .insert(event_source, event.clone());
+
+                self.update_balance_upon_swap(event);
             }
         };
     }
@@ -764,6 +767,15 @@ impl State {
 
     fn update_balance_upon_icrc_lock(&mut self, locked_icrc_token: Principal, amount: IcrcValue) {
         self.icrc_balances.icrc_add(locked_icrc_token, amount);
+    }
+
+    fn update_balance_upon_swap(&mut self, event: &ReceivedContractEvent) {
+        match event {
+            ReceivedContractEvent::ReceivedSwapOrder(event) => self
+                .erc20_balances
+                .erc20_add(event.token_out, event.amount_out),
+            _ => panic!("Bug: Invalid event, it should have already been filtered out"),
+        }
     }
 
     fn update_balance_upon_withdrawal(

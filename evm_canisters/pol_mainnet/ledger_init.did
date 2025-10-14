@@ -1,0 +1,41 @@
+(
+  variant {
+    Init = record {
+      decimals = opt (18 : nat8);
+      token_symbol = "POL";
+      transfer_fee = 40_000_000_000_000_000 : nat;
+      metadata = vec {
+        record {
+          "icrc1:logo";
+          variant {
+            Text = "data:image/png;base64,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"
+          };
+        };
+      };
+      minting_account = record {
+        owner = principal "wpxcg-rqaaa-aaaah-aq5pa-cai";
+        subaccount = null;
+      };
+      initial_balances = vec {};
+      maximum_number_of_accounts = null;
+      accounts_overflow_trim_quantity = null;
+      fee_collector_account = opt record {
+        owner = principal "wpxcg-rqaaa-aaaah-aq5pa-cai";
+        subaccount = opt blob "\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\0f\ee";
+      };
+      archive_options = record {
+        num_blocks_to_archive = 1_000 : nat64;
+        max_transactions_per_response = null;
+        trigger_threshold = 2_000 : nat64;
+        more_controller_ids = null;
+        max_message_size_bytes = null;
+        cycles_for_archive_creation = opt (2_000_000_000_000 : nat64);
+        node_max_memory_size_bytes = opt (3_221_225_472 : nat64);
+        controller_id = principal "kmcdp-4yaaa-aaaag-ats3q-cai";
+      };
+      max_memo_length = opt (80 : nat16);
+      token_name = "Polygon on ICP";
+      feature_flags = opt record { icrc2 = true };
+    }
+  },
+)

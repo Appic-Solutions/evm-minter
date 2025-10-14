@@ -482,6 +482,31 @@ type RetrieveWrapIcrcRequest = record {
   icrc_block_index : nat;
   native_block_index : nat;
 };
+type SwapDetails = record {
+  min_amount_out : nat;
+  tx_id : text;
+  token_in : text;
+  withdrawal_id : nat64;
+  recipient : text;
+  deadline : nat;
+  is_refund : bool;
+  amount_in : nat;
+};
+type SwapStatus = variant {
+  SwapTxCreated : SwapDetails;
+  AcceptedSwap;
+  SwapTxSent : Transaction;
+  RefundSwapTxCreated : SwapDetails;
+  MintedToAppicDex : text;
+  QuarantinedSwap;
+  RefundSwapTxFinalized : TxFinalizedStatus;
+  NotifiedAppicDex : text;
+  SwapTxFinalized : TxFinalizedStatus;
+  PendingRefundSwap : SwapDetails;
+  PendingSwap : SwapDetails;
+  RefundSwapTxSent : Transaction;
+  PendingFailedSwap : SwapDetails;
+};
 type Transaction = record { transaction_hash : text };
 type TransactionReceipt = record {
   effective_gas_price : nat;
@@ -603,6 +628,8 @@ service : (MinterArg) -> {
   minter_address : () -> (text);
   request_scraping_logs : () -> (Result_1);
   retrieve_deposit_status : (text) -> (opt DepositStatus) query;
+  retrieve_swap_status_by_hash : (text) -> (opt SwapStatus) query;
+  retrieve_swap_status_by_swap_tx_id : (text) -> (opt SwapStatus) query;
   retrieve_withdrawal_status : (nat64) -> (RetrieveWithdrawalStatus);
   smart_contract_address : () -> (opt vec text) query;
   update_chain_data : (ChainData) -> ();
