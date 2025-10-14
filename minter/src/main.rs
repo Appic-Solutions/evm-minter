@@ -38,6 +38,10 @@ use evm_minter::eth_types::fee_hisotry_parser::parse_fee_history;
 use evm_minter::eth_types::Address;
 use evm_minter::evm_config::EvmNetwork;
 use evm_minter::guard::retrieve_withdraw_guard;
+use evm_minter::icrc_21::{
+    ConsentInfo, ConsentMessage, ConsentMessageMetadata, ConsentMessageRequest,
+    ConsentMessageResponse, DeviceSpec, ErrorInfo, TextValue, Value,
+};
 use evm_minter::icrc_client::runtime::IcrcBoundedRuntime;
 use evm_minter::icrc_client::{LedgerBurnError, LedgerClient};
 use evm_minter::lifecycle::MinterArg;
@@ -1869,7 +1873,249 @@ pub async fn charge_gas_tank(amount: Nat) {
     })
 }
 
-// list every base URL that users will authenticate to your app from
+#[update]
+fn icrc21_canister_call_consent_message(req: ConsentMessageRequest) -> ConsentMessageResponse {
+    use evm_minter::icrc_21::Error;
+    let language = req.user_preferences.metadata.language.clone();
+    let _utc_offset_minutes = req.user_preferences.metadata.utc_offset_minutes; // Not used
+    let device_spec = req.user_preferences.device_spec.clone();
+
+    // Support only English
+    if language != "en" {
+        return ConsentMessageResponse::Err(Error::GenericError {
+            error_code: Nat::from(1u64),
+            description: "Unsupported language".to_string(),
+        });
+    }
+
+    // Response metadata: no utc_offset_minutes
+    let response_metadata = ConsentMessageMetadata {
+        language,
+        utc_offset_minutes: None,
+    };
+
+    // Helper to create fields
+    fn create_fields(pairs: Vec<(&str, String)>) -> Vec<(String, Value)> {
+        pairs
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), Value::Text(TextValue { content: v })))
+            .collect()
+    }
+
+    // Generate intent, fields, text
+    let (intent, fields_opt, text_message) = match req.method.as_str() {
+        "activate_swap_feature" => match candid::decode_one::<ActivateSwapReqest>(&req.arg) {
+            Ok(args) => {
+                let intent = "Activate Swap Feature".to_string();
+                let fields = create_fields(vec![
+                    ("Twin USDC Ledger ID", args.twin_usdc_ledger_id.to_string()),
+                    ("Swap Contract Address", args.swap_contract_address.clone()),
+                    ("DEX Canister ID", args.dex_canister_id.to_string()),
+                    ("Twin USDC Decimals", args.twin_usdc_decimals.to_string()),
+                    (
+                        "Canister Signing Fee Twin USDC Value",
+                        args.canister_signing_fee_twin_usdc_value.to_string(),
+                    ),
+                ]);
+                let text = "Activate the swap feature with the specified twin USDC and DEX configurations.".to_string();
+                (intent, Some(fields), text)
+            }
+            Err(e) => {
+                return ConsentMessageResponse::Err(Error::GenericError {
+                    error_code: Nat::from(100u64),
+                    description: format!("Failed to decode arguments: {}", e),
+                })
+            }
+        },
+        "add_erc20_token" => match candid::decode_one::<AddErc20Token>(&req.arg) {
+            Ok(args) => {
+                let intent = "Add ERC20 Token".to_string();
+                let fields = create_fields(vec![
+                    ("ERC20 Ledger ID", args.erc20_ledger_id.to_string()),
+                    ("ERC20 Token Symbol", args.erc20_token_symbol.clone()),
+                    ("Chain ID", args.chain_id.to_string()),
+                    ("Address", args.address.clone()),
+                ]);
+                let text = format!(
+                    "Add support for ERC20 token {} on chain {}.",
+                    args.erc20_token_symbol, args.chain_id
+                );
+                (intent, Some(fields), text)
+            }
+            Err(e) => {
+                return ConsentMessageResponse::Err(Error::GenericError {
+                    error_code: Nat::from(100u64),
+                    description: format!("Failed to decode arguments: {}", e),
+                })
+            }
+        },
+        "charge_gas_tank" => match candid::decode_one::<Nat>(&req.arg) {
+            Ok(amount) => {
+                let intent = "Charge Gas Tank".to_string();
+                let fields = create_fields(vec![("Amount", amount.to_string())]);
+                let text = format!("Charge the gas tank with {} units.", amount);
+                (intent, Some(fields), text)
+            }
+            Err(e) => {
+                return ConsentMessageResponse::Err(Error::GenericError {
+                    error_code: Nat::from(100u64),
+                    description: format!("Failed to decode arguments: {}", e),
+                })
+            }
+        },
+        "check_new_deposits" => {
+            let intent = "Check New Deposits".to_string();
+            let fields = vec![];
+            let text = "Check for new deposits.".to_string();
+            (intent, Some(fields), text)
+        }
+        "dex_order" => match candid::decode_one::<DexOrderArgs>(&req.arg) {
+            Ok(args) => {
+                let intent = "DEX Order".to_string();
+                let fields = create_fields(vec![
+                    (
+                        "ERC20 Ledger Burn Index",
+                        args.erc20_ledger_burn_index.to_string(),
+                    ),
+                    ("Min Amount Out", args.min_amount_out.to_string()),
+                    ("TX ID", args.tx_id.clone()),
+                    ("Recipient", args.recipient.clone()),
+                    ("Deadline", args.deadline.to_string()),
+                    ("Is Refund", args.is_refund.to_string()),
+                    ("Gas Limit", args.gas_limit.to_string()),
+                    ("Amount In", args.amount_in.to_string()),
+                ]);
+                let text = format!(
+                    "Place a DEX order for {} input to min {} output to {}.",
+                    args.amount_in, args.min_amount_out, args.recipient
+                );
+                (intent, Some(fields), text)
+            }
+            Err(e) => {
+                return ConsentMessageResponse::Err(Error::GenericError {
+                    error_code: Nat::from(100u64),
+                    description: format!("Failed to decode arguments: {}", e),
+                })
+            }
+        },
+        "update_chain_data" => match candid::decode_one::<ChainData>(&req.arg) {
+            Ok(args) => {
+                let intent = "Update Chain Data".to_string();
+                let fields = create_fields(vec![
+                    ("Fee History", args.fee_history.clone()),
+                    ("Latest Block Number", args.latest_block_number.to_string()),
+                ]);
+                let text = "Update chain data with latest block and fee history.".to_string();
+                (intent, Some(fields), text)
+            }
+            Err(e) => {
+                return ConsentMessageResponse::Err(Error::GenericError {
+                    error_code: Nat::from(100u64),
+                    description: format!("Failed to decode arguments: {}", e),
+                })
+            }
+        },
+        "withdraw_erc20" => match candid::decode_one::<WithdrawErc20Arg>(&req.arg) {
+            Ok(args) => {
+                let intent = "Withdraw ERC20".to_string();
+                let fields = create_fields(vec![
+                    ("ERC20 Ledger ID", args.erc20_ledger_id.to_string()),
+                    ("Recipient", args.recipient.clone()),
+                    ("Amount", args.amount.to_string()),
+                ]);
+                let text = format!(
+                    "Withdraw {} from ERC20 ledger {} to {}.",
+                    args.amount, args.erc20_ledger_id, args.recipient
+                );
+                (intent, Some(fields), text)
+            }
+            Err(e) => {
+                return ConsentMessageResponse::Err(Error::GenericError {
+                    error_code: Nat::from(100u64),
+                    description: format!("Failed to decode arguments: {}", e),
+                })
+            }
+        },
+        "withdraw_native_token" => match candid::decode_one::<WithdrawalArg>(&req.arg) {
+            Ok(args) => {
+                let intent = "Withdraw Native Token".to_string();
+                let fields = create_fields(vec![
+                    ("Recipient", args.recipient.clone()),
+                    ("Amount", args.amount.to_string()),
+                ]);
+                let text = format!(
+                    "Withdraw {} native tokens to {}.",
+                    args.amount, args.recipient
+                );
+                (intent, Some(fields), text)
+            }
+            Err(e) => {
+                return ConsentMessageResponse::Err(Error::GenericError {
+                    error_code: Nat::from(100u64),
+                    description: format!("Failed to decode arguments: {}", e),
+                })
+            }
+        },
+        "wrap_icrc" => match candid::decode_one::<WrapIcrcArg>(&req.arg) {
+            Ok(args) => {
+                let intent = "Wrap ICRC".to_string();
+                let fields = create_fields(vec![
+                    ("Recipient", args.recipient.clone()),
+                    ("ICRC Ledger ID", args.icrc_ledger_id.to_string()),
+                    ("Amount", args.amount.to_string()),
+                ]);
+                let text = format!(
+                    "Wrap {} from ICRC ledger {} to {}.",
+                    args.amount, args.icrc_ledger_id, args.recipient
+                );
+                (intent, Some(fields), text)
+            }
+            Err(e) => {
+                return ConsentMessageResponse::Err(Error::GenericError {
+                    error_code: Nat::from(100u64),
+                    description: format!("Failed to decode arguments: {}", e),
+                })
+            }
+        },
+        // Query-like methods or read-only
+        "eip_1559_transaction_price"
+        | "get_events"
+        | "get_minter_info"
+        | "icrc_28_trusted_origins"
+        | "minter_address"
+        | "request_scraping_logs"
+        | "retrieve_deposit_status"
+        | "retrieve_swap_status_by_hash"
+        | "retrieve_swap_status_by_swap_tx_id"
+        | "retrieve_withdrawal_status"
+        | "smart_contract_address"
+        | "withdrawal_status" => {
+            return ConsentMessageResponse::Err(Error::UnsupportedCanisterCall(ErrorInfo {
+                description: "This is a read-only method and does not require consent.".to_string(),
+            }));
+        }
+        _ => {
+            return ConsentMessageResponse::Err(Error::UnsupportedCanisterCall(ErrorInfo {
+                description: "Method not supported.".to_string(),
+            }));
+        }
+    };
+
+    // Determine consent_message
+    let consent_message = match device_spec {
+        Some(DeviceSpec::FieldsDisplay) => ConsentMessage::FieldsDisplayMessage {
+            intent,
+            fields: fields_opt.unwrap_or_default(),
+        },
+        _ => ConsentMessage::GenericDisplayMessage(text_message),
+    };
+
+    ConsentMessageResponse::Ok(ConsentInfo {
+        consent_message,
+        metadata: response_metadata,
+    })
+}
+
 #[update]
 fn icrc28_trusted_origins() -> Icrc28TrustedOriginsResponse {
     let trusted_origins = vec![

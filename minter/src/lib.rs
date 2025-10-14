@@ -11,6 +11,7 @@ pub mod erc20;
 pub mod eth_types;
 pub mod evm_config;
 pub mod guard;
+pub mod icrc_21;
 pub mod icrc_client;
 pub mod lifecycle;
 pub mod logs;
