@@ -3,11 +3,7 @@ mod tests;
 
 pub mod providers;
 
-use providers::{get_one_provider, get_providers, Provider};
-use std::{collections::BTreeMap, convert::Infallible, fmt::Display};
-
 use crate::{
-    eth_types::Address,
     evm_config::EvmNetwork,
     logs::{PrintProxySink, INFO, TRACE_HTTP},
     numeric::{BlockNumber, GasAmount, LogIndex, TransactionCount, Wei, WeiPerGas},
@@ -20,6 +16,7 @@ use crate::{
     state::State,
 };
 use candid::Nat;
+use evm_rpc_client::eth_types::Address;
 use evm_rpc_client::{
     evm_rpc_types::{
         self, AccessList as EvmAccessList, AccessListEntry as EvmAccessListEntry,
@@ -36,6 +33,8 @@ use evm_rpc_client::{
 use evm_rpc_client::{CallerService, EvmRpcClient, OverrideRpcConfig};
 use ic_canister_log::log;
 use num_traits::ToPrimitive;
+use providers::{get_one_provider, get_providers, Provider};
+use std::{collections::BTreeMap, convert::Infallible, fmt::Display};
 
 // We expect most of the calls to contain zero events.
 const ETH_GET_LOGS_INITIAL_RESPONSE_SIZE_ESTIMATE: u64 = 20_000;
@@ -47,11 +46,11 @@ const ETH_GET_LOGS_INITIAL_RESPONSE_SIZE_ESTIMATE: u64 = 20_000;
 // should take care of that.
 pub const HEADER_SIZE_LIMIT: u64 = 2 * 1024;
 
-#[derive(Debug)]
 pub struct RpcClient {
     evm_rpc_client: Option<EvmRpcClient<PrintProxySink>>,
     chain: EvmNetwork,
 }
+
 impl RpcClient {
     pub fn from_state_all_providers(state: &State) -> Self {
         let mut client = Self {
@@ -63,7 +62,7 @@ impl RpcClient {
         let providers = get_providers(client.chain);
 
         client.evm_rpc_client = Some(
-            EvmRpcClient::builder(CallerService {}, TRACE_HTTP)
+            EvmRpcClient::builder(CallerService::RpcHttpOutCallClient, TRACE_HTTP)
                 .with_providers(providers)
                 .with_evm_canister_id(state.evm_canister_id)
                 .with_min_attached_cycles(MIN_ATTACHED_CYCLES)
@@ -95,7 +94,7 @@ impl RpcClient {
         let providers = get_custom_providers(client.chain, providers);
 
         client.evm_rpc_client = Some(
-            EvmRpcClient::builder(CallerService {}, TRACE_HTTP)
+            EvmRpcClient::builder(CallerService::RpcHttpOutCallClient, TRACE_HTTP)
                 .with_providers(providers)
                 .with_evm_canister_id(state.evm_canister_id)
                 .with_min_attached_cycles(MIN_ATTACHED_CYCLES)
@@ -124,7 +123,7 @@ impl RpcClient {
         let providers = get_one_provider(client.chain, provider);
 
         client.evm_rpc_client = Some(
-            EvmRpcClient::builder(CallerService {}, TRACE_HTTP)
+            EvmRpcClient::builder(CallerService::RpcHttpOutCallClient, TRACE_HTTP)
                 .with_providers(providers)
                 .with_evm_canister_id(state.evm_canister_id)
                 .with_min_attached_cycles(MIN_ATTACHED_CYCLES)
@@ -143,7 +142,7 @@ impl RpcClient {
         client
     }
 
-    pub async fn eth_call(&self, params: CallParams) -> Result<String, MultiCallError<String>> {
+    pub async fn eth_call(&self, params: CallParams) -> Result<Hex, MultiCallError<Hex>> {
         if let Some(evm_rpc_client) = &self.evm_rpc_client {
             let result = evm_rpc_client
                 .eth_call(into_evm_call_args(params))
@@ -741,6 +740,13 @@ impl Reduce for EvmMultiRpcResult<String> {
     }
 }
 
+impl Reduce for EvmMultiRpcResult<Hex> {
+    type Item = Hex;
+    fn reduce(self) -> ReducedResult<Self::Item> {
+        ReducedResult::from_multi_result(self).reduce_with_equality()
+    }
+}
+
 impl Reduce for EvmMultiRpcResult<Option<EvmTransactionReceipt>> {
     type Item = Option<TransactionReceipt>;
 
@@ -781,12 +787,11 @@ impl Reduce for EvmMultiRpcResult<Option<TransactionReceipt>> {
     }
 }
 
-impl Reduce for EvmMultiRpcResult<Option<EvmFeeHistory>> {
+impl Reduce for EvmMultiRpcResult<EvmFeeHistory> {
     type Item = FeeHistory;
 
     fn reduce(self) -> ReducedResult<Self::Item> {
-        fn map_fee_history(fee_history: Option<EvmFeeHistory>) -> Result<FeeHistory, String> {
-            let fee_history = fee_history.ok_or("No fee history available")?;
+        fn map_fee_history(fee_history: EvmFeeHistory) -> Result<FeeHistory, String> {
             Ok(FeeHistory {
                 oldest_block: BlockNumber::from(fee_history.oldest_block),
                 base_fee_per_gas: wei_per_gas_iter(fee_history.base_fee_per_gas),

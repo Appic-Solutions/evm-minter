@@ -4,6 +4,7 @@
 use std::fmt::{self, Debug, Formatter};
 
 use candid::{self, types::Serializer, types::Type, CandidType, Decode, Encode, Nat, Principal};
+use ic_cdk::management_canister::HttpHeader;
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -86,11 +87,11 @@ pub enum RpcServices {
     OptimismMainnet(Option<Vec<L2MainnetService>>),
 }
 
-#[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize, CandidType)]
-pub struct HttpHeader {
-    pub value: String,
-    pub name: String,
-}
+//#[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize, CandidType)]
+//pub struct HttpHeader {
+//    pub value: String,
+//    pub name: String,
+//}
 
 #[derive(Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize, CandidType)]
 pub struct RpcApi {

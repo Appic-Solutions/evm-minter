@@ -4,10 +4,10 @@ use minicbor::{Decode, Encode};
 
 use crate::{
     contract_logs::EventSource,
-    eth_types::Address,
     numeric::{BlockNumber, Erc20Value, LogIndex},
     rpc_declarations::{Data, FixedSizeData, Hash},
 };
+use evm_rpc_client::eth_types::Address;
 
 pub(crate) const RECEIVED_SWAP_EVENT_TOPIC: [u8; 32] =
     hex!("c33dada04354dd803ea44b93af35ba61d4bfa477f5f06c86b6a00cfc0c261bea");

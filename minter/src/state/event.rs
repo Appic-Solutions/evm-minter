@@ -1,6 +1,3 @@
-use candid::Principal;
-use minicbor::{Decode, Encode};
-
 use crate::{
     candid_types::dex_orders::DexOrderArgs,
     contract_logs::{
@@ -12,7 +9,6 @@ use crate::{
         EventSource, ReceivedContractEvent,
     },
     erc20::ERC20Token,
-    eth_types::Address,
     lifecycle::{InitArg, UpgradeArg},
     numeric::{
         BlockNumber, Erc20Value, IcrcValue, LedgerBurnIndex, LedgerMintIndex, LedgerReleaseIndex,
@@ -23,6 +19,9 @@ use crate::{
     tx::{Eip1559TransactionRequest, SignedEip1559TransactionRequest},
     tx_id::SwapTxId,
 };
+use candid::Principal;
+use evm_rpc_client::eth_types::Address;
+use minicbor::{Decode, Encode};
 
 use super::transactions::{
     Erc20WithdrawalRequest, NativeWithdrawalRequest, Reimbursed, ReimbursementIndex,

@@ -1,5 +1,4 @@
 use crate::checked_amount::CheckedAmountOf;
-use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
 use crate::numeric::{
     BlockNumber, Erc20Value, GasAmount, LedgerBurnIndex, TransactionNonce, Wei, WeiPerGas,
@@ -15,6 +14,7 @@ use crate::tx::{
     AccessList, Eip1559Signature, Eip1559TransactionRequest, SignedEip1559TransactionRequest,
 };
 use crate::withdraw::estimate_gas_limit;
+use evm_rpc_client::eth_types::Address;
 use rand::Rng;
 
 const DEFAULT_WITHDRAWAL_AMOUNT: u128 = 1_100_000_000_000_000;
@@ -296,7 +296,6 @@ mod withdrawal_transactions {
     }
 
     mod record_created_transaction {
-        use crate::eth_types::Address;
         use crate::evm_config::EvmNetwork;
         use crate::numeric::{LedgerBurnIndex, TransactionNonce, Wei};
         use crate::state::transactions::tests::{
@@ -312,6 +311,7 @@ mod withdrawal_transactions {
             estimate_gas_limit, ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
             NATIVE_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
         };
+        use evm_rpc_client::eth_types::Address;
         use ic_crypto_test_utils_reproducible_rng::reproducible_rng;
         use proptest::prelude::any;
         use proptest::{prop_assert_ne, proptest};
@@ -2500,7 +2500,6 @@ mod withdrawal_flow {
 
 pub mod arbitrary {
     use crate::checked_amount::CheckedAmountOf;
-    use crate::eth_types::Address;
     use crate::numeric::{GasAmount, TransactionNonce, WeiPerGas};
     use crate::state::transactions::{
         Erc20WithdrawalRequest, NativeWithdrawalRequest, Subaccount, WithdrawalRequest,
@@ -2510,6 +2509,7 @@ pub mod arbitrary {
         Eip1559Signature, Eip1559TransactionRequest, SignedEip1559TransactionRequest, StorageKey,
     };
     use candid::Principal;
+    use evm_rpc_client::eth_types::Address;
     use phantom_newtype::Id;
     use proptest::arbitrary::any;
     use proptest::array::{uniform20, uniform32};

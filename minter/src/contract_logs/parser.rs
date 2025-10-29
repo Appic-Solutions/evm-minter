@@ -4,11 +4,11 @@ use crate::contract_logs::{
     ReceivedContractEventError,
 };
 
-use crate::eth_types::Address;
 use crate::numeric::{BlockNumber, Erc20Value, IcrcValue, Wei};
 use crate::rpc_declarations::{Data, FixedSizeData, LogEntry};
 use crate::state::read_state;
 use candid::Principal;
+use evm_rpc_client::eth_types::Address;
 
 use super::types::{
     ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent, ReceivedWrappedIcrcDeployedEvent,

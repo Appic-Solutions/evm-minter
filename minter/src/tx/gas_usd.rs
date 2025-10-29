@@ -1,8 +1,7 @@
-use rust_decimal::prelude::*;
-use rust_decimal::MathematicalOps;
-
 use crate::numeric::Erc20Value;
 use crate::numeric::Wei;
+use rust_decimal::prelude::*;
+use rust_decimal::MathematicalOps;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MaxFeeUsd(pub Decimal);

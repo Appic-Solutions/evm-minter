@@ -1,8 +1,7 @@
 use crate::candid_types::AddErc20Token;
-use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
-
 use candid::Principal;
+use evm_rpc_client::eth_types::Address;
 use minicbor::{Decode, Encode};
 use num_traits::ToPrimitive;
 use std::fmt::Display;

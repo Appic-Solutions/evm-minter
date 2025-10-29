@@ -1,7 +1,3 @@
-use std::{str::FromStr, time::Duration};
-
-use candid::{Nat, Principal};
-
 use crate::{
     candid_types::{
         withdraw_erc20::{RetrieveErc20Request, WithdrawErc20Arg, WithdrawErc20Error},
@@ -9,7 +5,6 @@ use crate::{
         ActivateSwapReqest, DepositStatus, Eip1559TransactionPrice, MinterInfo,
         RequestScrapingError, RetrieveNativeRequest, RetrieveWithdrawalStatus, TxFinalizedStatus,
     },
-    eth_types::Address,
     evm_config::EvmNetwork,
     tests::{
         lsm_types::{AddErc20Arg, AddErc20Error, Erc20Contract, LedgerInitArg, LedgerManagerInfo},
@@ -20,6 +15,9 @@ use crate::{
     },
     APPIC_CONTROLLER_PRINCIPAL, SCRAPING_CONTRACT_LOGS_INTERVAL,
 };
+use candid::{Nat, Principal};
+use evm_rpc_client::eth_types::Address;
+use std::{str::FromStr, time::Duration};
 
 use icrc_ledger_types::icrc1::{
     account::Account,

@@ -14,7 +14,6 @@ use crate::contract_logs::{
 };
 use crate::dex_client::types::ReceivedSwapOrderEvent;
 use crate::dex_client::DexClient;
-use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
 use crate::guard::TimerGuard;
 use crate::icrc_client::runtime::IcrcBoundedRuntime;
@@ -28,6 +27,7 @@ use crate::rpc_declarations::{BlockSpec, GetLogsParam};
 use crate::state::audit::{process_event, EventType};
 use crate::state::{mutate_state, read_state, State, TaskType};
 use crate::tx_id::SwapTxId;
+use evm_rpc_client::eth_types::Address;
 use icrc_ledger_client::ICRC1Client;
 use icrc_ledger_types::icrc1::transfer::TransferArg;
 use num_traits::ToPrimitive;

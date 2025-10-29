@@ -1,14 +1,11 @@
 use crate::candid_types::CandidBlockTag;
-use crate::eth_types::serde_data;
-use crate::eth_types::Address;
 use crate::numeric::TransactionNonce;
 use crate::numeric::WeiPerBlobGas;
 use crate::numeric::{BlockNumber, GasAmount, LogIndex, Wei, WeiPerGas};
+use evm_rpc_client::eth_types::{serde_data, Address};
 use evm_rpc_client::evm_rpc_types::SendRawTransactionStatus as EvmSendRawTransactionStatus;
 use minicbor::{Decode, Encode};
-use serde;
 use serde::{Deserialize, Serialize};
-use serde_json;
 use std::fmt;
 use std::fmt::{Debug, Display, Formatter, LowerHex, UpperHex};
 pub type Quantity = ethnum::u256;
@@ -553,6 +550,12 @@ pub struct FeeHistory {
     pub base_fee_per_gas: Vec<WeiPerGas>,
     /// A two-dimensional array of effective priority fees per gas at the requested block percentiles.
     pub reward: Vec<Vec<WeiPerGas>>,
+}
+
+pub fn parse_fee_history(fee_history: String) -> Option<FeeHistory> {
+    let fee_history_parsed = serde_json::from_str::<FeeHistory>(&fee_history).ok()?;
+
+    Some(fee_history_parsed)
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

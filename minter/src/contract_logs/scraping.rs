@@ -1,9 +1,9 @@
 //use std::str::FromStr;
 
-use crate::eth_types::Address;
 use crate::numeric::BlockNumber;
 use crate::rpc_declarations::Topic;
 use crate::state::State;
+use evm_rpc_client::eth_types::Address;
 
 use super::parser::{LogParser, ReceivedEventsLogParser};
 //use super::types::{

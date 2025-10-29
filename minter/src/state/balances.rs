@@ -1,15 +1,13 @@
-use std::collections::BTreeMap;
-
-use candid::Principal;
-
 use crate::{
-    eth_types::Address,
     numeric::{Erc20Value, IcrcValue, LedgerBurnIndex, Wei},
     state::{
         audit::{process_event, EventType},
         mutate_state, read_state,
     },
 };
+use candid::Principal;
+use evm_rpc_client::eth_types::Address;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeBalance {

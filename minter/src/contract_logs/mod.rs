@@ -4,18 +4,17 @@ use candid::Principal;
 use ic_canister_log::log;
 use minicbor::{Decode, Encode};
 //use new_contract::{ReceivedBurnEvent, ReceivedWrappedIcpTokenDeployedEvent};
-use thiserror::Error;
-use types::{
-    ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent, ReceivedWrappedIcrcDeployedEvent,
-};
-
 use crate::{
     checked_amount::CheckedAmountOf,
     contract_logs::swap::swap_logs::ReceivedSwapEvent,
-    eth_types::Address,
     logs::{DEBUG, INFO},
     numeric::{BlockNumber, LogIndex},
     rpc_declarations::{FixedSizeData, Hash},
+};
+use evm_rpc_client::eth_types::Address;
+use thiserror::Error;
+use types::{
+    ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent, ReceivedWrappedIcrcDeployedEvent,
 };
 
 #[cfg(test)]

@@ -9,7 +9,14 @@ use ic_canister_log::{log, Sink};
 use ic_cdk::call::RejectCode;
 use serde::de::DeserializeOwned;
 use std::fmt::Debug;
+use std::str::FromStr;
+
+pub mod address;
+pub mod eth_types;
 pub mod evm_rpc_types;
+pub mod logs;
+pub mod native_http;
+pub mod numeric;
 
 pub use evm_rpc_types::{
     Block, BlockTag, ConsensusStrategy, EthMainnetService, FeeHistory, FeeHistoryArgs, GetLogsArgs,
@@ -18,6 +25,8 @@ pub use evm_rpc_types::{
     RpcResult, RpcService, RpcServices, SendRawTransactionStatus, TransactionReceipt,
     ValidationError,
 };
+
+use crate::native_http::candid_rpc::CandidRpcClient;
 
 #[async_trait]
 pub trait InterCanisterCall {
@@ -33,11 +42,19 @@ pub trait InterCanisterCall {
         Out: CandidType + DeserializeOwned + 'static;
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CallerService {
+    // send calls to evm rpc canister
+    EvmRpcCanisterClient,
+    // send calls using http out calls from the same cansiter
+    RpcHttpOutCallClient,
+}
+
 #[derive(Clone, Debug, Copy, Eq, PartialEq)]
-pub struct CallerService {}
+pub struct EvmRpcCanisterClinet {}
 
 #[async_trait]
-impl InterCanisterCall for CallerService {
+impl InterCanisterCall for EvmRpcCanisterClinet {
     async fn call<In, Out>(
         &self,
         id: Principal,
@@ -93,7 +110,6 @@ pub struct OverrideRpcConfig {
 }
 
 // Clinet for making intercanister calls to evm_rpc_canister
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EvmRpcClient<L: Sink> {
     caller_service: CallerService,
     logger: L,
@@ -103,84 +119,179 @@ pub struct EvmRpcClient<L: Sink> {
     min_attached_cycles: u128,
     max_num_retries: u32,
 }
+
 impl<L: Sink> EvmRpcClient<L> {
     pub fn builder(caller_service: CallerService, logger: L) -> EvmRpcClientBuilder<L> {
         EvmRpcClientBuilder::new(caller_service, logger)
     }
 
-    pub async fn eth_call(&self, call_args: CallArgs) -> MultiRpcResult<String> {
-        self.call_internal(
-            "eth_call",
-            self.override_rpc_config.eth_call.clone(),
-            call_args,
-        )
-        .await
+    pub async fn eth_call(&self, call_args: CallArgs) -> MultiRpcResult<Hex> {
+        match self.caller_service {
+            CallerService::EvmRpcCanisterClient => {
+                self.call_internal(
+                    "eth_call",
+                    self.override_rpc_config.eth_call.clone(),
+                    call_args,
+                )
+                .await
+            }
+            CallerService::RpcHttpOutCallClient => {
+                CandidRpcClient::new(
+                    self.providers.clone(),
+                    self.override_rpc_config.eth_call.clone(),
+                )
+                .expect("Failed to create candid client")
+                .eth_call(call_args, self.min_attached_cycles)
+                .await
+            }
+        }
     }
 
     pub async fn eth_get_block_by_number(&self, block: BlockTag) -> MultiRpcResult<Block> {
-        self.call_internal(
-            "eth_getBlockByNumber",
-            self.override_rpc_config.eth_get_block_by_number.clone(),
-            block,
-        )
-        .await
+        match self.caller_service {
+            CallerService::EvmRpcCanisterClient => {
+                self.call_internal(
+                    "eth_getBlockByNumber",
+                    self.override_rpc_config.eth_get_block_by_number.clone(),
+                    block,
+                )
+                .await
+            }
+            CallerService::RpcHttpOutCallClient => {
+                CandidRpcClient::new(
+                    self.providers.clone(),
+                    self.override_rpc_config.eth_get_block_by_number.clone(),
+                )
+                .expect("Failed to create candid client")
+                .eth_get_block_by_number(block, self.min_attached_cycles)
+                .await
+            }
+        }
     }
 
     pub async fn eth_get_logs(&self, args: GetLogsArgs) -> MultiRpcResult<Vec<LogEntry>> {
-        self.call_internal(
-            "eth_getLogs",
-            self.override_rpc_config.eth_get_logs.clone(),
-            args,
-        )
-        .await
+        match self.caller_service {
+            CallerService::EvmRpcCanisterClient => {
+                self.call_internal(
+                    "eth_getLogs",
+                    self.override_rpc_config.eth_get_logs.clone(),
+                    args,
+                )
+                .await
+            }
+            CallerService::RpcHttpOutCallClient => {
+                CandidRpcClient::new(
+                    self.providers.clone(),
+                    self.override_rpc_config.eth_get_logs.clone(),
+                )
+                .expect("Failed to create candid client")
+                .eth_get_logs(args, self.min_attached_cycles)
+                .await
+            }
+        }
     }
 
-    pub async fn eth_fee_history(
-        &self,
-        args: FeeHistoryArgs,
-    ) -> MultiRpcResult<Option<FeeHistory>> {
-        self.call_internal(
-            "eth_feeHistory",
-            self.override_rpc_config.eth_fee_history.clone(),
-            args,
-        )
-        .await
+    pub async fn eth_fee_history(&self, args: FeeHistoryArgs) -> MultiRpcResult<FeeHistory> {
+        match self.caller_service {
+            CallerService::EvmRpcCanisterClient => {
+                self.call_internal(
+                    "eth_feeHistory",
+                    self.override_rpc_config.eth_fee_history.clone(),
+                    args,
+                )
+                .await
+            }
+            CallerService::RpcHttpOutCallClient => {
+                CandidRpcClient::new(
+                    self.providers.clone(),
+                    self.override_rpc_config.eth_fee_history.clone(),
+                )
+                .expect("Failed to create candid client")
+                .eth_fee_history(args, self.min_attached_cycles)
+                .await
+            }
+        }
     }
 
     pub async fn eth_get_transaction_receipt(
         &self,
         transaction_hash: String,
     ) -> MultiRpcResult<Option<TransactionReceipt>> {
-        self.call_internal(
-            "eth_getTransactionReceipt",
-            self.override_rpc_config.eth_get_transaction_receipt.clone(),
-            transaction_hash,
-        )
-        .await
+        match self.caller_service {
+            CallerService::EvmRpcCanisterClient => {
+                self.call_internal(
+                    "eth_getTransactionReceipt",
+                    self.override_rpc_config.eth_get_transaction_receipt.clone(),
+                    transaction_hash,
+                )
+                .await
+            }
+            CallerService::RpcHttpOutCallClient => {
+                CandidRpcClient::new(
+                    self.providers.clone(),
+                    self.override_rpc_config.eth_get_transaction_receipt.clone(),
+                )
+                .expect("Failed to create candid client")
+                .eth_get_transaction_receipt(
+                    Hex32::from_str(&transaction_hash).unwrap(),
+                    self.min_attached_cycles,
+                )
+                .await
+            }
+        }
     }
 
     pub async fn eth_get_transaction_count(
         &self,
         args: GetTransactionCountArgs,
     ) -> MultiRpcResult<Nat256> {
-        self.call_internal(
-            "eth_getTransactionCount",
-            self.override_rpc_config.eth_get_transaction_count.clone(),
-            args,
-        )
-        .await
+        match self.caller_service {
+            CallerService::EvmRpcCanisterClient => {
+                self.call_internal(
+                    "eth_getTransactionCount",
+                    self.override_rpc_config.eth_get_transaction_count.clone(),
+                    args,
+                )
+                .await
+            }
+            CallerService::RpcHttpOutCallClient => {
+                CandidRpcClient::new(
+                    self.providers.clone(),
+                    self.override_rpc_config.eth_get_transaction_count.clone(),
+                )
+                .expect("Failed to create candid client")
+                .eth_get_transaction_count(args, self.min_attached_cycles)
+                .await
+            }
+        }
     }
 
     pub async fn eth_send_raw_transaction(
         &self,
         raw_signed_tx_hex: String,
     ) -> MultiRpcResult<SendRawTransactionStatus> {
-        self.call_internal(
-            "eth_sendRawTransaction",
-            self.override_rpc_config.eth_send_raw_transaction.clone(),
-            raw_signed_tx_hex,
-        )
-        .await
+        match self.caller_service {
+            CallerService::EvmRpcCanisterClient => {
+                self.call_internal(
+                    "eth_sendRawTransaction",
+                    self.override_rpc_config.eth_send_raw_transaction.clone(),
+                    raw_signed_tx_hex,
+                )
+                .await
+            }
+            CallerService::RpcHttpOutCallClient => {
+                CandidRpcClient::new(
+                    self.providers.clone(),
+                    self.override_rpc_config.eth_send_raw_transaction.clone(),
+                )
+                .expect("Failed to create candid client")
+                .eth_send_raw_transaction(
+                    Hex::from_str(&raw_signed_tx_hex).unwrap(),
+                    self.min_attached_cycles,
+                )
+                .await
+            }
+        }
     }
 
     async fn call_internal<In, Out>(
@@ -207,8 +318,9 @@ impl<L: Sink> EvmRpcClient<L> {
                 attached_cycles,
                 retries
             );
-            let result: MultiRpcResult<Out> = self
-                .caller_service
+            let client = EvmRpcCanisterClinet {};
+
+            let result: MultiRpcResult<Out> = client
                 .call(
                     self.evm_canister_id,
                     method,
@@ -221,6 +333,7 @@ impl<L: Sink> EvmRpcClient<L> {
                         HttpOutcallError::IcError { code, message },
                     )))
                 });
+
             log!(
                 self.logger,
                 "[{}]: Response to {} after {} retries: {:?}",

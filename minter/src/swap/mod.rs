@@ -1,8 +1,4 @@
-use candid::Principal;
-use ic_canister_log::log;
-
 use crate::candid_types::dex_orders::DexOrderError;
-use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
 use crate::logs::DEBUG;
 use crate::rpc_declarations::Data;
@@ -18,6 +14,9 @@ use crate::{
     candid_types::dex_orders::DexOrderArgs,
     numeric::{Erc20Value, Wei},
 };
+use candid::Principal;
+use evm_rpc_client::eth_types::Address;
+use ic_canister_log::log;
 
 pub mod command_data;
 

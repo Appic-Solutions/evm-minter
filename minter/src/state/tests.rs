@@ -2,7 +2,6 @@ use crate::candid_types::CandidBlockTag;
 use crate::contract_logs::types::{ReceivedErc20Event, ReceivedNativeEvent};
 use crate::contract_logs::{EventSource, LedgerSubaccount};
 use crate::erc20::ERC20TokenSymbol;
-use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
 use crate::lifecycle::InitArg;
 use crate::lifecycle::UpgradeArg;
@@ -26,6 +25,7 @@ use crate::tx::{
 };
 use candid::{Nat, Principal};
 use ethnum::u256;
+use evm_rpc_client::eth_types::Address;
 use ic_management_canister_types::EcdsaPublicKeyResult;
 use proptest::array::uniform32;
 use proptest::collection::vec as pvec;
@@ -289,7 +289,6 @@ fn received_erc20_event() -> ReceivedErc20Event {
 }
 
 mod upgrade {
-    use crate::eth_types::Address;
     use crate::evm_config::EvmNetwork;
     use crate::lifecycle::UpgradeArg;
     use crate::numeric::{TransactionNonce, Wei};
@@ -298,6 +297,7 @@ mod upgrade {
     use crate::state::InvalidStateError;
     use assert_matches::assert_matches;
     use candid::Nat;
+    use evm_rpc_client::eth_types::Address;
     use num_bigint::BigUint;
     use std::str::FromStr;
 
@@ -1700,7 +1700,6 @@ mod native_balance {
 mod erc20_balance {
     use crate::contract_logs::types::ReceivedErc20Event;
     use crate::contract_logs::ReceivedContractEvent;
-    use crate::eth_types::Address;
     use crate::state::audit::EventType::AcceptedErc20WithdrawalRequest;
     use crate::state::audit::{apply_state_transition, EventType};
     use crate::state::tests::{
@@ -1709,6 +1708,7 @@ mod erc20_balance {
     };
     use crate::state::transactions::Erc20WithdrawalRequest;
     use crate::test_fixtures::expect_panic_with_message;
+    use evm_rpc_client::eth_types::Address;
     use maplit::btreemap;
 
     #[test]

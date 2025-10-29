@@ -1,6 +1,5 @@
 use crate::candid_types::CandidBlockTag;
 use crate::erc20::ERC20TokenSymbol;
-use crate::eth_types::Address;
 use crate::evm_config::EvmNetwork;
 use crate::logs::INFO;
 use crate::numeric::{BlockNumber, TransactionNonce, Wei, WeiPerGas};
@@ -13,6 +12,7 @@ use crate::storage::total_event_count;
 use candid::types::number::Nat;
 use candid::types::principal::Principal;
 use candid::{CandidType, Deserialize};
+use evm_rpc_client::eth_types::Address;
 use ic_canister_log::log;
 use minicbor::{Decode, Encode};
 use serde::Serialize;

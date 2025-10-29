@@ -1,9 +1,4 @@
-use std::str::FromStr;
-
-use ic_canister_log::log;
-
 use crate::{
-    eth_types::Address,
     guard::TimerGuard,
     logs::{DEBUG, INFO},
     numeric::{GasAmount, Wei, WeiPerGas},
@@ -15,6 +10,9 @@ use crate::{
         ERC20_WITHDRAWAL_TRANSACTION_GAS_LIMIT,
     },
 };
+use evm_rpc_client::{eth_types::Address, Hex};
+use ic_canister_log::log;
+use std::str::FromStr;
 
 /// Represents an estimate of gas fees.
 ///
@@ -398,7 +396,7 @@ pub async fn lazy_fetch_l1_fee_estimate() -> Option<Wei> {
 
     let l1_fee = loop {
         match get_l1_fee().await {
-            Ok(fee_estimate) => break fee_estimate, // Exit loop on success
+            Ok(fee_estimate) => break fee_estimate.to_string(), // Exit loop on success
             Err(e) => {
                 attempts += 1;
                 log!(
@@ -419,7 +417,7 @@ pub async fn lazy_fetch_l1_fee_estimate() -> Option<Wei> {
         }
     };
 
-    async fn get_l1_fee() -> Result<String, MultiCallError<String>> {
+    async fn get_l1_fee() -> Result<Hex, MultiCallError<Hex>> {
         let chain_id = read_state(|s| s.evm_network()).chain_id();
 
         read_state(RpcClient::from_state_all_providers)

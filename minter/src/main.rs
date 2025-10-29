@@ -1,5 +1,4 @@
 use candid::{Nat, Principal};
-use evm_minter::address::{validate_address_as_destination, AddressValidationError};
 use evm_minter::candid_types::chain_data::ChainData;
 use evm_minter::candid_types::dex_orders::{DexOrderArgs, DexOrderError};
 use evm_minter::candid_types::events::{
@@ -16,6 +15,9 @@ use evm_minter::contract_logs::EventSource;
 use evm_minter::deposit::{
     apply_safe_threshold_to_latest_block_numner, scrape_logs, validate_log_scraping_request,
 };
+use evm_minter::rpc_declarations::parse_fee_history;
+use evm_rpc_client::address::validate_address_as_destination;
+use evm_rpc_client::address::AddressValidationError;
 
 use evm_minter::candid_types::{
     self, ActivateSwapReqest, AddErc20Token, CandidTwinUsdcInfo, DepositStatus, GasTankBalance,
@@ -32,10 +34,7 @@ use evm_minter::candid_types::{
     Eip1559TransactionPrice, Eip1559TransactionPriceArg, Erc20Balance, GasFeeEstimate, MinterInfo,
     RetrieveNativeRequest, RetrieveWithdrawalStatus,
 };
-
 use evm_minter::erc20::ERC20Token;
-use evm_minter::eth_types::fee_hisotry_parser::parse_fee_history;
-use evm_minter::eth_types::Address;
 use evm_minter::evm_config::EvmNetwork;
 use evm_minter::guard::retrieve_withdraw_guard;
 use evm_minter::icrc_21::{
@@ -78,6 +77,7 @@ use evm_minter::{
     PROCESS_TOKENS_RETRIEVE_TRANSACTIONS_INTERVAL, RPC_HELPER_PRINCIPAL,
     SCRAPING_CONTRACT_LOGS_INTERVAL,
 };
+use evm_rpc_client::eth_types::Address;
 use ic_canister_log::log;
 use ic_cdk::{init, post_upgrade, pre_upgrade, query, update};
 use icrc_ledger_client::ICRC1Client;

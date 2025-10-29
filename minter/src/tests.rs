@@ -18,11 +18,7 @@ pub mod swap;
 #[cfg(test)]
 pub mod dex_types;
 
-use ic_management_canister_types::EcdsaPublicKeyResult;
-use maplit::btreemap;
-
 use crate::{
-    address::ecdsa_public_key_to_address,
     contract_logs::{types::ReceivedNativeEvent, EventSource},
     erc20::ERC20TokenSymbol,
     evm_config::EvmNetwork,
@@ -34,6 +30,9 @@ use crate::{
         State,
     },
 };
+use evm_rpc_client::{address::ecdsa_public_key_to_address, eth_types::Address};
+use ic_management_canister_types::EcdsaPublicKeyResult;
+use maplit::btreemap;
 
 #[test]
 fn deserialize_block_spec() {
@@ -66,13 +65,13 @@ mod get_contract_logs {
     use crate::contract_logs::{LedgerSubaccount, ReceivedContractEvent};
     use crate::deposit::validate_log_scraping_request;
     use crate::erc20::ERC20TokenSymbol;
-    use crate::eth_types::Address;
     use crate::numeric::{BlockNumber, Erc20Value, LogIndex, Wei};
     use crate::rpc_declarations::Data;
     use crate::rpc_declarations::{FixedSizeData, LogEntry};
     use crate::state::STATE;
     use crate::tests::test_state;
     use candid::Principal;
+    use evm_rpc_client::eth_types::Address;
     use ic_sha3::Keccak256;
     use std::str::FromStr;
 
@@ -569,7 +568,6 @@ fn address_from_pubkey() {
 }
 
 mod rlp_encoding {
-    use crate::eth_types::Address;
     use crate::numeric::{GasAmount, TransactionNonce, Wei, WeiPerGas};
     use crate::rpc_declarations::Hash;
     use crate::tx::{
@@ -577,6 +575,7 @@ mod rlp_encoding {
         SignedEip1559TransactionRequest,
     };
     use ethnum::u256;
+    use evm_rpc_client::eth_types::Address;
     use libsecp256k1::{PublicKey, PublicKeyFormat};
     use rlp::Encodable;
     use std::str::FromStr;
