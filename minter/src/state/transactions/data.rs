@@ -1,9 +1,9 @@
-use std::str::FromStr;
-
-use crate::{eth_types::Address, numeric::Erc20Value, rpc_declarations::Data};
+use crate::{numeric::Erc20Value, rpc_declarations::Data};
 use alloy::primitives::{Address as AlloyAddress, Bytes, FixedBytes, U256};
 use alloy::sol_types::SolCall;
+use evm_rpc_client::eth_types::Address;
 use minicbor::{Decode, Encode};
+use std::str::FromStr;
 //use alloy_primitives::{Address as AlloyAddress, FixedBytes,U256};
 
 // Existing selectors

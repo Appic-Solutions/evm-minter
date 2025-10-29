@@ -2,10 +2,10 @@
 mod tests;
 use crate::contract_logs::ReceivedContractEvent;
 use crate::erc20::ERC20TokenSymbol;
-use crate::eth_types::Address;
 use crate::numeric::Erc20Value;
 use crate::state::transactions::ReimbursementRequest;
 use candid::Principal;
+use evm_rpc_client::eth_types::Address;
 use icrc_ledger_types::icrc1::transfer::Memo;
 use minicbor::{Decode, Encode, Encoder};
 

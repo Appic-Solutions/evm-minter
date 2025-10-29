@@ -11,10 +11,10 @@ use crate::rpc_declarations::{Hash, TransactionStatus};
 use crate::state::lazy_call_ecdsa_public_key;
 use crate::state::read_state;
 use crate::{
-    eth_types::Address,
     numeric::{BlockNumber, GasAmount, TransactionNonce, Wei, WeiPerGas},
     rpc_declarations::TransactionReceipt,
 };
+use evm_rpc_client::eth_types::Address;
 //use ic_management_canister_types::DerivationPath;
 
 use libsecp256k1::{recover, verify, Message, PublicKey, RecoveryId, Signature};

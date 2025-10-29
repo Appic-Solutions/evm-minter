@@ -667,10 +667,15 @@ service : (MinterArg) -> {
   charge_gas_tank : (nat) -> ();
   check_new_deposits : () -> ();
   dex_order : (DexOrderArgs) -> (Result);
+  // Estimate price of EIP-1559 transaction based on the
+  // `base_fee_per_gas` included in the last Latest block.
   eip_1559_transaction_price : (opt Eip1559TransactionPriceArg) -> (
       Eip1559TransactionPrice,
     ) query;
   get_events : (GetEventsArg) -> (GetEventsResult) query;
+  // Returns the current parameters used by the minter.
+  // This includes information that can be retrieved form other endpoints as well.
+  // To retain some flexibility in the API all fields in the return value are optional.
   get_minter_info : () -> (MinterInfo) query;
   icrc21_canister_call_consent_message : (ConsentMessageRequest) -> (Result_1);
   icrc28_trusted_origins : () -> (Icrc28TrustedOriginsResponse);

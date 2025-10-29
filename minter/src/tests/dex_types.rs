@@ -1,6 +1,6 @@
 // This is an experimental feature to generate Rust binding from Candid.
 // You may want to manually adjust some of the types.
-use candid::{self, CandidType, Decode, Deserialize, Encode, Principal};
+use candid::{self, CandidType, Deserialize, Principal};
 use serde::Serialize;
 
 #[derive(Debug, Clone, CandidType, Deserialize, Serialize)]

@@ -15,6 +15,8 @@ use crate::{
     },
     tx_id::SwapTxId,
 };
+use evm_rpc_client::address::ecdsa_public_key_to_address;
+use evm_rpc_client::eth_types::Address;
 use std::{
     cell::RefCell,
     collections::{btree_map, BTreeMap, BTreeSet, HashSet},
@@ -22,11 +24,9 @@ use std::{
 };
 
 use crate::{
-    address::ecdsa_public_key_to_address,
     candid_types::DepositStatus,
     contract_logs::{EventSource, ReceivedContractEvent},
     erc20::{ERC20Token, ERC20TokenSymbol},
-    eth_types::Address,
     evm_config::EvmNetwork,
     lifecycle::UpgradeArg,
     logs::DEBUG,

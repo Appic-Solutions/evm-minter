@@ -114,22 +114,21 @@ fn encode_burn_memo_is_stable() {
 }
 
 mod arbitrary {
-    use std::str::FromStr;
-
     use crate::checked_amount::CheckedAmountOf;
     use crate::erc20::ERC20TokenSymbol;
-    use crate::eth_types::Address;
     use crate::memo::{BurnMemo, MintMemo};
     use crate::numeric::LedgerBurnIndex;
     use crate::rpc_declarations::Hash;
     use crate::state::transactions::{ReimbursementRequest, Subaccount};
     use candid::Principal;
+    use evm_rpc_client::eth_types::Address;
     use proptest::arbitrary::any;
     use proptest::array::{uniform20, uniform32};
     use proptest::collection::vec as pvec;
     use proptest::option;
     use proptest::prelude::{BoxedStrategy, Strategy};
     use proptest::prop_oneof;
+    use std::str::FromStr;
 
     fn arb_hash() -> impl Strategy<Value = Hash> {
         uniform32(any::<u8>()).prop_map(Hash)

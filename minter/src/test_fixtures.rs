@@ -26,12 +26,12 @@ pub fn expect_panic_with_message<F: FnOnce() -> R, R: std::fmt::Debug>(
 
 pub mod arb {
     use crate::checked_amount::CheckedAmountOf;
-    use crate::eth_types::Address;
     use crate::numeric::BlockRangeInclusive;
     use crate::rpc_declarations::{
         Block, Data, FeeHistory, FixedSizeData, Hash, LogEntry, TransactionReceipt,
         TransactionStatus,
     };
+    use evm_rpc_client::eth_types::Address;
     use evm_rpc_client::evm_rpc_types::RejectionCode;
     use evm_rpc_client::{
         Hex, Hex20, Hex256, Hex32, HexByte, HttpOutcallError as EvmHttpOutcallError,

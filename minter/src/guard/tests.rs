@@ -3,13 +3,13 @@ use candid::Nat;
 use crate::numeric::wei_from_milli_ether;
 
 mod retrieve_eth_guard {
-    use crate::eth_types::Address;
     use crate::guard::tests::init_state;
     use crate::guard::{retrieve_withdraw_guard, GuardError, MAX_CONCURRENT, MAX_PENDING};
     use crate::numeric::{LedgerBurnIndex, Wei};
     use crate::state::mutate_state;
     use crate::state::transactions::{NativeWithdrawalRequest, WithdrawalRequest};
     use candid::Principal;
+    use evm_rpc_client::eth_types::Address;
 
     #[test]
     fn should_error_on_reentrant_principal() {

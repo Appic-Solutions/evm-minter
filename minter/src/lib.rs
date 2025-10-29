@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-pub mod address;
 pub mod candid_types;
 pub mod cbor;
 pub mod checked_amount;
@@ -8,7 +7,6 @@ pub mod contract_logs;
 pub mod deposit;
 pub mod dex_client;
 pub mod erc20;
-pub mod eth_types;
 pub mod evm_config;
 pub mod guard;
 pub mod icrc_21;

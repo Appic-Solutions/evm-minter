@@ -1,8 +1,6 @@
 #[cfg(test)]
 mod tests;
 
-pub mod fee_hisotry_parser;
-
 use minicbor::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -10,6 +8,7 @@ use std::fmt::{Formatter, LowerHex, UpperHex};
 use std::str::FromStr;
 
 pub mod serde_data;
+
 /// An Ethereum account address.
 #[derive(
     Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Encode, Decode,

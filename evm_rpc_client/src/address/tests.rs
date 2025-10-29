@@ -1,4 +1,5 @@
 mod validate_address_as_destination {
+
     use std::str::FromStr;
 
     use crate::address::{validate_address_as_destination, Address, AddressValidationError};

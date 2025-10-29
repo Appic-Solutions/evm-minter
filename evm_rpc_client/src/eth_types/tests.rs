@@ -3,6 +3,7 @@ use proptest::{prop_assert, prop_assert_eq, proptest};
 use std::str::FromStr;
 
 mod from_string {
+
     use super::*;
 
     proptest! {

@@ -1,10 +1,10 @@
 use std::fmt;
 
 use crate::contract_logs::swap::swap_logs::ReceivedSwapEvent;
-use crate::eth_types::Address;
 use crate::numeric::{BlockNumber, Erc20Value, IcrcValue, LogIndex, Wei};
 use crate::rpc_declarations::Hash;
 use candid::Principal;
+use evm_rpc_client::eth_types::Address;
 use minicbor::{Decode, Encode};
 
 use hex_literal::hex;

@@ -11,6 +11,7 @@ use crate::candid_types::{
 use crate::evm_config::EvmNetwork;
 use crate::logs::INFO;
 use crate::map::MultiKeyMap;
+use crate::numeric::{Erc20TokenAmount, Erc20Value, LedgerBurnIndex, Wei};
 use crate::numeric::{GasAmount, LedgerMintIndex, TransactionCount, TransactionNonce};
 use crate::rpc_declarations::{Data, Hash, TransactionReceipt, TransactionStatus};
 use crate::state::transactions::data::{Command, TransactionCallData};
@@ -20,11 +21,8 @@ use crate::tx::{
     SignedEip1559TransactionRequest, SignedTransactionRequest, TransactionRequest,
 };
 use crate::tx_id::SwapTxId;
-use crate::{
-    eth_types::Address,
-    numeric::{Erc20TokenAmount, Erc20Value, LedgerBurnIndex, Wei},
-};
 use candid::Principal;
+use evm_rpc_client::eth_types::Address;
 use ic_canister_log::log;
 use icrc_ledger_types::icrc1::account::Account;
 use minicbor::{Decode, Encode};

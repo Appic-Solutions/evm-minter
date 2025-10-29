@@ -2,8 +2,9 @@ use crate::{
     numeric::{Erc20Value, GasAmount, Wei},
     tx::gas_usd::MaxFeeUsd,
 };
-
+use evm_rpc_client::eth_types::Address;
 use num_traits::ToPrimitive;
+use std::str::FromStr;
 
 use super::*;
 
