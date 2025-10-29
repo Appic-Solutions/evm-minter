@@ -553,7 +553,7 @@ pub async fn update_last_observed_block_number() -> Option<BlockNumber> {
         }
     };
 
-    match read_state(|s| RpcClient::from_state_one_provider(s, Provider::DRPC))
+    match read_state(|s| RpcClient::from_state_one_provider(s, Provider::Alchemy))
         .get_block_by_number(BlockSpec::Tag(block_height))
         .await
     {
@@ -811,13 +811,8 @@ pub fn apply_safe_threshold_to_latest_block_numner(
                 .expect("Removing 12 blocks from latest block should never fail")
         }
         EvmNetwork::Base => {
-            // like Arbitrum, it's recommended to wait for a few blocks after a transaction is included in a block
-            // to ensure finality and minimize the risk of reorgs. A waiting period of 6-12 blocks is
-            // typically considered sufficient for most applications.
-
+            // on base reorgs are very unlikely
             latest_block
-                .checked_sub(BlockNumber::from(1_u32))
-                .expect("Removing 12 blocks from latest block should never fail")
         }
         EvmNetwork::Optimism => {
             // Similar to the other layer-2 networks, it's recommended to wait for a few blocks after a transaction is included in a block to
@@ -878,7 +873,7 @@ pub fn apply_safe_threshold_to_latest_block_numner(
         // This supports 1,000+ TPS with low fees (<$0.01).
         {
             latest_block
-                .checked_sub(BlockNumber::from(2_u32))
+                .checked_sub(BlockNumber::from(1_u32))
                 .expect("Removing 12 blocks from latest block should never fail")
         }
     }

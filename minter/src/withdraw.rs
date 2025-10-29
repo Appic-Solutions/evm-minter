@@ -648,7 +648,7 @@ async fn finalized_transaction_count() -> Result<TransactionCount, MultiCallErro
 {
     let evm_netowrk = read_state(|s| s.evm_network());
     match evm_netowrk {
-        EvmNetwork::Ethereum | EvmNetwork::Polygon => {
+        EvmNetwork::Polygon => {
             read_state(|s| RpcClient::from_state_custom_providers(s, vec![Provider::Alchemy]))
                 .get_finalized_transaction_count(crate::state::minter_address().await)
                 .await

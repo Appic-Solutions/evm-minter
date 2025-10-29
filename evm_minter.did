@@ -24,6 +24,30 @@ type ChainData = record {
   latest_block_number : nat;
   native_token_usd_price : opt float64;
 };
+type ConsentInfo = record {
+  metadata : ConsentMessageMetadata;
+  consent_message : ConsentMessage;
+};
+type ConsentMessage = variant {
+  FieldsDisplayMessage : record {
+    fields : vec record { text; Value };
+    intent : text;
+  };
+  GenericDisplayMessage : text;
+};
+type ConsentMessageMetadata = record {
+  utc_offset_minutes : opt int16;
+  language : text;
+};
+type ConsentMessageRequest = record {
+  arg : blob;
+  method : text;
+  user_preferences : ConsentMessageSpec;
+};
+type ConsentMessageSpec = record {
+  metadata : ConsentMessageMetadata;
+  device_spec : opt DeviceSpec;
+};
 type DepositStatus = variant {
   Released;
   Minted;
@@ -31,6 +55,7 @@ type DepositStatus = variant {
   InvalidDeposit;
   Quarantined;
 };
+type DeviceSpec = variant { GenericDisplay; FieldsDisplay };
 type DexOrderArgs = record {
   erc20_ledger_burn_index : nat;
   min_amount_out : nat;
@@ -59,6 +84,7 @@ type DexOrderError = variant {
   InvalidCommand : text;
   InvalidCommandData : text;
 };
+type DurationSeconds = record { amount : nat64 };
 type Eip1559TransactionPrice = record {
   max_priority_fee_per_gas : nat;
   max_fee_per_gas : nat;
@@ -73,6 +99,13 @@ type Erc20Token = record {
   erc20_contract_address : text;
   ledger_canister_id : principal;
 };
+type Error = variant {
+  GenericError : record { description : text; error_code : nat };
+  InsufficientPayment : ErrorInfo;
+  UnsupportedCanisterCall : ErrorInfo;
+  ConsentMessageUnavailable : ErrorInfo;
+};
+type ErrorInfo = record { description : text };
 type Event = record { timestamp : nat64; payload : EventPayload };
 type EventPayload = variant {
   QuarantinedSwapRequest : record {
@@ -125,7 +158,11 @@ type EventPayload = variant {
     reimbursed_amount : nat;
     to_subaccount : opt blob;
   };
-  SignedTransaction : record { raw_transaction : text; withdrawal_id : nat };
+  SignedTransaction : record {
+    transaction_hash : text;
+    raw_transaction : text;
+    withdrawal_id : nat;
+  };
   ReleasedIcrcToken : record {
     transfer_fee : nat;
     release_block_index : nat;
@@ -183,6 +220,8 @@ type EventPayload = variant {
     l1_fee : opt nat;
     is_refund : bool;
     gas_limit : nat;
+    commands : vec nat;
+    commands_data : vec text;
     erc20_token_in : text;
     native_ledger_burn_index : nat;
   };
@@ -462,10 +501,11 @@ type RequestScrapingError = variant {
   InvalidBlockNumber;
 };
 type Result = variant { Ok; Err : DexOrderError };
-type Result_1 = variant { Ok; Err : RequestScrapingError };
-type Result_2 = variant { Ok : RetrieveErc20Request; Err : WithdrawErc20Error };
-type Result_3 = variant { Ok : RetrieveNativeRequest; Err : WithdrawalError };
-type Result_4 = variant { Ok : RetrieveWrapIcrcRequest; Err : WrapIcrcError };
+type Result_1 = variant { Ok : ConsentInfo; Err : Error };
+type Result_2 = variant { Ok; Err : RequestScrapingError };
+type Result_3 = variant { Ok : RetrieveErc20Request; Err : WithdrawErc20Error };
+type Result_4 = variant { Ok : RetrieveNativeRequest; Err : WithdrawalError };
+type Result_5 = variant { Ok : RetrieveWrapIcrcRequest; Err : WrapIcrcError };
 type RetrieveErc20Request = record {
   erc20_block_index : nat;
   native_block_index : nat;
@@ -507,6 +547,8 @@ type SwapStatus = variant {
   RefundSwapTxSent : Transaction;
   PendingFailedSwap : SwapDetails;
 };
+type TextValue = record { content : text };
+type TokenAmount = record { decimals : nat8; amount : nat64; symbol : text };
 type Transaction = record { transaction_hash : text };
 type TransactionReceipt = record {
   effective_gas_price : nat;
@@ -551,6 +593,12 @@ type UpgradeArg = record {
   withdrawal_native_fee : opt nat;
   block_height : opt CandidBlockTag;
   min_max_priority_fee_per_gas : opt nat;
+};
+type Value = variant {
+  Text : TextValue;
+  TokenAmount : TokenAmount;
+  TimestampSeconds : DurationSeconds;
+  DurationSeconds : DurationSeconds;
 };
 type WithdrawErc20Arg = record {
   erc20_ledger_id : principal;
@@ -624,19 +672,20 @@ service : (MinterArg) -> {
     ) query;
   get_events : (GetEventsArg) -> (GetEventsResult) query;
   get_minter_info : () -> (MinterInfo) query;
+  icrc21_canister_call_consent_message : (ConsentMessageRequest) -> (Result_1);
   icrc28_trusted_origins : () -> (Icrc28TrustedOriginsResponse);
   minter_address : () -> (text);
-  request_scraping_logs : () -> (Result_1);
+  request_scraping_logs : () -> (Result_2);
   retrieve_deposit_status : (text) -> (opt DepositStatus) query;
   retrieve_swap_status_by_hash : (text) -> (opt SwapStatus) query;
   retrieve_swap_status_by_swap_tx_id : (text) -> (opt SwapStatus) query;
   retrieve_withdrawal_status : (nat64) -> (RetrieveWithdrawalStatus);
   smart_contract_address : () -> (opt vec text) query;
   update_chain_data : (ChainData) -> ();
-  withdraw_erc20 : (WithdrawErc20Arg) -> (Result_2);
-  withdraw_native_token : (WithdrawalArg) -> (Result_3);
+  withdraw_erc20 : (WithdrawErc20Arg) -> (Result_3);
+  withdraw_native_token : (WithdrawalArg) -> (Result_4);
   withdrawal_status : (WithdrawalSearchParameter) -> (
       vec WithdrawalDetail,
     ) query;
-  wrap_icrc : (WrapIcrcArg) -> (Result_4);
+  wrap_icrc : (WrapIcrcArg) -> (Result_5);
 }

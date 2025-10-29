@@ -15,8 +15,8 @@ use crate::{
     eth_types::Address,
     lifecycle::{InitArg, UpgradeArg},
     numeric::{
-        BlockNumber, Erc20TokenAmount, Erc20TokenAmountTag, Erc20Value, IcrcValue, LedgerBurnIndex,
-        LedgerMintIndex, LedgerReleaseIndex, Wei,
+        BlockNumber, Erc20Value, IcrcValue, LedgerBurnIndex, LedgerMintIndex, LedgerReleaseIndex,
+        Wei,
     },
     rpc_declarations::TransactionReceipt,
     state::transactions::{Erc20Approve, ExecuteSwapRequest},

@@ -132,6 +132,7 @@ pub enum EventPayload {
     SignedTransaction {
         withdrawal_id: Nat,
         raw_transaction: String,
+        transaction_hash: String,
     },
     ReplacedTransaction {
         withdrawal_id: Nat,
@@ -303,6 +304,8 @@ pub enum EventPayload {
         withdrawal_fee: Option<Nat>,
         swap_tx_id: String,
         is_refund: bool,
+        commands: Vec<Nat>,
+        commands_data: Vec<String>,
     },
     QuarantinedDexOrder(DexOrderArgs),
     QuarantinedSwapRequest {

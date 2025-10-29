@@ -1389,6 +1389,7 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                 } => EP::SignedTransaction {
                     withdrawal_id: withdrawal_id.get().into(),
                     raw_transaction: transaction.raw_transaction_hex(),
+                    transaction_hash: transaction.hash().to_string(),
                 },
                 EventType::ReplacedTransaction {
                     withdrawal_id,
@@ -1638,8 +1639,8 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     min_amount_out,
                     recipient,
                     deadline,
-                    commands: _,
-                    commands_data: _,
+                    commands,
+                    commands_data,
                     swap_contract,
                     gas_estimate,
                     native_ledger_burn_index,
@@ -1671,6 +1672,14 @@ fn get_events(arg: GetEventsArg) -> GetEventsResult {
                     withdrawal_fee: withdrawal_fee.map(|fee| fee.into()),
                     swap_tx_id,
                     is_refund,
+                    commands: commands
+                        .into_iter()
+                        .map(|command| command.to_u8().into())
+                        .collect(),
+                    commands_data: commands_data
+                        .into_iter()
+                        .map(|data| data.to_string())
+                        .collect(),
                 },
                 EventType::QuarantinedSwapRequest(ExecuteSwapRequest {
                     max_transaction_fee,
