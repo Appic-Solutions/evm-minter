@@ -1032,7 +1032,6 @@ pub fn state_equivalence() {
         quarantined_releases: Default::default(),
         icrc_balances: Default::default(),
         wrapped_icrc_tokens: Default::default(),
-        last_log_scraping_time: None,
         twin_usdc_info: None,
         swap_contract_address: None,
         is_swapping_active: false,
@@ -1044,6 +1043,7 @@ pub fn state_equivalence() {
         quarantined_dex_orders: Default::default(),
         swap_events_to_be_notified: Default::default(),
         notified_swap_events: Default::default(),
+        lastest_requested_block_to_scrape: None,
     };
 
     assert_eq!(

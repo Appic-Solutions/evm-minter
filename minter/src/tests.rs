@@ -1,6 +1,4 @@
 #[cfg(test)]
-pub mod appic_helper_types;
-#[cfg(test)]
 pub mod ledger_arguments;
 #[cfg(test)]
 pub mod lsm_types;
@@ -30,7 +28,7 @@ use crate::{
         State,
     },
 };
-use evm_rpc_client::{address::ecdsa_public_key_to_address, eth_types::Address};
+use evm_rpc_client::address::ecdsa_public_key_to_address;
 use ic_management_canister_types::EcdsaPublicKeyResult;
 use maplit::btreemap;
 
@@ -58,12 +56,10 @@ fn deserialize_block_spec() {
     );
 }
 mod get_contract_logs {
-    use crate::candid_types::RequestScrapingError;
     use crate::contract_logs::parser::{LogParser, ReceivedEventsLogParser};
     use crate::contract_logs::swap::swap_logs::ReceivedSwapEvent;
     use crate::contract_logs::types::{ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent};
     use crate::contract_logs::{LedgerSubaccount, ReceivedContractEvent};
-    use crate::deposit::validate_log_scraping_request;
     use crate::erc20::ERC20TokenSymbol;
     use crate::numeric::{BlockNumber, Erc20Value, LogIndex, Wei};
     use crate::rpc_declarations::Data;
@@ -511,37 +507,6 @@ mod get_contract_logs {
             ),
         });
         assert_eq!(parsed_event, expected_error);
-    }
-
-    #[test]
-    fn should_not_allow_log_scraping() {
-        let validation_result_observed_block = validate_log_scraping_request(
-            1_732_638_362_000_000_000_u64,
-            2_845_738_362_000_000_000_u64,
-        )
-        .is_ok();
-
-        assert!(validation_result_observed_block);
-
-        let validation_result_not_enough_gap_between_two_requests = validate_log_scraping_request(
-            1_732_638_362_000_000_000_u64,
-            1_732_638_362_000_000_000_u64.saturating_add(5_000_000_000_u64),
-        );
-
-        assert_eq!(
-            validation_result_not_enough_gap_between_two_requests,
-            Err(RequestScrapingError::CalledTooManyTimes)
-        );
-    }
-
-    #[test]
-    fn should_allow_log_scrapping() {
-        let validation_result = validate_log_scraping_request(
-            1_732_638_362_000_000_000_u64,
-            1_732_638_362_000_000_000_u64.saturating_add(60_000_000_001_u64),
-        );
-
-        assert_eq!(validation_result, Ok(()));
     }
 }
 
@@ -1240,6 +1205,7 @@ fn test_state() -> State {
         first_scraped_block_number: BlockNumber::new(1_000_001),
         last_scraped_block_number: BlockNumber::new(1_000_000),
         last_observed_block_number: Some(BlockNumber::new(2_000_000)),
+        lastest_requested_block_to_scrape: None,
         events_to_mint: btreemap! {
             source("0xac493fb20c93bd3519a4a5d90ce72d69455c41c5b7e229dafee44344242ba467", 100) => ReceivedNativeEvent {
                 transaction_hash: "0xac493fb20c93bd3519a4a5d90ce72d69455c41c5b7e229dafee44344242ba467".parse().unwrap(),
@@ -1290,7 +1256,6 @@ fn test_state() -> State {
         quarantined_releases: Default::default(),
         icrc_balances: Default::default(),
         wrapped_icrc_tokens,
-        last_log_scraping_time: None,
         dex_canister_id: None,
         twin_usdc_info: None,
         swap_contract_address: None,

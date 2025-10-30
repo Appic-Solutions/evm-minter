@@ -502,8 +502,6 @@ pub async fn scrape_logs() {
         Err(_) => return,
     };
 
-    mutate_state(|s| s.last_log_scraping_time = Some(ic_cdk::api::time()));
-
     let mut attempts = 0;
     const MAX_ATTEMPTS: u32 = 3;
 
@@ -772,22 +770,6 @@ pub fn register_deposit_events(
         }
         report_transaction_error(error);
     }
-}
-
-// Validate request_log scraping
-// Validation factors:
-// 1: The provided block number should be greater than last observed block number.
-// 2: There should be at least a minute of gap between the last time this function was called and now.
-// Meaning that this function can only be called onces in a minute due to cycle drain attacks.
-pub fn validate_log_scraping_request(
-    last_observed_block_time: u64,
-    now_ns: u64,
-) -> Result<(), RequestScrapingError> {
-    if now_ns < last_observed_block_time.saturating_add(TEN_SEC) {
-        return Err(RequestScrapingError::CalledTooManyTimes);
-    }
-
-    Ok(())
 }
 
 pub fn apply_safe_threshold_to_latest_block_numner(

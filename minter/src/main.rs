@@ -12,9 +12,7 @@ use evm_minter::contract_logs::types::{
     ReceivedBurnEvent, ReceivedErc20Event, ReceivedNativeEvent, ReceivedWrappedIcrcDeployedEvent,
 };
 use evm_minter::contract_logs::EventSource;
-use evm_minter::deposit::{
-    apply_safe_threshold_to_latest_block_numner, scrape_logs, validate_log_scraping_request,
-};
+use evm_minter::deposit::{apply_safe_threshold_to_latest_block_numner, scrape_logs};
 use evm_minter::rpc_declarations::parse_fee_history;
 use evm_rpc_client::address::validate_address_as_destination;
 use evm_rpc_client::address::AddressValidationError;
@@ -376,18 +374,37 @@ async fn get_minter_info() -> MinterInfo {
 // Meaning that this function can only be called onces in a minute due to cycle drain attacks.
 #[update]
 async fn request_scraping_logs() -> Result<(), RequestScrapingError> {
-    let last_log_scraping_time = read_state(|s| s.last_log_scraping_time)
-        .expect("The block time should not be null at the time of this function call");
+    let caller = ic_cdk::api::msg_caller();
+    let appic_controller = Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap();
 
-    let now_ns = ic_cdk::api::time();
-
-    validate_log_scraping_request(last_log_scraping_time, now_ns)?;
+    if caller != appic_controller {
+        panic!("Access Denied");
+    }
 
     ic_cdk_timers::set_timer(Duration::from_secs(0), || {
         ic_cdk::futures::spawn_017_compat(scrape_logs())
     });
 
     Ok(())
+}
+
+#[update]
+fn request_block_scrape(block: Nat) {
+    let caller = ic_cdk::api::msg_caller();
+    let rpc_helper_identity = Principal::from_text(RPC_HELPER_PRINCIPAL).unwrap();
+
+    if caller != rpc_helper_identity {
+        panic!("Access Denied");
+    }
+
+    let latest_requested_block_to_scrape =
+        read_state(|s| s.lastest_requested_block_to_scrape).unwrap_or(BlockNumber::ZERO);
+
+    let block = BlockNumber::try_from(block).expect("Block is not a valid number");
+
+    if block > latest_requested_block_to_scrape {
+        mutate_state(|s| s.lastest_requested_block_to_scrape = Some(block))
+    }
 }
 
 #[query]
@@ -1777,7 +1794,17 @@ pub async fn update_chain_data(chain_data: ChainData) {
     }
 
     let now = ic_cdk::api::time();
-    let network = read_state(|s| s.evm_network());
+
+    let (network, last_observed_block, last_scraped_block, latest_requested_block_to_scrape) =
+        read_state(|s| {
+            (
+                s.evm_network(),
+                s.last_observed_block_number.unwrap_or(BlockNumber::ZERO),
+                s.last_scraped_block_number,
+                s.lastest_requested_block_to_scrape
+                    .unwrap_or(BlockNumber::ZERO),
+            )
+        });
 
     let latest_block_number = apply_safe_threshold_to_latest_block_numner(
         network,
@@ -1785,10 +1812,7 @@ pub async fn update_chain_data(chain_data: ChainData) {
             .expect("Failed to parse block number"),
     );
 
-    let previous_observed_block =
-        read_state(|s| s.last_observed_block_number).unwrap_or(BlockNumber::ZERO);
-
-    if previous_observed_block > latest_block_number {
+    if last_observed_block > latest_block_number {
         return;
     }
 
@@ -1797,22 +1821,27 @@ pub async fn update_chain_data(chain_data: ChainData) {
 
     let native_token_usd_price = chain_data.native_token_usd_price.unwrap_or_default();
 
-    match estimate_transaction_fee(&fee_history) {
-        Ok(estimate) => {
-            mutate_state(|s| {
-                s.last_transaction_price_estimate = Some((now, estimate.clone()));
-                s.last_observed_block_number = Some(latest_block_number);
-                s.last_observed_block_time = Some(now);
-                s.last_native_token_usd_price_estimate = Some((now, native_token_usd_price))
-            });
-        }
-        Err(e) => {
-            log!(
-                INFO,
-                "[refresh_gas_fee_estimate]: Failed estimating gas fee: {e:?}",
-            );
-        }
-    };
+    let estimated_transaction_fee =
+        estimate_transaction_fee(&fee_history).expect("Failed to estimate gas fee");
+
+    mutate_state(|s| {
+        s.last_transaction_price_estimate = Some((now, estimated_transaction_fee));
+        s.last_observed_block_number = Some(latest_block_number);
+        s.last_observed_block_time = Some(now);
+        s.last_native_token_usd_price_estimate = Some((now, native_token_usd_price))
+    });
+
+    // We check if there is a requested block to scrape exsits, if yes and the block is not already
+    // scraped and it is in the range of lastest block and last scraped block we request log
+    // scraping
+
+    if latest_requested_block_to_scrape > last_scraped_block
+        && latest_requested_block_to_scrape <= latest_block_number
+    {
+        ic_cdk_timers::set_timer(Duration::from_secs(0), || {
+            ic_cdk::futures::spawn_017_compat(scrape_logs())
+        });
+    }
 }
 
 #[update]

@@ -1,5 +1,6 @@
 use crate::{
     candid_types::{
+        chain_data::ChainData,
         withdraw_erc20::{RetrieveErc20Request, WithdrawErc20Arg, WithdrawErc20Error},
         withdraw_native::{WithdrawalArg, WithdrawalError},
         ActivateSwapReqest, DepositStatus, Eip1559TransactionPrice, MinterInfo,
@@ -8,12 +9,14 @@ use crate::{
     evm_config::EvmNetwork,
     tests::{
         lsm_types::{AddErc20Arg, AddErc20Error, Erc20Contract, LedgerInitArg, LedgerManagerInfo},
-        minter_flow_tets::mock_rpc_https_responses::MOCK_TRANSACTION_RECEIPT_APPROVE_ERC20,
+        minter_flow_tets::mock_rpc_https_responses::{
+            MOCK_BSC_FEE_HISTORY_INNER, MOCK_TRANSACTION_RECEIPT_APPROVE_ERC20,
+        },
         pocket_ic_helpers::{
             five_ticks, icp_principal, lsm_principal, native_ledger_principal, update_call,
         },
     },
-    APPIC_CONTROLLER_PRINCIPAL, SCRAPING_CONTRACT_LOGS_INTERVAL,
+    APPIC_CONTROLLER_PRINCIPAL, RPC_HELPER_PRINCIPAL, SCRAPING_CONTRACT_LOGS_INTERVAL,
 };
 use candid::{Nat, Principal};
 use evm_rpc_client::eth_types::Address;
@@ -88,6 +91,89 @@ fn should_get_estimated_eip1559_transaction_price() {
         expected_price.max_transaction_fee,
         transaction_price.max_transaction_fee
     );
+}
+
+// if there is a block scrape request that is not scraped yet after chain data update, in case the
+// block is in scraping range(it should be between last_observed_block and last_scraped_block) the
+// scaping should start
+#[test]
+fn should_start_log_scraping_after_chain_data_update() {
+    let pic = create_pic();
+    create_and_install_minter_plus_dependency_canisters(&pic);
+
+    // The deposit and withdrawal http mock flow is as follow
+    // 1st Step: The mock response for get_blockbynumber is generated
+    // 2nd Step: The response for eth_feehistory response is generated afterwards,
+    // so in the time of withdrawal transaction the eip1559 transaction price is available
+    // Not to forget that the price should be refreshed through a second call at the time
+    // 3rd Step: There should two mock responses be generated, one for ankr and the other one for public node
+    // 4th Step: The response for sendrawtransaction
+    // 5th Step: An http-outcall for getting the finalized transaction count.
+    // 5th Step: and in the end get transaction receipt should be generate
+
+    // At this time there should be 2 http requests:
+    // [0] is for eth_getBlockByNumber
+    // [1] is for eth_feeHistory
+    let canister_http_requests = pic.get_canister_http();
+
+    // 1st Generating mock response for eth_feehistory
+    generate_and_submit_mock_http_response(
+        &pic,
+        &canister_http_requests,
+        0,
+        MOCK_FEE_HISTORY_RESPONSE,
+    );
+
+    // 2nd Generating mock response for eth_getBlockByNumber
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 1, MOCK_BLOCK_NUMBER);
+
+    five_ticks(&pic);
+
+    // 3rd generating mock response for eth_getLogs
+    // At this time there should be 2 http requests:
+    // [0] is for public_node eth_getLogs
+    // [1] is for ankr eth_getLogs
+    let canister_http_requests = pic.get_canister_http();
+
+    // public_node mock submission
+    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_GET_LOGS);
+
+    five_ticks(&pic);
+
+    let minter_info = query_call::<(), MinterInfo>(&pic, minter_principal(), "get_minter_info", ());
+    assert_eq!(
+        minter_info.last_scraped_block_number,
+        Some(Nat::from(45944644_u128))
+    );
+
+    // request a block to be scraped
+    update_call::<Nat, ()>(
+        &pic,
+        minter_principal(),
+        "request_block_scrape",
+        Nat::from(45944645_u128),
+        Some(Principal::from_text(RPC_HELPER_PRINCIPAL).unwrap()),
+    );
+
+    five_ticks(&pic);
+
+    update_call::<ChainData, ()>(
+        &pic,
+        minter_principal(),
+        "update_chain_data",
+        ChainData {
+            latest_block_number: Nat::from(45944646_u128),
+            fee_history: MOCK_BSC_FEE_HISTORY_INNER.to_string(),
+            native_token_usd_price: None,
+        },
+        Some(Principal::from_text(RPC_HELPER_PRINCIPAL).unwrap()),
+    );
+
+    five_ticks(&pic);
+
+    let canister_http_requests = pic.get_canister_http();
+
+    assert_eq!(canister_http_requests.len(), 1);
 }
 
 #[test]
@@ -372,12 +458,12 @@ fn should_not_deposit_twice() {
     pic.advance_time(Duration::from_secs(1 * 60));
 
     // Requesting for another log_scrapping
-    let request_result = update_call::<Nat, Result<(), RequestScrapingError>>(
+    let request_result = update_call::<(), Result<(), RequestScrapingError>>(
         &pic,
         minter_principal(),
         "request_scraping_logs",
-        Nat::from(45944845_u64),
-        None,
+        (),
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     );
 
     assert_eq!(request_result, Ok(()));
@@ -1020,64 +1106,6 @@ fn should_deposit_and_withdrawal_erc20() {
     assert_eq!(
         get_withdrawal_transaction_by_block_index,
         expected_transaction_result
-    );
-}
-
-#[test]
-fn should_fail_log_scrapping_request_without_proper_gap() {
-    let pic = create_pic();
-    create_and_install_minter_plus_dependency_canisters(&pic);
-
-    // The deposit http mock flow is as follow
-    // 1st Step: The mock response for get_blockbynumber is generated
-    // 2nd Step: The response for eth_feehistory resonse is generated afterwards,
-    // 3rd Step: The response for eth_getlogs response is generated,
-
-    // At this time there should be 2 http requests:
-    // [0] is for eth_getBlockByNumber
-    // [1] is for eth_feeHistory
-    let canister_http_requests = pic.get_canister_http();
-
-    // 1st Generating mock response for eth_feehistory
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        0,
-        MOCK_FEE_HISTORY_RESPONSE,
-    );
-
-    // 2nd Generating mock response for eth_getBlockByNumber
-    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 1, MOCK_BLOCK_NUMBER);
-
-    five_ticks(&pic);
-
-    // 3rd generating mock response for eth_getLogs
-    // At this time there should be 2 http requests:
-    // [0] is for public_node eth_getLogs
-    // [1] is for ankr eth_getLogs
-    let canister_http_requests = pic.get_canister_http();
-
-    // public_node mock submission
-    generate_and_submit_mock_http_response(&pic, &canister_http_requests, 0, MOCK_GET_LOGS);
-
-    five_ticks(&pic);
-
-    // There should be a gap of at least one minute between each log scraping so we advance time for 1 min
-    // So we only add 10 seconds to make the process fail
-    pic.advance_time(Duration::from_secs(1 * 5));
-
-    // Requesting for another log_scrapping
-    let request_result = update_call::<Nat, Result<(), RequestScrapingError>>(
-        &pic,
-        minter_principal(),
-        "request_scraping_logs",
-        Nat::from(4594464100_u64),
-        None,
-    );
-
-    assert_eq!(
-        request_result,
-        Err(RequestScrapingError::CalledTooManyTimes)
     );
 }
 

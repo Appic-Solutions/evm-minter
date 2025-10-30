@@ -165,7 +165,8 @@ pub struct State {
     pub last_observed_block_number: Option<BlockNumber>,
     pub last_observed_block_time: Option<u64>,
 
-    pub last_log_scraping_time: Option<u64>,
+    // latest requested block to scrape for getting deposit or swap events
+    pub lastest_requested_block_to_scrape: Option<BlockNumber>,
 
     // after icp-evm bridge update we have both events to mint and events to release locked
     // icp tokens in case the wrapped ones on the evm side are already burnt

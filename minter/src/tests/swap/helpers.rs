@@ -29,10 +29,9 @@ use crate::tests::minter_flow_tets::mock_rpc_https_responses::{
 };
 use crate::tests::pocket_ic_helpers::{
     create_appic_helper_canister, create_evm_rpc_canister, create_icp_ledger_canister,
-    create_lsm_canister, encode_call_args, five_ticks, icp_principal,
-    install_appic_helper_canister, install_evm_rpc_canister, install_icp_ledger_canister,
-    install_lsm_canister, lsm_principal, query_call, sender_principal, update_call,
-    DEX_CANISTER_BYTES, INDEX_WAM_BYTES, LEDGER_WASM_BYTES, MINTER_WASM_BYTES,
+    create_lsm_canister, encode_call_args, five_ticks, icp_principal, install_evm_rpc_canister,
+    install_icp_ledger_canister, install_lsm_canister, lsm_principal, query_call, sender_principal,
+    update_call, DEX_CANISTER_BYTES, INDEX_WAM_BYTES, LEDGER_WASM_BYTES, MINTER_WASM_BYTES,
     PROXY_CANISTER_BYTES, TWENTY_TRILLIONS, TWO_TRILLIONS,
 };
 use crate::{APPIC_CONTROLLER_PRINCIPAL, RPC_HELPER_PRINCIPAL};
@@ -543,7 +542,6 @@ pub fn create_and_install_minters_plus_dependency_canisters(pic: &PocketIc) {
     // Create and install appic helper
     let appic_helper_id = create_appic_helper_canister(pic);
     pic.add_cycles(appic_helper_id, TWENTY_TRILLIONS.into());
-    install_appic_helper_canister(pic, appic_helper_id);
     five_ticks(pic);
     five_ticks(pic);
 
@@ -673,13 +671,14 @@ pub fn install_bsc_minter_and_setup(pic: &PocketIc) {
 
     pic.advance_time(Duration::from_secs(70));
 
-    let _ = update_call::<(), Result<(), RequestScrapingError>>(
-        pic,
-        bsc_minter_id,
+    update_call::<(), Result<(), RequestScrapingError>>(
+        &pic,
+        base_minter_principal(),
         "request_scraping_logs",
         (),
-        None,
-    );
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
+    )
+    .unwrap();
 
     five_ticks(pic);
     five_ticks(pic);

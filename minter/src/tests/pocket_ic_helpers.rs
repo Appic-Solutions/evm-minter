@@ -22,7 +22,6 @@ pub const INDEX_WAM_BYTES: &[u8] = include_bytes!("../../../wasm/index_ng_canist
 pub const ARCHIVE_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/archive_canister_u256.wasm.gz");
 pub const LSM_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/lsm.wasm");
 pub const EVM_RPC_WASM_BYTES: &[u8] = include_bytes!("../../../wasm/evm_rpc.wasm");
-pub const APPIC_HELPER_BYTES: &[u8] = include_bytes!("../../../wasm/appic_helper.wasm");
 pub const DEX_CANISTER_BYTES: &[u8] = include_bytes!("../../../wasm/appic_dex.wasm");
 pub const PROXY_CANISTER_BYTES: &[u8] = include_bytes!("../../../wasm/proxy_canister.wasm");
 
@@ -38,10 +37,7 @@ use candid::{CandidType, Nat, Principal};
 use evm_rpc_client::evm_rpc_types::InstallArgs;
 use pocket_ic::{PocketIc, PocketIcBuilder};
 
-use super::{
-    appic_helper_types::{InitArgs, LoggerArgs, MinterArgs},
-    lsm_types::{InitArg as LsmInitArgs, LSMarg, LedgerManagerInfo},
-};
+use super::lsm_types::{InitArg as LsmInitArgs, LSMarg, LedgerManagerInfo};
 
 use super::ledger_arguments::{
     ArchiveOptions, FeatureFlags as LedgerFeatureFlags, IndexArg, IndexInitArg,
@@ -552,26 +548,6 @@ pub fn create_appic_helper_canister(pic: &PocketIc) -> Principal {
     .expect("Should create the canister")
 }
 
-pub fn install_appic_helper_canister(pic: &PocketIc, canister_id: Principal) {
-    let appic_helper_init = LoggerArgs::Init(InitArgs {
-        minters: vec![MinterArgs {
-            chain_id: Nat::from(56_u64),
-            minter_id: minter_principal(),
-            operator: super::appic_helper_types::Operator::AppicMinter,
-            last_observed_event: Nat::from(0_u8),
-            last_scraped_event: Nat::from(0_u8),
-            evm_to_icp_fee: Nat::from(50_000_000_000_000_u64),
-            icp_to_evm_fee: Nat::from(100_000_000_000_000_u64),
-        }],
-    });
-    pic.install_canister(
-        canister_id,
-        APPIC_HELPER_BYTES.to_vec(),
-        encode_call_args(appic_helper_init).unwrap(),
-        Some(sender_principal()),
-    );
-}
-
 pub fn create_icp_ledger_canister(pic: &PocketIc) -> Principal {
     pic.create_canister_with_id(
         Some(sender_principal()),
@@ -796,13 +772,6 @@ pub mod initialize_minter {
         let icp_canister_id = create_icp_ledger_canister(pic);
         pic.add_cycles(icp_canister_id, TWO_TRILLIONS.into());
         install_icp_ledger_canister(pic, icp_canister_id);
-        five_ticks(pic);
-
-        // Create and install appic helper
-        let appic_helper_id = create_appic_helper_canister(pic);
-        pic.add_cycles(appic_helper_id, TWENTY_TRILLIONS.into());
-        install_appic_helper_canister(pic, appic_helper_id);
-        five_ticks(pic);
         five_ticks(pic);
 
         // Create and install lsm canister

@@ -23,7 +23,7 @@ use crate::{
             create_and_install_minters_plus_dependency_canisters,
         },
     },
-    RPC_HELPER_PRINCIPAL,
+    APPIC_CONTROLLER_PRINCIPAL, RPC_HELPER_PRINCIPAL,
 };
 
 #[test]
@@ -34,12 +34,12 @@ fn evm_to_evm_swap_happy_path() {
     pic.advance_time(Duration::from_secs(70));
 
     // Requesting for another log_scrapping
-    update_call::<Nat, Result<(), RequestScrapingError>>(
+    update_call::<(), Result<(), RequestScrapingError>>(
         &pic,
         base_minter_principal(),
         "request_scraping_logs",
-        Nat::from(45944845_u64),
-        None,
+        (),
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     )
     .unwrap();
 
@@ -221,12 +221,12 @@ fn evm_to_evm_swap_refund_path() {
     pic.advance_time(Duration::from_secs(70));
 
     // Requesting for another log_scrapping
-    update_call::<Nat, Result<(), RequestScrapingError>>(
+    update_call::<(), Result<(), RequestScrapingError>>(
         &pic,
         base_minter_principal(),
         "request_scraping_logs",
-        Nat::from(45944845_u64),
-        None,
+        (),
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     )
     .unwrap();
 
@@ -404,12 +404,12 @@ fn evm_to_evm_swap_refund_after_failed_evm_swap() {
     pic.advance_time(Duration::from_secs(70));
 
     // Requesting for another log_scrapping
-    update_call::<Nat, Result<(), RequestScrapingError>>(
+    update_call::<(), Result<(), RequestScrapingError>>(
         &pic,
         base_minter_principal(),
         "request_scraping_logs",
-        Nat::from(45944845_u64),
-        None,
+        (),
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     )
     .unwrap();
 
