@@ -855,7 +855,7 @@ pub fn apply_safe_threshold_to_latest_block_numner(
         // This supports 1,000+ TPS with low fees (<$0.01).
         {
             latest_block
-                .checked_sub(BlockNumber::from(1_u32))
+                .checked_sub(BlockNumber::from(2_u32))
                 .expect("Removing 12 blocks from latest block should never fail")
         }
     }

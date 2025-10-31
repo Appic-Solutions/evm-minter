@@ -28,8 +28,8 @@ use crate::tests::minter_flow_tets::mock_rpc_https_responses::{
     MOCK_TRANSACTION_RECEIPT_APPROVE_BASE_ERC20, MOCK_TRANSACTION_RECEIPT_APPROVE_BSC_ERC20,
 };
 use crate::tests::pocket_ic_helpers::{
-    create_appic_helper_canister, create_evm_rpc_canister, create_icp_ledger_canister,
-    create_lsm_canister, encode_call_args, five_ticks, icp_principal, install_evm_rpc_canister,
+    create_evm_rpc_canister, create_icp_ledger_canister, create_lsm_canister, create_pic,
+    encode_call_args, five_ticks, icp_principal, install_evm_rpc_canister,
     install_icp_ledger_canister, install_lsm_canister, lsm_principal, query_call, sender_principal,
     update_call, DEX_CANISTER_BYTES, INDEX_WAM_BYTES, LEDGER_WASM_BYTES, MINTER_WASM_BYTES,
     PROXY_CANISTER_BYTES, TWENTY_TRILLIONS, TWO_TRILLIONS,
@@ -527,6 +527,12 @@ fn install_ic_usdc_base_ledger_canister(pic: &PocketIc, canister_id: Principal) 
     );
 }
 
+#[test]
+pub fn test_swap_setup() {
+    let pic = create_pic();
+    create_and_install_minters_plus_dependency_canisters(&pic);
+}
+
 pub fn create_and_install_minters_plus_dependency_canisters(pic: &PocketIc) {
     // Create and install icp ledger
     let icp_canister_id = create_icp_ledger_canister(pic);
@@ -539,9 +545,6 @@ pub fn create_and_install_minters_plus_dependency_canisters(pic: &PocketIc) {
     pic.add_cycles(proxy_id, TWO_TRILLIONS.into());
     install_proxy_canister(pic, proxy_id);
 
-    // Create and install appic helper
-    let appic_helper_id = create_appic_helper_canister(pic);
-    pic.add_cycles(appic_helper_id, TWENTY_TRILLIONS.into());
     five_ticks(pic);
     five_ticks(pic);
 
@@ -673,7 +676,7 @@ pub fn install_bsc_minter_and_setup(pic: &PocketIc) {
 
     update_call::<(), Result<(), RequestScrapingError>>(
         &pic,
-        base_minter_principal(),
+        bsc_minter_principal(),
         "request_scraping_logs",
         (),
         Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
@@ -942,7 +945,7 @@ pub fn install_base_minter_and_setup(pic: &PocketIc) {
         base_minter_id,
         "request_scraping_logs",
         (),
-        None,
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     );
 
     five_ticks(pic);

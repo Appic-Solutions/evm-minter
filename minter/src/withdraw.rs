@@ -15,7 +15,7 @@ use crate::state::transactions::{
     ReimbursementRequest, WithdrawalRequest,
 };
 use crate::state::{mutate_state, State, TaskType};
-use crate::swap::{build_dex_swap_refund_request, build_dex_swap_request};
+use crate::swap::build_dex_swap_refund_request;
 use crate::tx::gas_fees::{lazy_refresh_gas_fee_estimate, GasFeeEstimate, DEFAULT_L1_BASE_GAS_FEE};
 use crate::tx::gas_usd::MaxFeeUsd;
 use crate::{numeric::TransactionCount, state::read_state};
@@ -207,9 +207,9 @@ pub async fn process_reimbursement() {
 
 async fn process_failed_swaps(gas_fee_estimate: GasFeeEstimate) {
     if read_state(|s| {
-        s.withdrawal_transactions.is_failed_swaps_requests_empty()
+        (s.withdrawal_transactions.is_failed_swaps_requests_empty()
+            && s.quarantined_dex_orders.is_empty())
             || !s.is_swapping_active
-            || !s.quarantined_dex_orders.is_empty()
     }) {
         return;
     }
@@ -386,7 +386,9 @@ pub async fn process_retrieve_tokens_requests() {
         }
     };
 
-    if read_state(|s| !s.withdrawal_transactions.has_pending_requests()) {
+    if read_state(|s| {
+        !s.withdrawal_transactions.has_pending_requests() && s.quarantined_dex_orders.is_empty()
+    }) {
         return;
     }
 

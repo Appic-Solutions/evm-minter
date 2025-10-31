@@ -610,7 +610,7 @@ fn should_deposit_and_withdrawal_erc20() {
             memo: None,
             created_at_time: None,
         },
-        None,
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     )
     .unwrap();
 
@@ -634,7 +634,7 @@ fn should_deposit_and_withdrawal_erc20() {
                 token_logo: "".to_string(),
             },
         },
-        None,
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     )
     .unwrap();
 
@@ -1254,7 +1254,7 @@ fn should_activate_swap_feature() {
             memo: None,
             created_at_time: None,
         },
-        None,
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     )
     .unwrap();
 
@@ -1275,7 +1275,7 @@ fn should_activate_swap_feature() {
                 token_logo: "".to_string(),
             },
         },
-        None,
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     )
     .unwrap();
 

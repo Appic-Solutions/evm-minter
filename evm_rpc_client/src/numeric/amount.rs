@@ -34,17 +34,6 @@ impl<Unit> Amount<Unit> {
         self.0.to_be_bytes()
     }
 
-    /// Returns the display implementation of the inner value.
-    /// Useful to avoid thousands of separators if value is used for example in URLs.
-    /// ```
-    /// use evm_rpc::rpc_client::amount::Amount;
-    ///
-    /// enum MetricApple{}
-    /// type Apples = Amount<MetricApple>;
-    /// let many_apples = Apples::from(4_332_415_u32);
-    ///
-    /// assert_eq!(many_apples.to_string_inner(), "4332415".to_string());
-    /// ```
     pub fn to_string_inner(&self) -> String {
         self.0.to_string()
     }

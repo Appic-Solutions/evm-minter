@@ -57,6 +57,7 @@ use crate::{
         },
         swap::helpers::{base_minter_principal, bsc_minter_principal},
     },
+    APPIC_CONTROLLER_PRINCIPAL,
 };
 //use ic_icrc1_index_ng::{IndexArg, InitArg as IndexInitArg};
 use initialize_minter::create_and_install_minter_plus_dependency_canisters;
@@ -211,7 +212,7 @@ fn should_create_and_install_all_minter_dependency_canisters() {
                 archive_compressed_wasm_hash: WasmHash::new(ARCHIVE_WASM_BYTES.to_vec())
                     .to_string()
             }),
-            ls_creation_icp_fee: Nat::from(2_500_000_000_u64),
+            ls_creation_icp_fee: Nat::from(0_u8),
             ls_creation_appic_fee: None
         }
     );
@@ -243,7 +244,7 @@ fn should_install_lsm_canister_and_create_ledger_suite() {
 
     // Withdrawal Section
     // Calling icrc2_approve and giving the permission to lsm for taking funds from users principal
-    let _approve_result = update_call::<ApproveArgs, Result<Nat, ApproveError>>(
+    let approve_result = update_call::<ApproveArgs, Result<Nat, ApproveError>>(
         &pic,
         icp_principal(),
         "icrc2_approve",
@@ -262,10 +263,13 @@ fn should_install_lsm_canister_and_create_ledger_suite() {
             memo: None,
             created_at_time: None,
         },
-        None,
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     )
     .unwrap();
 
+    println!("approve result {}", approve_result);
+
+    five_ticks(&pic);
     five_ticks(&pic);
 
     let _create_erc20_ls_result = update_call::<AddErc20Arg, Result<(), AddErc20Error>>(
@@ -285,7 +289,7 @@ fn should_install_lsm_canister_and_create_ledger_suite() {
                 token_logo: "".to_string(),
             },
         },
-        None,
+        Some(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
     );
 
     five_ticks(&pic);
@@ -528,7 +532,7 @@ pub fn install_lsm_canister(pic: &PocketIc, canister_id: Principal) {
             (Nat::from(8453_u64), base_minter_principal()),
         ],
         cycles_management: None,
-        twin_ls_creation_fee_icp_token: Nat::from(2_500_000_000_u64),
+        twin_ls_creation_fee_icp_token: Nat::from(0_u8),
         twin_ls_creation_fee_appic_token: None,
     });
     pic.install_canister(
@@ -537,15 +541,6 @@ pub fn install_lsm_canister(pic: &PocketIc, canister_id: Principal) {
         encode_call_args(lsm_init_bytes).unwrap(),
         Some(sender_principal()),
     );
-}
-
-pub fn create_appic_helper_canister(pic: &PocketIc) -> Principal {
-    pic.create_canister_with_id(
-        Some(sender_principal()),
-        None,
-        Principal::from_text("zjydy-zyaaa-aaaaj-qnfka-cai").unwrap(),
-    )
-    .expect("Should create the canister")
 }
 
 pub fn create_icp_ledger_canister(pic: &PocketIc) -> Principal {
@@ -591,6 +586,10 @@ pub fn install_icp_ledger_canister(pic: &PocketIc, canister_id: Principal) {
                     )
                     .unwrap(),
                 ),
+                Nat::from(5_000_000_000_u128),
+            ),
+            (
+                LedgerAccount::from(Principal::from_text(APPIC_CONTROLLER_PRINCIPAL).unwrap()),
                 Nat::from(5_000_000_000_u128),
             ),
         ],
