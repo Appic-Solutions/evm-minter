@@ -712,6 +712,8 @@ impl State {
         self.withdrawal_transactions
             .remove_failed_swap_request_by_swap_tx_id(&request.swap_tx_id);
 
+        self.quarantined_dex_orders.remove(&request.swap_tx_id);
+
         self.withdrawal_transactions
             .record_withdrawal_request(request);
     }

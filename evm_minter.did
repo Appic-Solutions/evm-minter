@@ -680,6 +680,7 @@ service : (MinterArg) -> {
   icrc21_canister_call_consent_message : (ConsentMessageRequest) -> (Result_1);
   icrc28_trusted_origins : () -> (Icrc28TrustedOriginsResponse);
   minter_address : () -> (text);
+  request_block_scrape : (nat) -> ();
   request_scraping_logs : () -> (Result_2);
   retrieve_deposit_status : (text) -> (opt DepositStatus) query;
   retrieve_swap_status_by_hash : (text) -> (opt SwapStatus) query;

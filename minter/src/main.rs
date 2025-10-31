@@ -1795,16 +1795,22 @@ pub async fn update_chain_data(chain_data: ChainData) {
 
     let now = ic_cdk::api::time();
 
-    let (network, last_observed_block, last_scraped_block, latest_requested_block_to_scrape) =
-        read_state(|s| {
-            (
-                s.evm_network(),
-                s.last_observed_block_number.unwrap_or(BlockNumber::ZERO),
-                s.last_scraped_block_number,
-                s.lastest_requested_block_to_scrape
-                    .unwrap_or(BlockNumber::ZERO),
-            )
-        });
+    let (
+        network,
+        last_observed_block,
+        last_scraped_block,
+        latest_requested_block_to_scrape,
+        previous_native_token_usd_price,
+    ) = read_state(|s| {
+        (
+            s.evm_network(),
+            s.last_observed_block_number.unwrap_or(BlockNumber::ZERO),
+            s.last_scraped_block_number,
+            s.lastest_requested_block_to_scrape
+                .unwrap_or(BlockNumber::ZERO),
+            s.last_native_token_usd_price_estimate.unwrap_or((0, 0.0)).1,
+        )
+    });
 
     let latest_block_number = apply_safe_threshold_to_latest_block_numner(
         network,
@@ -1819,7 +1825,9 @@ pub async fn update_chain_data(chain_data: ChainData) {
     let fee_history =
         parse_fee_history(chain_data.fee_history).expect("Failed to parse fee hisotry");
 
-    let native_token_usd_price = chain_data.native_token_usd_price.unwrap_or_default();
+    let native_token_usd_price = chain_data
+        .native_token_usd_price
+        .unwrap_or(previous_native_token_usd_price);
 
     let estimated_transaction_fee =
         estimate_transaction_fee(&fee_history).expect("Failed to estimate gas fee");

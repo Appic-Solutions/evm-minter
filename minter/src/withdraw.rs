@@ -15,6 +15,7 @@ use crate::state::transactions::{
     ReimbursementRequest, WithdrawalRequest,
 };
 use crate::state::{mutate_state, State, TaskType};
+use crate::swap::{build_dex_swap_refund_request, build_dex_swap_request};
 use crate::tx::gas_fees::{lazy_refresh_gas_fee_estimate, GasFeeEstimate, DEFAULT_L1_BASE_GAS_FEE};
 use crate::tx::gas_usd::MaxFeeUsd;
 use crate::{numeric::TransactionCount, state::read_state};
@@ -204,9 +205,11 @@ pub async fn process_reimbursement() {
     }
 }
 
-pub fn process_failed_swaps(gas_fee_estimate: GasFeeEstimate) {
+async fn process_failed_swaps(gas_fee_estimate: GasFeeEstimate) {
     if read_state(|s| {
-        s.withdrawal_transactions.is_failed_swaps_requests_empty() || !s.is_swapping_active
+        s.withdrawal_transactions.is_failed_swaps_requests_empty()
+            || !s.is_swapping_active
+            || !s.quarantined_dex_orders.is_empty()
     }) {
         return;
     }
@@ -217,6 +220,7 @@ pub fn process_failed_swaps(gas_fee_estimate: GasFeeEstimate) {
         twin_usdc_info,
         signing_fee,
         swap_contract_address,
+        dex_canister_id,
     ) = read_state(|s| {
         (
             s.evm_network(),
@@ -224,6 +228,7 @@ pub fn process_failed_swaps(gas_fee_estimate: GasFeeEstimate) {
             s.twin_usdc_info.clone(),
             s.canister_signing_fee_twin_usdc_amount,
             s.swap_contract_address,
+            s.dex_canister_id,
         )
     });
 
@@ -239,6 +244,9 @@ pub fn process_failed_swaps(gas_fee_estimate: GasFeeEstimate) {
 
     let swap_contract_address = swap_contract_address
         .expect("BUG: swap contract address should be available if swapping is active");
+
+    let dex_canister_id =
+        dex_canister_id.expect("BUG: dex canister id should be available if swapping is active");
 
     let erc20_tx_fee = gas_fee_estimate
         .to_price(REFUND_FAILED_SWAP_GAS_LIMIT)
@@ -266,6 +274,7 @@ pub fn process_failed_swaps(gas_fee_estimate: GasFeeEstimate) {
         .checked_add(signing_fee)
         .unwrap_or(Erc20Value::MAX);
 
+    // process failed swaps
     for (_previous_native_ledger_burn_index, request) in
         read_state(|s| s.withdrawal_transactions.failed_swap_requests())
     {
@@ -282,6 +291,7 @@ pub fn process_failed_swaps(gas_fee_estimate: GasFeeEstimate) {
             );
 
             mutate_state(|s| process_event(s, EventType::QuarantinedSwapRequest(request.clone())));
+            continue;
         }
 
         let native_ledger_burn_index = match release_gas_from_tank_with_usdc(
@@ -334,6 +344,34 @@ pub fn process_failed_swaps(gas_fee_estimate: GasFeeEstimate) {
 
         mutate_state(|s| process_event(s, EventType::AcceptedSwapRequest(request)))
     }
+
+    // process quarantined_dex_orders
+    for (tx_id, dex_order) in read_state(|s| s.quarantined_dex_orders.clone().into_iter()) {
+        log!(
+            INFO,
+            "[dex_order]: Building swap request for Quarantined Dex Order with tx_id: {:?}",
+            tx_id
+        );
+        if let Ok(refund_swap_request) = build_dex_swap_refund_request(
+            &dex_order,
+            &twin_usdc_info,
+            last_native_token_usd_price_estimate.1,
+            signing_fee,
+            evm_network,
+            dex_canister_id,
+            swap_contract_address,
+        )
+        .await
+        {
+            log!(
+                INFO,
+                "[dex_order]: Successfully built refund request for tx_id: {:?} {:?}",
+                tx_id,
+                refund_swap_request
+            );
+            mutate_state(|s| process_event(s, EventType::AcceptedSwapRequest(refund_swap_request)));
+        };
+    }
 }
 
 pub async fn process_retrieve_tokens_requests() {
@@ -369,7 +407,7 @@ pub async fn process_retrieve_tokens_requests() {
     sign_transactions_batch().await;
     send_transactions_batch(latest_transaction_count).await;
     finalize_transactions_batch().await;
-    process_failed_swaps(gas_fee_estimate);
+    process_failed_swaps(gas_fee_estimate).await;
 
     if read_state(|s| s.withdrawal_transactions.has_pending_requests()) {
         ic_cdk_timers::set_timer(
