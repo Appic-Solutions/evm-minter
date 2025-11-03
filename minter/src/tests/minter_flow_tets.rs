@@ -354,14 +354,6 @@ fn should_deposit_and_withdrawal_native() {
         MOCK_SEND_TRANSACTION_SUCCESS,
     );
 
-    // ankr request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-
     five_ticks(&pic);
 
     // 5th getting the finalized transaction count after sending transaction was successful.
@@ -914,14 +906,6 @@ fn should_deposit_and_withdrawal_erc20() {
         MOCK_SEND_TRANSACTION_SUCCESS,
     );
 
-    // ankr request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-
     println!("Hellooooooo {}", canister_http_requests.len());
     five_ticks(&pic);
 
@@ -1047,14 +1031,6 @@ fn should_deposit_and_withdrawal_erc20() {
         &canister_http_requests,
         0,
         MOCK_SEND_TRANSACTION_SUCCESS,
-    );
-
-    // ankr request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_SEND_TRANSACTION_ERROR,
     );
 
     five_ticks(&pic);
@@ -1379,14 +1355,6 @@ fn should_activate_swap_feature() {
         MOCK_SEND_TRANSACTION_SUCCESS,
     );
 
-    // ankr request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-
     five_ticks(&pic);
     let canister_http_requests = pic.get_canister_http();
 
@@ -1484,14 +1452,6 @@ fn should_activate_swap_feature() {
         &canister_http_requests,
         0,
         MOCK_SEND_TRANSACTION_SUCCESS,
-    );
-
-    // ankr request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_SEND_TRANSACTION_ERROR,
     );
 
     five_ticks(&pic);

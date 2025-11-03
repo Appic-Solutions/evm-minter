@@ -86,14 +86,6 @@ fn icp_to_evm_swap_happy_path() {
         MOCK_SEND_TRANSACTION_SUCCESS,
     );
 
-    // ankr request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-
     five_ticks(&pic);
     let canister_http_requests = pic.get_canister_http();
 

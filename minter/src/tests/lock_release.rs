@@ -15,7 +15,6 @@ use crate::{
         minter_flow_tets::mock_rpc_https_responses::{
             generate_and_submit_mock_http_response, MOCK_BLOCK_NUMBER, MOCK_FEE_HISTORY_RESPONSE,
             MOCK_HIGHER_BLOCK_NUMBER, MOCK_ICRC_RELEASE_REUQEST, MOCK_MINT_WRAPPED_ICRC_RECEIPT,
-            MOCK_SECOND_NATIVE_TRANSACTION_RECEIPT, MOCK_SEND_TRANSACTION_ERROR,
             MOCK_SEND_TRANSACTION_SUCCESS, MOCK_TRANSACTION_COUNT_FINALIZED,
             MOCK_TRANSACTION_COUNT_LATEST, MOCK_WRAPPED_ICRC_DEPLOYED_AND_DEPOSIT,
         },
@@ -210,14 +209,6 @@ fn should_release_and_lock() {
         &canister_http_requests,
         0,
         MOCK_SEND_TRANSACTION_SUCCESS,
-    );
-
-    // ankr request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_SEND_TRANSACTION_ERROR,
     );
 
     five_ticks(&pic);

@@ -22,10 +22,10 @@ use crate::tests::minter_flow_tets::mock_rpc_https_responses::{
     MOCK_BASE_FEE_HISTORY_RESPONSE, MOCK_BASE_HIGHER_BLOCK_NUMBER, MOCK_BSC_BLOCK_NUMBER,
     MOCK_BSC_FEE_HISTORY_INNER, MOCK_BSC_FEE_HISTORY_RESPONSE, MOCK_BSC_HIGHER_BLOCK_NUMBER,
     MOCK_GET_BASE_LOGS_ERC20, MOCK_GET_BSC_LOGS_ERC20, MOCK_GET_LOGS_EMPTY,
-    MOCK_SEND_TRANSACTION_ERROR, MOCK_SEND_TRANSACTION_SUCCESS,
-    MOCK_TRANSACTION_COUNT_BASE_FINALIZED, MOCK_TRANSACTION_COUNT_BASE_LATEST,
-    MOCK_TRANSACTION_COUNT_BSC_FINALIZED, MOCK_TRANSACTION_COUNT_BSC_LATEST,
-    MOCK_TRANSACTION_RECEIPT_APPROVE_BASE_ERC20, MOCK_TRANSACTION_RECEIPT_APPROVE_BSC_ERC20,
+    MOCK_SEND_TRANSACTION_SUCCESS, MOCK_TRANSACTION_COUNT_BASE_FINALIZED,
+    MOCK_TRANSACTION_COUNT_BASE_LATEST, MOCK_TRANSACTION_COUNT_BSC_FINALIZED,
+    MOCK_TRANSACTION_COUNT_BSC_LATEST, MOCK_TRANSACTION_RECEIPT_APPROVE_BASE_ERC20,
+    MOCK_TRANSACTION_RECEIPT_APPROVE_BSC_ERC20,
 };
 use crate::tests::pocket_ic_helpers::{
     create_evm_rpc_canister, create_icp_ledger_canister, create_lsm_canister, create_pic,
@@ -806,14 +806,6 @@ pub fn install_bsc_minter_and_setup(pic: &PocketIc) {
         MOCK_SEND_TRANSACTION_SUCCESS,
     );
 
-    // ankr request
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        1,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-
     five_ticks(pic);
     let canister_http_requests = pic.get_canister_http();
 
@@ -1070,14 +1062,6 @@ pub fn install_base_minter_and_setup(pic: &PocketIc) {
         &canister_http_requests,
         0,
         MOCK_SEND_TRANSACTION_SUCCESS,
-    );
-
-    // ankr request
-    generate_and_submit_mock_http_response(
-        pic,
-        &canister_http_requests,
-        1,
-        MOCK_SEND_TRANSACTION_ERROR,
     );
 
     five_ticks(pic);

@@ -574,9 +574,8 @@ async fn send_transactions_batch(latest_transaction_count: Option<TransactionCou
     });
 
     log!(INFO, "Transactions to send {:?}", transactions_to_send);
-    let rpc_client = read_state(|s| {
-        RpcClient::from_state_custom_providers(s, vec![Provider::Alchemy, Provider::DRPC])
-    });
+    let rpc_client =
+        read_state(|s| RpcClient::from_state_custom_providers(s, vec![Provider::Alchemy]));
     let results = join_all(
         transactions_to_send
             .iter()

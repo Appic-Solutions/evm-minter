@@ -12,10 +12,9 @@ use crate::{
         minter_flow_tets::mock_rpc_https_responses::{
             generate_and_submit_mock_http_response, MOCK_BSC_FEE_HISTORY_INNER,
             MOCK_FAILED_TRANSACTION_RECEIPT_SWAP_BSC, MOCK_GET_SWAP_CONTRACT_BASE_LOGS,
-            MOCK_SEND_TRANSACTION_ERROR, MOCK_SEND_TRANSACTION_SUCCESS,
-            MOCK_SWAP_BASE_BLOCK_NUMBER, MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC,
-            MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC, MOCK_TRANSACTION_RECEIPT_SWAP_BSC,
-            MOCK_TRANSACTION_RECEIPT_SWAP_BSC_REFUND,
+            MOCK_SEND_TRANSACTION_SUCCESS, MOCK_SWAP_BASE_BLOCK_NUMBER,
+            MOCK_TRANSACTION_COUNT_FINALIZED_SWAP_BSC, MOCK_TRANSACTION_COUNT_LATEST_SWAP_BSC,
+            MOCK_TRANSACTION_RECEIPT_SWAP_BSC, MOCK_TRANSACTION_RECEIPT_SWAP_BSC_REFUND,
         },
         pocket_ic_helpers::{create_pic, five_ticks, query_call, update_call},
         swap::helpers::{
@@ -117,14 +116,6 @@ fn evm_to_evm_swap_happy_path() {
         &canister_http_requests,
         0,
         MOCK_SEND_TRANSACTION_SUCCESS,
-    );
-
-    // ankr request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_SEND_TRANSACTION_ERROR,
     );
 
     // getting the finalized transaction count after sending transaction was successful.
@@ -306,14 +297,6 @@ fn evm_to_evm_swap_refund_path() {
         MOCK_SEND_TRANSACTION_SUCCESS,
     );
 
-    // ankr request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_SEND_TRANSACTION_ERROR,
-    );
-
     five_ticks(&pic);
     let canister_http_requests = pic.get_canister_http();
 
@@ -487,14 +470,6 @@ fn evm_to_evm_swap_refund_after_failed_evm_swap() {
         &canister_http_requests,
         0,
         MOCK_SEND_TRANSACTION_SUCCESS,
-    );
-
-    // ankr request
-    generate_and_submit_mock_http_response(
-        &pic,
-        &canister_http_requests,
-        1,
-        MOCK_SEND_TRANSACTION_ERROR,
     );
 
     five_ticks(&pic);
